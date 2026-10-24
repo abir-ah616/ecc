@@ -1,0 +1,169 @@
+@import "tailwindcss";
+@import "@fontsource/bebas-neue";
+@import "@fontsource/oswald";
+@import "@fontsource/barlow-condensed";
+
+:root {
+  --bg: #0B0B0D;
+  --panel: #14080A;
+  --panel-border: rgba(179, 18, 30, 0.25);
+
+  /* Theme color tokens - Crimson (default) */
+  --theme-primary: #B3121E;
+  --theme-gradient-start: #860F17;
+  --theme-gradient-mid: #B81523;
+  --theme-gradient-end: #690A11;
+  --theme-accent: #E02A36;
+  --theme-glow: rgba(224, 42, 54, 0.4);
+  --theme-rank-bg: #140608;
+
+  --crimson: #B3121E;
+  --crimson-deep: #7A0C14;
+  --crimson-bright: #E02A36;
+  --text: #F5F2F2;
+  --muted: #A89B9D;
+  --gold: #D9A93B;
+  --silver: #BFC3C9;
+  --bronze: #B07040;
+
+  --font-display: 'Bebas Neue', 'Oswald', sans-serif;
+  --font-body: 'Barlow Condensed', sans-serif;
+}
+
+[data-theme="v2"] {
+  --theme-primary: #E88314;
+  --theme-gradient-start: #2A1708;
+  --theme-gradient-mid: #3E2108;
+  --theme-gradient-end: #180D04;
+  --theme-accent: #F59E0B;
+  --theme-glow: rgba(245, 158, 11, 0.5);
+  --theme-rank-bg: #140E06;
+  --panel: #161006;
+  --panel-border: rgba(232, 131, 20, 0.35);
+}
+
+[data-theme="blue"] {
+  --theme-primary: #1F6FEB;
+  --theme-gradient-start: #0D3A78;
+  --theme-gradient-mid: #1F6FEB;
+  --theme-gradient-end: #08244D;
+  --theme-accent: #58A6FF;
+  --theme-glow: rgba(31, 111, 235, 0.45);
+  --theme-rank-bg: #070F1C;
+  --panel: #0A111C;
+  --panel-border: rgba(31, 111, 235, 0.35);
+}
+
+[data-theme="gold"] {
+  --theme-primary: #D9A93B;
+  --theme-gradient-start: #78530C;
+  --theme-gradient-mid: #C99625;
+  --theme-gradient-end: #4D3305;
+  --theme-accent: #FFD369;
+  --theme-glow: rgba(217, 169, 59, 0.45);
+  --theme-rank-bg: #161105;
+  --panel: #181308;
+  --panel-border: rgba(217, 169, 59, 0.35);
+}
+
+[data-theme="emerald"] {
+  --theme-primary: #10B981;
+  --theme-gradient-start: #064E3B;
+  --theme-gradient-mid: #059669;
+  --theme-gradient-end: #022C22;
+  --theme-accent: #34D399;
+  --theme-glow: rgba(16, 185, 129, 0.45);
+  --theme-rank-bg: #04140E;
+  --panel: #071712;
+  --panel-border: rgba(16, 185, 129, 0.35);
+}
+
+[data-theme="violet"] {
+  --theme-primary: #8B5CF6;
+  --theme-gradient-start: #4C1D95;
+  --theme-gradient-mid: #7C3AED;
+  --theme-gradient-end: #290B5C;
+  --theme-accent: #A78BFA;
+  --theme-glow: rgba(139, 92, 246, 0.45);
+  --theme-rank-bg: #110820;
+  --panel: #130921;
+  --panel-border: rgba(139, 92, 246, 0.35);
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-feature-settings: "tnum" 1;
+  letter-spacing: 0.02em;
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.font-numbers {
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom angular bevel clip-paths */
+.clip-row-bar {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 12px) 100%, 0 100%);
+}
+
+.clip-badge-slant {
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.clip-tag-slant {
+  clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%);
+}
+
+.clip-corner-cut {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+}
+
+.clip-ribbon-angled {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+}
+
+.clip-capsule-angled {
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}
+
+.clip-shield-cut {
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+}
+
+/* Smooth entry animation */
+@keyframes rowFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-row-enter {
+  animation: rowFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-row-enter {
+    animation: none !important;
+  }
+}
+
+/* For PNG export: never run animations */
+.no-animation, .no-animation * {
+  animation: none !important;
+  transition: none !important;
+}
