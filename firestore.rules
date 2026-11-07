@@ -1,0 +1,191 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: allowed_users
+// Document ID: {emailId} (lowercase email address of the allowed user)
+// Fields:
+//   - email: string (required, immutable, matches emailId, valid email, <= 254 chars)
+//   - displayName: string (required, 1..120 chars) - user display name
+//   - role: string (required, enum: ['admin', 'user']) - access control role
+//   - status: string (required, enum: ['active', 'disabled']) - account status
+//   - createdAt: number (required, >= 0) - creation timestamp (ms)
+//   - updatedAt: number (required, >= 0) - last update timestamp (ms)
+//   - notes: string (optional, 0..1000 chars) - admin notes
+//   - addedBy: string (optional, 0..254 chars) - creator identifier/email
+//   - lastLoginAt: number (optional, >= 0) - last login timestamp (ms)
+//   - photoURL: string (optional, 0..2048 chars) - user avatar URL
+//   - uid: string (optional, 0..128 chars) - Firebase Auth UID
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated and has a non-null email token
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    // Normalized lowercase email of the authenticated caller
+    function userEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    // Check if the authenticated user owns the allowlist document for emailId
+    function isOwner(emailId) {
+      return isAuthenticated() && userEmail() == emailId;
+    }
+
+    // Root super-admin check via verified bootstrap email
+    function isSuperAdmin() {
+      return isAuthenticated() && userEmail() == 'johncenahzoppy@gmail.com';
+    }
+
+    // Database admin check: caller's own allowlist document exists, is active, and has role == 'admin'
+    function isDbAdmin() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/allowed_users/$(userEmail())) &&
+        get(/databases/$(database)/documents/allowed_users/$(userEmail())).data.role == 'admin' &&
+        get(/databases/$(database)/documents/allowed_users/$(userEmail())).data.status == 'active';
+    }
+
+    // Combined admin privilege check
+    function isAdmin() {
+      return isSuperAdmin() || isDbAdmin();
+    }
+
+    // Verify UID hasn't been tampered with on self-update
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that the document contains only the allowed fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate string length
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    // Validate optional string (if present, must be string and within length bounds)
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen);
+    }
+
+    // Validate email format
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() >= 3 &&
+        email.size() <= 254 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidAllowedUser(data, emailId) {
+      return hasOnlyAllowedFields([
+          'email',
+          'displayName',
+          'role',
+          'status',
+          'notes',
+          'addedBy',
+          'createdAt',
+          'updatedAt',
+          'lastLoginAt',
+          'photoURL',
+          'uid'
+        ]) &&
+        hasRequiredFields([
+          'email',
+          'displayName',
+          'role',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.email is string &&
+        data.email == emailId &&
+        isValidEmail(data.email) &&
+        validStringLength('displayName', 1, 120) &&
+        data.role in ['admin', 'user'] &&
+        data.status in ['active', 'disabled'] &&
+        // Root super-admin must always remain an active admin
+        (emailId != 'johncenahzoppy@gmail.com' || (data.role == 'admin' && data.status == 'active')) &&
+        data.createdAt is number &&
+        data.createdAt >= 0 &&
+        data.updatedAt is number &&
+        data.updatedAt >= 0 &&
+        isValidOptionalString('notes', 0, 1000) &&
+        isValidOptionalString('addedBy', 0, 254) &&
+        (!('lastLoginAt' in data) || (data.lastLoginAt is number && data.lastLoginAt >= 0)) &&
+        isValidOptionalString('photoURL', 0, 2048) &&
+        isValidOptionalString('uid', 0, 128);
+    }
+
+    // Active allowed users may only update their own login metadata without altering role, status, or email
+    function isValidSelfMetadataUpdate(emailId) {
+      return isOwner(emailId) &&
+        resource.data.status == 'active' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastLoginAt',
+          'photoURL',
+          'uid',
+          'updatedAt',
+          'displayName'
+        ]) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.email == resource.data.email &&
+        uidUnchanged();
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /allowed_users/{emailId} {
+      allow get: if isAdmin() || isOwner(emailId);
+      allow list: if isAdmin();
+
+      allow create: if isAdmin() &&
+        isValidAllowedUser(request.resource.data, emailId);
+
+      allow update: if isValidAllowedUser(request.resource.data, emailId) &&
+        request.resource.data.email == resource.data.email &&
+        (isAdmin() || isValidSelfMetadataUpdate(emailId));
+
+      allow delete: if isAdmin() &&
+        emailId != 'johncenahzoppy@gmail.com';
+    }
+
+    // Default deny for all other collections and paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

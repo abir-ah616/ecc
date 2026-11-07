@@ -1,0 +1,20 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json",
+    "database": "(default)",
+    "location": "nam5"
+  },
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "ESP CALC by MR OPPY",
+        "supportEmail": "tasnimroja64@gmail.com",
+        "authorizedRedirectUris": [
+          "https://esp-calc-oppy-2026.firebaseapp.com/__/auth/handler",
+          "http://localhost:5173"
+        ]
+      }
+    }
+  }
+}
