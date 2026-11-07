@@ -345,8 +345,8 @@ export const ResultView: React.FC = () => {
           {[
             { id: 'v2', label: 'Yellow', color: 'bg-amber-500' },
             { id: 'crimson', label: 'Crimson Red', color: 'bg-red-700' },
-            { id: 'blue', label: 'Cyber Blue', color: 'bg-blue-600' },
-            { id: 'gold', label: 'Championship Gold', color: 'bg-amber-400' },
+            { id: 'blue', label: 'Arctic Cyan', color: 'bg-cyan-400' },
+            { id: 'gold', label: 'Cyber Rose', color: 'bg-rose-500' },
             { id: 'emerald', label: 'Toxic Green', color: 'bg-emerald-600' },
             { id: 'violet', label: 'Royal Violet', color: 'bg-purple-600' },
           ].map((th) => (

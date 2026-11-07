@@ -8,8 +8,8 @@ import type {
 } from '../../types/tournament';
 import { ThemeYellowFFMAI } from './themes/ThemeYellowFFMAI';
 import { ThemeCrimsonBlade } from './themes/ThemeCrimsonBlade';
-import { ThemeCyberBlueHUD } from './themes/ThemeCyberBlueHUD';
-import { ThemeRoyalGoldPodium } from './themes/ThemeRoyalGoldPodium';
+import { ThemeArcticCyan } from './themes/ThemeArcticCyan';
+import { ThemeCyberRose } from './themes/ThemeCyberRose';
 import { ThemeEmeraldStreet } from './themes/ThemeEmeraldStreet';
 import { ThemeVioletPrism } from './themes/ThemeVioletPrism';
 
@@ -80,9 +80,9 @@ export const ResultGraphic: React.FC<ResultGraphicProps> = ({
       case 'crimson':
         return <ThemeCrimsonBlade {...themeProps} />;
       case 'blue':
-        return <ThemeCyberBlueHUD {...themeProps} />;
+        return <ThemeArcticCyan {...themeProps} />;
       case 'gold':
-        return <ThemeRoyalGoldPodium {...themeProps} />;
+        return <ThemeCyberRose {...themeProps} />;
       case 'emerald':
         return <ThemeEmeraldStreet {...themeProps} />;
       case 'violet':

@@ -123,11 +123,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenReset, onOpenJson }) => {
                   className="bg-transparent font-bold text-neutral-200 focus:outline-none cursor-pointer text-xs"
                 >
                   <option value="v2" className="bg-neutral-900 text-amber-400">Yellow</option>
-                  <option value="crimson" className="bg-neutral-900 text-red-400">Crimson</option>
-                  <option value="blue" className="bg-neutral-900 text-blue-400">Blue</option>
-                  <option value="gold" className="bg-neutral-900 text-amber-300">Gold</option>
-                  <option value="emerald" className="bg-neutral-900 text-emerald-400">Emerald</option>
-                  <option value="violet" className="bg-neutral-900 text-purple-400">Violet</option>
+                  <option value="crimson" className="bg-neutral-900 text-red-400">Crimson Red</option>
+                  <option value="blue" className="bg-neutral-900 text-cyan-400">Arctic Cyan</option>
+                  <option value="gold" className="bg-neutral-900 text-rose-400">Cyber Rose</option>
+                  <option value="emerald" className="bg-neutral-900 text-emerald-400">Toxic Green</option>
+                  <option value="violet" className="bg-neutral-900 text-purple-400">Royal Violet</option>
                 </select>
               </div>
 
