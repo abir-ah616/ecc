@@ -86,7 +86,7 @@ export const ThemeVioletPrism: React.FC<GraphicThemeProps> = ({
         {/* TOP SPLIT-WING DIAMOND PRISM HEADER */}
         <header className="flex items-center justify-between gap-6 border-b border-[#D946EF]/35 pb-4">
           {/* Left Wing: Diamond Crystal Emblem + Tournament Headline */}
-          <div className="flex items-center gap-6">
+          <div className="flex min-w-0 flex-1 items-center gap-5">
             {/* Rotated 45-Degree Diamond Crystal Frame */}
             <div className="relative flex h-20 w-20 shrink-0 items-center justify-center">
               <div className="absolute inset-2 rotate-45 border-2 border-[#E879F9] bg-[#18082B] shadow-[0_0_25px_rgba(217,70,239,0.45)]" />
@@ -104,7 +104,8 @@ export const ThemeVioletPrism: React.FC<GraphicThemeProps> = ({
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col">
-              <div className="flex flex-nowrap items-center gap-2.5 whitespace-nowrap">
+              {/* Top Kicker Row: Stage + (In 4:5 Portrait: Organizer & Sponsor Prism Pills so they never overflow!) */}
+              <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
                 <span
                   className="shrink-0 bg-gradient-to-r from-[#D946EF] to-[#8B5CF6] px-3.5 py-0.5 font-headline text-xs font-black uppercase tracking-[0.22em] text-white"
                   style={{
@@ -114,10 +115,44 @@ export const ThemeVioletPrism: React.FC<GraphicThemeProps> = ({
                 >
                   {settings.roundOrDay || 'PRISM STAGE'}
                 </span>
-                <span className="shrink-0 font-headline text-xs font-bold uppercase tracking-[0.24em] text-[#F0ABFC]">
-                  {matchHeaderSubtitle}
-                </span>
+
+                {isPortrait ? (
+                  <>
+                    {settings.hostName && (
+                      <span
+                        className="shrink-0 border border-[#D946EF]/60 bg-[#18082B] px-3.5 py-0.5 font-headline text-xs font-black uppercase tracking-[0.16em] text-white"
+                        style={{
+                          clipPath:
+                            'polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)',
+                        }}
+                      >
+                        <span className="text-[#E879F9]">ORG:</span>{' '}
+                        {settings.hostName}
+                      </span>
+                    )}
+                    {settings.sponsorName && (
+                      <span
+                        className="shrink-0 border border-[#8B5CF6]/60 bg-[#18082B] px-3.5 py-0.5 font-headline text-xs font-black uppercase tracking-[0.16em] text-[#F0ABFC]"
+                        style={{
+                          clipPath:
+                            'polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)',
+                        }}
+                      >
+                        <span className="text-[#C4B5FD]">SPONSOR:</span>{' '}
+                        {settings.sponsorName}
+                      </span>
+                    )}
+                    <span className="shrink-0 font-headline text-xs font-bold uppercase tracking-[0.2em] text-[#F0ABFC]">
+                      // {matchHeaderSubtitle}
+                    </span>
+                  </>
+                ) : (
+                  <span className="shrink-0 font-headline text-xs font-bold uppercase tracking-[0.24em] text-[#F0ABFC]">
+                    {matchHeaderSubtitle}
+                  </span>
+                )}
               </div>
+
               <h1
                 className={`mt-1 truncate whitespace-nowrap font-headline font-black uppercase leading-none tracking-wider text-white drop-shadow-[0_4px_20px_rgba(217,70,239,0.45)] ${
                   isPortrait ? 'text-5xl' : 'text-6xl'
@@ -128,42 +163,44 @@ export const ThemeVioletPrism: React.FC<GraphicThemeProps> = ({
             </div>
           </div>
 
-          {/* Right Wing: Chevron Prism Plaques for Organizer & Sponsor */}
-          <div className="flex items-center gap-3">
-            {settings.hostName && (
-              <div
-                className="border border-[#D946EF]/50 bg-[#18082B]/90 px-6 py-2.5 text-right"
-                style={{
-                  clipPath:
-                    'polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%)',
-                }}
-              >
-                <div className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-[#E879F9]">
-                  ORGANIZER
+          {/* Right Wing (16:9 Desktop): Chevron Prism Plaques for Organizer & Sponsor */}
+          {!isPortrait && (
+            <div className="flex shrink-0 items-center gap-3">
+              {settings.hostName && (
+                <div
+                  className="border border-[#D946EF]/50 bg-[#18082B]/90 px-6 py-2.5 text-right"
+                  style={{
+                    clipPath:
+                      'polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%)',
+                  }}
+                >
+                  <div className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-[#E879F9]">
+                    ORGANIZER
+                  </div>
+                  <div className="truncate font-headline text-xl font-black uppercase tracking-wider text-white">
+                    {settings.hostName}
+                  </div>
                 </div>
-                <div className="truncate font-headline text-xl font-black uppercase tracking-wider text-white">
-                  {settings.hostName}
-                </div>
-              </div>
-            )}
+              )}
 
-            {settings.sponsorName && (
-              <div
-                className="border border-[#8B5CF6]/50 bg-[#18082B]/90 px-6 py-2.5 text-right"
-                style={{
-                  clipPath:
-                    'polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%)',
-                }}
-              >
-                <div className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-[#C4B5FD]">
-                  SPONSOR
+              {settings.sponsorName && (
+                <div
+                  className="border border-[#8B5CF6]/50 bg-[#18082B]/90 px-6 py-2.5 text-right"
+                  style={{
+                    clipPath:
+                      'polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%)',
+                  }}
+                >
+                  <div className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-[#C4B5FD]">
+                    SPONSOR
+                  </div>
+                  <div className="truncate font-headline text-xl font-black uppercase tracking-wider text-[#F0ABFC]">
+                    {settings.sponsorName}
+                  </div>
                 </div>
-                <div className="truncate font-headline text-xl font-black uppercase tracking-wider text-[#F0ABFC]">
-                  {settings.sponsorName}
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </header>
 
         {/* MIDDLE CONTENT AREA: Double-Chevron Pointed Blades + Optional Winner Monolith */}

@@ -344,9 +344,10 @@ export const ResultView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           {[
             { id: 'v2', label: 'Yellow', color: 'bg-amber-500' },
-            { id: 'crimson', label: 'Crimson Red', color: 'bg-red-700' },
             { id: 'blue', label: 'Arctic Cyan', color: 'bg-cyan-400' },
             { id: 'gold', label: 'Cyber Rose', color: 'bg-rose-500' },
+            { id: 'eclipse', label: 'Solar Flare', color: 'bg-orange-400' },
+            { id: 'crimson', label: 'Crimson Red', color: 'bg-red-700' },
             { id: 'emerald', label: 'Toxic Green', color: 'bg-emerald-600' },
             { id: 'violet', label: 'Royal Violet', color: 'bg-purple-600' },
           ].map((th) => (

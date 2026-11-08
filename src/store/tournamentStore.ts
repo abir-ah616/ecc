@@ -400,7 +400,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
       switchActiveTournament: (id: string, targetTab?: string) => {
         const tourn = get().tournaments.find((t) => t.id === id);
         if (tourn) {
-          document.documentElement.setAttribute('data-theme', tourn.settings.theme || 'crimson');
+          document.documentElement.setAttribute('data-theme', tourn.settings.theme || 'v2');
           const lastMatch = tourn.matches[tourn.matches.length - 1];
           const resolved = resolveActive(get().tournaments, id);
           set({

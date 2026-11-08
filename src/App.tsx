@@ -28,7 +28,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', settings.theme || 'crimson');
+    document.documentElement.setAttribute('data-theme', settings.theme || 'v2');
   }, [settings.theme]);
 
   if (isLoading) {

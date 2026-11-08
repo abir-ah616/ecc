@@ -101,6 +101,18 @@
   --panel-border: rgba(139, 92, 246, 0.35);
 }
 
+[data-theme="eclipse"] {
+  --theme-primary: #EAB308;
+  --theme-gradient-start: #422006;
+  --theme-gradient-mid: #CA8A04;
+  --theme-gradient-end: #08070B;
+  --theme-accent: #FEF08A;
+  --theme-glow: rgba(234, 179, 8, 0.45);
+  --theme-rank-bg: #08070B;
+  --panel: #110F16;
+  --panel-border: rgba(234, 179, 8, 0.4);
+}
+
 body {
   background-color: var(--bg);
   color: var(--text);

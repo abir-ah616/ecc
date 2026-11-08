@@ -12,6 +12,7 @@ import { ThemeArcticCyan } from './themes/ThemeArcticCyan';
 import { ThemeCyberRose } from './themes/ThemeCyberRose';
 import { ThemeEmeraldStreet } from './themes/ThemeEmeraldStreet';
 import { ThemeVioletPrism } from './themes/ThemeVioletPrism';
+import { ThemeImperialGold } from './themes/ThemeImperialGold';
 
 interface ResultGraphicProps {
   settings: TournamentSettings;
@@ -87,6 +88,8 @@ export const ResultGraphic: React.FC<ResultGraphicProps> = ({
         return <ThemeEmeraldStreet {...themeProps} />;
       case 'violet':
         return <ThemeVioletPrism {...themeProps} />;
+      case 'eclipse':
+        return <ThemeImperialGold {...themeProps} />;
       default:
         return <ThemeYellowFFMAI {...themeProps} />;
     }
