@@ -4,7 +4,6 @@ import {
   Users,
   Save,
   ArrowLeft,
-  Calendar,
   Image as ImageIcon,
   X,
   Plus,
@@ -12,6 +11,7 @@ import {
   CheckCircle2,
   Upload,
   Flame,
+  ClipboardList,
 } from 'lucide-react';
 import { useTournamentStore, generateInitials, SAMPLE_TEAM_NAMES } from '../../store/tournamentStore';
 import type { Team, TournamentMode } from '../../types/tournament';
@@ -40,7 +40,6 @@ export const EditTournamentView: React.FC = () => {
   // Editable squads list
   const [teams, setTeams] = useState<Team[]>([]);
   const [savedSuccess, setSavedSuccess] = useState(false);
-
   const [bulkPasteText, setBulkPasteText] = useState('');
   const [showBulkPaste, setShowBulkPaste] = useState(false);
 
@@ -68,7 +67,7 @@ export const EditTournamentView: React.FC = () => {
         <button
           type="button"
           onClick={() => setCurrentTab('home')}
-          className="rounded bg-red-700 px-4 py-2 text-xs font-bold uppercase text-white"
+          className="rounded-xl bg-red-700 px-5 py-2.5 text-xs font-bold uppercase text-white hover:bg-red-600"
         >
           Return Home
         </button>
@@ -167,12 +166,15 @@ export const EditTournamentView: React.FC = () => {
   const handleAddTeam = () => {
     if (teams.length >= 20) return;
     const nextNum = teams.length + 1;
-    const newTeam: Team = {
-      id: `team_${activeTournament.id}_${Date.now()}_${nextNum}`,
-      name: `Squad ${nextNum}`,
-      shortCode: `S${nextNum}`,
-    };
-    setTeams([...teams, newTeam]);
+    const defaultName = `Squad ${nextNum}`;
+    setTeams([
+      ...teams,
+      {
+        id: `team_${activeTournament.id}_${Date.now()}_${nextNum}`,
+        name: defaultName,
+        shortCode: `S${nextNum}`,
+      },
+    ]);
   };
 
   const handleRemoveTeam = (index: number) => {
@@ -184,12 +186,12 @@ export const EditTournamentView: React.FC = () => {
     e.preventDefault();
     updateTournament(activeTournament.id, {
       name,
-      mode,
       roundOrDay,
       hostName,
       sponsorName,
-      showLogos,
       customLogoUrl,
+      showLogos,
+      mode,
       totalMatchesPlanned,
       championRush: {
         targetPoints,
@@ -203,122 +205,157 @@ export const EditTournamentView: React.FC = () => {
     setTimeout(() => {
       setSavedSuccess(false);
       setCurrentTab('results');
-    }, 900);
+    }, 800);
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Header Title */}
-        <div className="rounded-lg border border-neutral-800 bg-[#12080A] p-6 shadow-lg">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-red-500 mb-1">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>CREATED: {activeTournament.createdAt}</span>
-              </div>
-              <h1 className="font-display text-3xl sm:text-4xl tracking-wider text-white uppercase font-black">
-                EDIT TOURNAMENT SETTINGS
-              </h1>
-              <p className="text-xs text-neutral-400 mt-0.5">
-                Update tournament title, host, sponsors, game mode, and upload or edit team logos.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCurrentTab('results')}
-                className="flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Cancel</span>
-              </button>
-
-              <button
-                type="submit"
-                className="flex items-center gap-2 rounded bg-red-700 px-5 py-2 text-xs font-display tracking-wider uppercase font-black text-white hover:bg-red-600 shadow-md shadow-red-950/50 transition-all"
-              >
-                {savedSuccess ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                    <span>SAVED!</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    <span>SAVE CHANGES</span>
-                  </>
-                )}
-              </button>
-            </div>
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-8">
+      {/* Top Banner */}
+      <div className="rounded-2xl border border-neutral-800/80 bg-gradient-to-b from-[#161017] via-[#0F0C12] to-[#0A080C] p-6 sm:p-8 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              onClick={() => setCurrentTab('home')}
+              className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-400 hover:text-white transition-colors mb-1"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Back to Tournaments</span>
+            </button>
+            <h1 className="font-display text-3xl sm:text-4xl font-black uppercase tracking-wider text-white">
+              Edit Tournament &amp; Squads
+            </h1>
+            <p className="text-xs sm:text-sm text-neutral-400">
+              Modifying active tournament &quot;{activeTournament.name}&quot;
+            </p>
           </div>
+
+          {savedSuccess && (
+            <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-950/80 border border-emerald-700/80 px-4 py-2 text-xs font-bold text-emerald-300 animate-in fade-in">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <span>Changes Saved!</span>
+            </div>
+          )}
         </div>
+      </div>
 
-        {/* Form Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Card 1: Branding */}
-          <div className="rounded-lg border border-neutral-800 bg-[#14080A] p-5 space-y-4 shadow-sm">
-            <h2 className="font-display text-lg tracking-wider text-white flex items-center gap-2 border-b border-neutral-800 pb-3">
-              <Shield className="h-4 w-4 text-red-500" />
-              <span>TOURNAMENT BRANDING</span>
+      <form onSubmit={handleSave} className="space-y-8">
+        {/* Mode & Parameters */}
+        <section className="rounded-2xl border border-neutral-800/80 bg-[#120D12] p-6 sm:p-8 space-y-5">
+          <div className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
+            <h2 className="font-display text-xl font-black uppercase tracking-wider text-white">
+              Tournament Mode &amp; Limits
             </h2>
+            <span className="rounded-md bg-neutral-900 border border-neutral-800 px-2.5 py-1 text-xs font-bold text-neutral-300">
+              {mode === 'CHAMPION_RUSH' ? 'CHAMPION RUSH' : 'SCRIM'}
+            </span>
+          </div>
 
-            {/* Tournament Official Emblem / Logo */}
-            <div className="flex items-center gap-4 rounded-lg border border-neutral-800 bg-neutral-900/80 p-3.5">
-              <div className="relative h-16 w-16 shrink-0 rounded-lg bg-black/90 border border-neutral-700 flex items-center justify-center overflow-hidden shadow-inner">
-                {customLogoUrl ? (
-                  <img
-                    src={customLogoUrl}
-                    alt="Tournament Logo"
-                    className="h-full w-full object-contain p-1"
+          {mode === 'SCRIM' ? (
+            <div className="space-y-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300">
+                Total Matches Planned
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                {[3, 4, 5, 6, 8, 10, 12].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setTotalMatchesPlanned(num)}
+                    className={`rounded-xl px-4 py-2 text-xs font-black transition-all ${
+                      totalMatchesPlanned === num
+                        ? 'bg-red-600 text-white'
+                        : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white'
+                    }`}
+                  >
+                    {num} Matches
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {/* Target Points with set buttons & custom input */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  Target Point Threshold
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[40, 50, 60, 70, 80, 100].map((pts) => (
+                    <button
+                      key={pts}
+                      type="button"
+                      onClick={() => setTargetPoints(pts)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
+                        targetPoints === pts
+                          ? 'bg-amber-500 text-black shadow-md'
+                          : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white'
+                      }`}
+                    >
+                      {pts} PTS
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-xs text-neutral-400">Custom Amount:</span>
+                  <input
+                    type="number"
+                    min={10}
+                    max={500}
+                    value={targetPoints}
+                    onChange={(e) => setTargetPoints(Math.max(1, parseInt(e.target.value) || 50))}
+                    className="w-24 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-black text-amber-400 text-center"
                   />
-                ) : (
-                  <img
-                    src="/assets/logo-placeholder.png"
-                    alt="Default Emblem"
-                    className="h-full w-full object-contain p-1 opacity-70"
-                  />
-                )}
+                </div>
               </div>
 
-              <div className="flex-1 min-w-0">
-                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300 mb-1">
-                  Tournament Emblem / Logo
+              {/* Max Matches with set buttons & custom input */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  Max Match Cutoff
                 </label>
-                <p className="text-[11px] text-neutral-400 mb-2">
-                  Official emblem displayed in the broadcast graphic showcase.
-                </p>
-
-                <div className="flex items-center gap-2">
-                  <label className="cursor-pointer rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-700 hover:text-white transition-colors inline-flex items-center gap-1.5">
-                    <Upload className="h-3.5 w-3.5 text-red-400" />
-                    <span>{customLogoUrl ? 'Change Logo' : 'Upload Logo'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleTournamentLogoUpload(file);
-                      }}
-                    />
-                  </label>
-
-                  {customLogoUrl && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {[6, 8, 10, 12, 14].map((num) => (
                     <button
+                      key={num}
                       type="button"
-                      onClick={() => setCustomLogoUrl(undefined)}
-                      className="rounded border border-red-900/60 bg-red-950/40 px-2.5 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-900/60 transition-colors inline-flex items-center gap-1"
+                      onClick={() => setMaxMatches(num)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
+                        maxMatches === num
+                          ? 'bg-neutral-700 text-white shadow-md'
+                          : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white'
+                      }`}
                     >
-                      <X className="h-3.5 w-3.5" />
-                      <span>Reset Default</span>
+                      {num} Matches
                     </button>
-                  )}
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-xs text-neutral-400">Custom Max:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={maxMatches}
+                    onChange={(e) => setMaxMatches(Math.max(1, parseInt(e.target.value) || 8))}
+                    className="w-24 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-black text-white text-center"
+                  />
                 </div>
               </div>
             </div>
+          )}
+        </section>
 
+        {/* Details & Branding */}
+        <section className="rounded-2xl border border-neutral-800/80 bg-[#120D12] p-6 sm:p-8 space-y-5">
+          <div className="flex items-center gap-2.5 border-b border-neutral-800/80 pb-3">
+            <Shield className="h-5 w-5 text-red-500" />
+            <h2 className="font-display text-xl font-black uppercase tracking-wider text-white">
+              Tournament Details
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="space-y-1.5">
               <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400">
                 Tournament Title
@@ -328,376 +365,231 @@ export const EditTournamentView: React.FC = () => {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. FREE FIRE CHAMPIONSHIP"
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-semibold text-white focus:border-red-500 focus:outline-none"
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2.5 text-sm font-bold text-white focus:border-red-500 focus:outline-none"
               />
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400">
-                Round / Phase Name
+                Phase / Day Subtitle
               </label>
               <input
                 type="text"
                 required
                 value={roundOrDay}
                 onChange={(e) => setRoundOrDay(e.target.value)}
-                placeholder="e.g. GRAND FINALS - DAY 1"
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-semibold text-white focus:border-red-500 focus:outline-none"
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2.5 text-sm font-bold text-white focus:border-red-500 focus:outline-none"
               />
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400">
-                Host / Organizer Name
+                Host / Organizer
               </label>
               <input
                 type="text"
                 value={hostName}
                 onChange={(e) => setHostName(e.target.value)}
-                placeholder="e.g. BD ESPORTS ARENA"
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-semibold text-white focus:border-red-500 focus:outline-none"
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2.5 text-sm text-white focus:border-red-500 focus:outline-none"
               />
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400">
-                Sponsors / Powered By
+                Sponsor(s)
               </label>
               <input
                 type="text"
                 value={sponsorName}
                 onChange={(e) => setSponsorName(e.target.value)}
-                placeholder="e.g. RED BULL / ASUS ROG"
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-semibold text-white focus:border-red-500 focus:outline-none"
+                className="w-full rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2.5 text-sm text-white focus:border-red-500 focus:outline-none"
               />
             </div>
-
-            {/* Toggle Team Logos On/Off */}
-            <div className="pt-2 border-t border-neutral-800">
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showLogos}
-                  onChange={(e) => setShowLogos(e.target.checked)}
-                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-red-600 focus:ring-0"
-                />
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">
-                  Enable Team Logos on Graphic
-                </span>
-              </label>
-              <p className="text-[11px] text-neutral-400 mt-1 pl-6.5">
-                When enabled, logos appear directly to the left of each team name. Uncheck to hide logos and maximize name width.
-              </p>
-            </div>
           </div>
 
-          {/* Card 2: Game Mode Settings */}
-          <div className="rounded-lg border border-neutral-800 bg-[#14080A] p-5 space-y-4 shadow-sm">
-            <h2 className="font-display text-lg tracking-wider text-white flex items-center gap-2 border-b border-neutral-800 pb-3">
-              <Shield className="h-4 w-4 text-red-500" />
-              <span>GAME MODE SETTINGS</span>
-            </h2>
-
-            {/* Mode selection buttons */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setMode('SCRIM')}
-                className={`rounded-lg border p-3 text-left transition-all ${
-                  mode === 'SCRIM'
-                    ? 'border-red-600 bg-red-950/40 text-white'
-                    : 'border-neutral-800 bg-neutral-900/50 text-neutral-400 hover:border-neutral-700'
-                }`}
-              >
-                <div className="font-display text-base font-bold uppercase text-red-400">
-                  Mode A: Scrim
-                </div>
-                <div className="text-[11px] text-neutral-400 mt-1">
-                  Fixed match count. Ranking decided strictly by cumulative points.
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMode('CHAMPION_RUSH')}
-                className={`rounded-lg border p-3 text-left transition-all ${
-                  mode === 'CHAMPION_RUSH'
-                    ? 'border-amber-600 bg-amber-950/40 text-white'
-                    : 'border-neutral-800 bg-neutral-900/50 text-neutral-400 hover:border-neutral-700'
-                }`}
-              >
-                <div className="font-display text-base font-bold uppercase text-amber-400">
-                  Mode B: Champion Rush
-                </div>
-                <div className="text-[11px] text-neutral-400 mt-1">
-                  Cross target points to activate Rush. Active team to get Booyah wins Champion.
-                </div>
-              </button>
-            </div>
-
-            {/* Scrim Config */}
-            {mode === 'SCRIM' && (
-              <div className="space-y-2 pt-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400">
-                  Total Matches Planned
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[2, 3, 5, 6].map((num) => (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => setTotalMatchesPlanned(num)}
-                      className={`rounded py-1.5 text-xs font-bold transition-colors ${
-                        totalMatchesPlanned === num
-                          ? 'bg-red-700 text-white'
-                          : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-                      }`}
-                    >
-                      {num} Matches
-                    </button>
-                  ))}
-                </div>
+          {/* Crest Logo Upload */}
+          <div className="pt-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2">
+              Tournament Crest Logo
+            </label>
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-dashed border-neutral-700 bg-neutral-900 text-neutral-400 overflow-hidden">
+                {customLogoUrl ? (
+                  <img src={customLogoUrl} alt="Logo" className="h-full w-full object-cover" />
+                ) : (
+                  <ImageIcon className="h-6 w-6 text-neutral-500" />
+                )}
               </div>
-            )}
-
-            {/* Champion Rush Config */}
-            {mode === 'CHAMPION_RUSH' && (
-              <div className="space-y-3 pt-2">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400 mb-1">
-                    Target Points to Activate Rush
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[50, 60, 70].map((pts) => (
-                      <button
-                        key={pts}
-                        type="button"
-                        onClick={() => setTargetPoints(pts)}
-                        className={`rounded py-1.5 text-xs font-bold transition-colors ${
-                          targetPoints === pts
-                            ? 'bg-amber-600 text-white'
-                            : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-                        }`}
-                      >
-                        {pts} Points
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400 mb-1">
-                    Maximum Matches Cap
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[5, 8, 10].map((num) => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setMaxMatches(num)}
-                        className={`rounded py-1.5 text-xs font-bold transition-colors ${
-                          maxMatches === num
-                            ? 'bg-amber-600 text-white'
-                            : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-                        }`}
-                      >
-                        {num} Matches
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <label className="flex items-start gap-2 pt-1 border-t border-neutral-800 cursor-pointer">
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-800 transition-colors flex items-center gap-1.5">
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>Upload Crest</span>
                   <input
-                    type="checkbox"
-                    checked={allowSameMatch}
-                    onChange={(e) => setAllowSameMatch(e.target.checked)}
-                    className="mt-0.5 rounded border-neutral-700 bg-neutral-950 text-red-600 focus:ring-0"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) handleTournamentLogoUpload(e.target.files[0]);
+                    }}
+                    className="hidden"
                   />
-                  <span className="text-xs text-neutral-300">
-                    Allow same-match Booyah activation (Default OFF)
-                  </span>
                 </label>
+                {customLogoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomLogoUrl(undefined)}
+                    className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-900/60"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        </section>
 
-        {/* Card 3: Teams & Logo Uploads (Full Width) */}
-        <div className="rounded-lg border border-neutral-800 bg-[#14080A] p-5 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-neutral-800 pb-3">
-            <div>
-              <h2 className="font-display text-xl tracking-wider text-white flex items-center gap-2">
-                <Users className="h-5 w-5 text-red-500" />
-                <span>SQUADS &amp; LOGOS ({teams.length})</span>
-              </h2>
-              <p className="text-xs text-neutral-400 mt-0.5">
-                Edit team names and upload custom logos (PNG/JPG). Logos appear to the left of each team name.
-              </p>
+        {/* Squads Roster */}
+        <section className="rounded-2xl border border-neutral-800/80 bg-[#120D12] p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-neutral-800/80 pb-4">
+            <div className="flex items-center gap-2.5">
+              <Users className="h-5 w-5 text-red-500" />
+              <div>
+                <h2 className="font-display text-xl font-black uppercase tracking-wider text-white">
+                  Participating Squads ({teams.length})
+                </h2>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Update squad names or upload logos anytime during the tournament.
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center rounded border border-neutral-700 bg-neutral-900 p-0.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => handleSetCount(12)}
-                  className={`rounded px-2.5 py-1 font-bold transition-colors ${
-                    teams.length === 12
-                      ? 'bg-red-700 text-white'
-                      : 'text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  12 Teams
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetCount(15)}
-                  className={`rounded px-2.5 py-1 font-bold transition-colors ${
-                    teams.length === 15
-                      ? 'bg-red-700 text-white'
-                      : 'text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  15 League
-                </button>
+              <div className="inline-flex rounded-lg border border-neutral-800 bg-neutral-950 p-1">
+                {[12, 16].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => handleSetCount(count)}
+                    className={`rounded-md px-3 py-1 text-xs font-bold transition-all ${
+                      teams.length === count
+                        ? 'bg-neutral-800 text-white shadow-sm'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    {count} Teams
+                  </button>
+                ))}
               </div>
-
-              <button
-                type="button"
-                onClick={handleAddTeam}
-                className="flex items-center gap-1.5 rounded border border-dashed border-red-700/80 bg-red-950/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-red-300 hover:bg-red-900/50 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Add Squad</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowBulkPaste(true)}
-                className="rounded border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800"
-              >
-                Paste Squad List
-              </button>
 
               <button
                 type="button"
                 onClick={handleFillDemoNames}
-                className="flex items-center gap-1 rounded border border-neutral-800 bg-neutral-900/60 px-2.5 py-1.5 text-xs text-neutral-400 hover:text-white transition-colors"
+                className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
               >
-                <Flame className="h-3 w-3 text-red-500" />
-                <span>Fill Sample Names</span>
+                <Flame className="h-3.5 w-3.5 text-amber-400" />
+                <span>Fill Squad Names</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowBulkPaste(!showBulkPaste)}
+                className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
+              >
+                <ClipboardList className="h-3.5 w-3.5 text-neutral-400" />
+                <span>Bulk Paste</span>
               </button>
             </div>
           </div>
 
-          {/* Bulk Paste Modal */}
+          {/* Bulk Paste Drawer */}
           {showBulkPaste && (
-            <div className="rounded border border-neutral-700 bg-neutral-950 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                  Paste Squad Names (One per line)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowBulkPaste(false)}
-                  className="text-neutral-500 hover:text-white"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 p-4 space-y-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-neutral-300">
+                Paste Squad List (One squad per line)
+              </label>
               <textarea
                 rows={5}
                 value={bulkPasteText}
                 onChange={(e) => setBulkPasteText(e.target.value)}
-                placeholder="RED CLIFF&#10;FALLEN ONES&#10;AXON BLAZE..."
-                className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 font-mono text-xs text-white focus:border-red-500 focus:outline-none"
+                placeholder="Team Elite&#10;Total Gaming&#10;GodLike Esports&#10;Nigma Galaxy"
+                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 p-3 text-xs font-mono text-white placeholder-neutral-500 focus:border-red-500 focus:outline-none"
               />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowBulkPaste(false)}
-                  className="rounded border border-neutral-700 px-3 py-1 text-xs text-neutral-400 hover:text-white"
-                >
-                  Cancel
-                </button>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleBulkImport}
-                  className="rounded bg-red-700 px-3 py-1 text-xs font-bold text-white hover:bg-red-600"
+                  className="rounded-lg bg-red-600 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-500"
                 >
-                  Apply Names
+                  Import Pasted Teams
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkPaste(false)}
+                  className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:text-white"
+                >
+                  Cancel
                 </button>
               </div>
             </div>
           )}
 
-          {/* Teams Grid with Image Uploads */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {teams.map((team, index) => (
+          {/* Squads Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {teams.map((team, idx) => (
               <div
-                key={team.id || index}
-                className="flex items-center gap-2 rounded border border-neutral-800 bg-neutral-900/90 p-2 hover:border-neutral-700 transition-colors"
+                key={team.id || idx}
+                className="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-950/60 p-3 hover:border-neutral-700 transition-all"
               >
-                {/* Index Badge */}
-                <span className="w-5 text-center font-display text-xs text-neutral-400 font-bold shrink-0">
-                  #{index + 1}
+                <span className="font-display font-black text-sm text-neutral-500 w-5 text-center">
+                  #{idx + 1}
                 </span>
 
-                {/* Team Logo Upload / Avatar */}
-                <div className="relative shrink-0">
-                  {team.logoUrl ? (
-                    <div className="relative group/logo h-9 w-9 rounded bg-black/80 border border-neutral-700 overflow-hidden flex items-center justify-center shadow-inner">
-                      <img
-                        src={team.logoUrl}
-                        alt={team.name}
-                        className="h-full w-full object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveLogo(index)}
-                        title="Remove logo"
-                        className="absolute inset-0 bg-red-950/90 text-red-200 opacity-0 group-hover/logo:opacity-100 flex items-center justify-center transition-opacity"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <label
-                      title="Upload team logo image"
-                      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded border border-dashed border-neutral-700 bg-neutral-950/80 text-neutral-400 hover:border-red-500 hover:text-red-400 transition-colors"
+                {/* Team Logo / Uploader */}
+                <div className="relative group shrink-0">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 overflow-hidden font-display font-black text-xs text-amber-400">
+                    {team.logoUrl ? (
+                      <img src={team.logoUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      team.name.slice(0, 3).toUpperCase()
+                    )}
+                  </div>
+                  <label className="absolute inset-0 cursor-pointer flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 rounded-lg transition-opacity">
+                    <Upload className="h-3.5 w-3.5 text-white" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) handleLogoUpload(idx, e.target.files[0]);
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                  {team.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLogo(idx)}
+                      title="Remove logo"
+                      className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-500"
                     >
-                      <ImageIcon className="h-4 w-4" />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleLogoUpload(index, file);
-                        }}
-                      />
-                    </label>
+                      <X className="h-2.5 w-2.5" />
+                    </button>
                   )}
                 </div>
 
-                {/* Team Name Input */}
+                {/* Squad Name Input */}
                 <input
                   type="text"
                   required
                   value={team.name}
-                  onChange={(e) => handleNameChange(index, e.target.value)}
-                  placeholder={`Squad ${index + 1}`}
-                  className="flex-1 min-w-0 rounded border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-white focus:border-red-600 focus:bg-neutral-950 focus:outline-none"
+                  onChange={(e) => handleNameChange(idx, e.target.value)}
+                  className="flex-1 min-w-0 bg-transparent text-sm font-bold text-white focus:outline-none border-b border-transparent focus:border-red-500 transition-colors"
                 />
 
-                {/* Delete Squad Button (if > 2 teams) */}
                 {teams.length > 2 && (
                   <button
                     type="button"
-                    onClick={() => handleRemoveTeam(index)}
-                    title="Remove squad"
-                    className="p-1 text-neutral-500 hover:text-red-400 transition-colors shrink-0"
+                    onClick={() => handleRemoveTeam(idx)}
+                    title="Delete squad"
+                    className="text-neutral-500 hover:text-red-400 transition-colors p-1"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -705,24 +597,35 @@ export const EditTournamentView: React.FC = () => {
               </div>
             ))}
           </div>
-        </div>
 
-        {/* Submit Bar */}
-        <div className="flex items-center justify-between pt-2">
+          <div className="pt-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleAddTeam}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 transition-colors"
+            >
+              <Plus className="h-4 w-4 text-red-500" />
+              <span>Add Another Squad</span>
+            </button>
+          </div>
+        </section>
+
+        {/* BOTTOM ACTION BAR */}
+        <div className="sticky bottom-4 z-20 flex items-center justify-between rounded-2xl border border-neutral-700/80 bg-neutral-950/95 p-4 shadow-2xl backdrop-blur-md">
           <button
             type="button"
-            onClick={() => setCurrentTab('results')}
-            className="rounded border border-neutral-700 bg-neutral-900 px-5 py-2.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800"
+            onClick={() => setCurrentTab('home')}
+            className="rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-400 hover:text-white"
           >
             Cancel
           </button>
 
           <button
             type="submit"
-            className="flex items-center gap-2 rounded bg-red-700 px-8 py-3 text-sm font-display tracking-wider uppercase font-black text-white hover:bg-red-600 shadow-xl shadow-red-950/60 transition-all"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 px-8 py-3 text-sm font-display font-black uppercase tracking-wider text-white shadow-lg shadow-red-950/80 hover:from-red-500 hover:to-rose-500 active:scale-95 transition-all"
           >
             <Save className="h-4 w-4" />
-            <span>SAVE TOURNAMENT CHANGES</span>
+            <span>Save Tournament Changes</span>
           </button>
         </div>
       </form>

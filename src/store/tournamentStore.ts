@@ -84,33 +84,7 @@ export const SAMPLE_TEAM_NAMES = [
   'BDR ESPORTS',
 ];
 
-const initialTeamsList = createDefaultTeams(SAMPLE_TEAM_NAMES);
-const initialTournamentId = 'tourn_default_1';
-const initialMatch1Id = `match_${initialTournamentId}_1`;
-
-const initialMatch1Entries: Record<string, { teamId: string; placement: number | null; kills: number }> = {};
-for (const t of initialTeamsList) {
-  initialMatch1Entries[t.id] = { teamId: t.id, placement: null, kills: 0 };
-}
-
-const defaultInitialTournament: TournamentRecord = {
-  id: initialTournamentId,
-  name: 'FREE FIRE BANGLADESH CHAMPIONSHIP',
-  createdAt: formatDateTime(),
-  createdAtTimestamp: Date.now(),
-  settings: { ...INITIAL_SETTINGS },
-  teams: initialTeamsList,
-  matches: [
-    {
-      id: initialMatch1Id,
-      matchNumber: 1,
-      entries: initialMatch1Entries,
-      isCompleted: false,
-      createdAt: Date.now(),
-    },
-  ],
-  isEnded: false,
-};
+// Initial empty default tournaments list (No sample or fake demo data loaded by default)
 
 export interface TournamentStoreState {
   tournaments: TournamentRecord[];
@@ -222,14 +196,14 @@ function resolveActive(tournaments: TournamentRecord[], activeId: string | null)
 export const useTournamentStore = create<TournamentStoreState>()(
   persist(
     (set, get) => ({
-      tournaments: [defaultInitialTournament],
-      activeTournamentId: initialTournamentId,
+      tournaments: [],
+      activeTournamentId: null,
       defaultPointSystem: { ...DEFAULT_POINT_SYSTEM },
       currentTab: 'home',
 
-      teams: defaultInitialTournament.teams,
-      matches: defaultInitialTournament.matches,
-      settings: defaultInitialTournament.settings,
+      teams: [],
+      matches: [],
+      settings: INITIAL_SETTINGS,
       history: [],
 
       getActiveTournament: () => {
