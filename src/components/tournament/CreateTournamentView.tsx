@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Flame,
   ArrowRight,
-  Image as ImageIcon,
   X,
   Plus,
   Trash2,
@@ -12,8 +11,11 @@ import {
   Swords,
   ArrowLeft,
   Trophy,
+  Radio,
+  Shield,
+  CheckCircle2,
 } from 'lucide-react';
-import { useTournamentStore, SAMPLE_TEAM_NAMES } from '../../store/tournamentStore';
+import { useTournamentStore } from '../../store/tournamentStore';
 import type { TournamentMode } from '../../types/tournament';
 
 interface SquadDraft {
@@ -31,10 +33,10 @@ export const CreateTournamentView: React.FC = () => {
   const [roundOrDay, setRoundOrDay] = useState('GRAND FINALS - DAY 1');
   const [hostName, setHostName] = useState('BD ESPORTS ARENA');
   const [sponsorName, setSponsorName] = useState('RED BULL / ASUS ROG');
-  const [totalMatchesPlanned, setTotalMatchesPlanned] = useState(5);
+  const [totalMatchesPlanned, setTotalMatchesPlanned] = useState(6);
 
   // Champion Rush specific settings
-  const [targetPoints, setTargetPoints] = useState(50);
+  const [targetPoints, setTargetPoints] = useState(80);
   const [maxMatches, setMaxMatches] = useState(8);
   const allowSameMatch = false;
   const showLogos = true;
@@ -42,7 +44,7 @@ export const CreateTournamentView: React.FC = () => {
 
   // Teams list with logo support
   const [teams, setTeams] = useState<SquadDraft[]>(
-    Array.from({ length: 12 }, (_, i) => ({ name: `Team ${i + 1}` }))
+    Array.from({ length: 12 }, (_, i) => ({ name: `Squad ${i + 1}` }))
   );
   const [bulkPasteText, setBulkPasteText] = useState('');
   const [showBulkPaste, setShowBulkPaste] = useState(false);
@@ -54,7 +56,7 @@ export const CreateTournamentView: React.FC = () => {
     } else {
       const added: SquadDraft[] = Array.from(
         { length: count - teams.length },
-        (_, i) => ({ name: `Team ${teams.length + i + 1}` })
+        (_, i) => ({ name: `Squad ${teams.length + i + 1}` })
       );
       setTeams([...teams, ...added]);
     }
@@ -81,12 +83,6 @@ export const CreateTournamentView: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveLogo = (index: number) => {
-    setTeams((prev) =>
-      prev.map((t, idx) => (idx === index ? { ...t, logoUrl: undefined } : t))
-    );
-  };
-
   const handleNameChange = (index: number, val: string) => {
     setTeams((prev) =>
       prev.map((t, idx) => (idx === index ? { ...t, name: val } : t))
@@ -94,7 +90,7 @@ export const CreateTournamentView: React.FC = () => {
   };
 
   const handleAddTeam = () => {
-    if (teams.length >= 20) return;
+    if (teams.length >= 24) return;
     const nextNum = teams.length + 1;
     setTeams([...teams, { name: `Squad ${nextNum}` }]);
   };
@@ -115,10 +111,6 @@ export const CreateTournamentView: React.FC = () => {
       setShowBulkPaste(false);
       setBulkPasteText('');
     }
-  };
-
-  const handleFillDemoNames = () => {
-    setTeams(SAMPLE_TEAM_NAMES.map((name) => ({ name })));
   };
 
   const handleCreate = (e: React.FormEvent) => {
@@ -143,474 +135,514 @@ export const CreateTournamentView: React.FC = () => {
     });
   };
 
-  // Step 1: Select Format
+  // STEP 1: HOLOGRAPHIC FORMAT SELECTION
   if (!selectedMode) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 space-y-8 animate-in fade-in duration-200">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1 text-xs font-medium text-zinc-400">
-            <Trophy className="h-3.5 w-3.5 text-zinc-300" />
-            <span>Format Setup</span>
+      <div className="relative mx-auto max-w-5xl px-4 py-12 sm:px-6 space-y-10 select-none animate-in fade-in duration-200">
+        <div className="text-center space-y-3">
+          <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-1 text-xs font-black uppercase tracking-widest text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            <Radio className="h-3.5 w-3.5 animate-pulse text-amber-400" />
+            <span>STEP 1 OF 2 // BATTLE PROTOCOL SELECTION</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            Select Tournament Format
+
+          <h1 className="font-display text-4xl sm:text-5xl font-black uppercase tracking-wider text-white">
+            CHOOSE COMPETITIVE FORMAT
           </h1>
-          <p className="text-xs sm:text-sm text-zinc-400 max-w-md mx-auto">
-            Choose the competitive ruleset for your Free Fire tournament.
+
+          <p className="text-sm sm:text-base font-semibold text-neutral-400 max-w-lg mx-auto">
+            Select the tournament protocol for scoring, leaderboard mechanics, and championship qualification.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
-          {/* Option 1: Classic Scrim */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+          {/* Protocol 1: Classic Scrim */}
           <div
             onClick={() => setSelectedMode('SCRIM')}
-            className="group cursor-pointer rounded-2xl border border-white/[0.08] bg-[#111114] p-7 transition-all hover:border-zinc-500 hover:bg-[#15151A] flex flex-col justify-between shadow-xl"
+            className="group relative cursor-pointer overflow-hidden rounded-3xl border border-cyan-500/40 bg-gradient-to-br from-[#121927] via-[#0E131E] to-[#0A0D15] p-8 shadow-2xl hover:border-cyan-400 hover:shadow-[0_0_40px_rgba(6,182,212,0.35)] transition-all duration-300 hover:-translate-y-1.5 flex flex-col justify-between"
           >
-            <div className="space-y-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-900 border border-white/[0.08] text-zinc-300 group-hover:bg-zinc-100 group-hover:text-zinc-950 transition-all shadow-md">
-                <Swords className="h-6 w-6" />
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.3)] group-hover:scale-110 transition-transform">
+                  <Swords className="h-8 w-8 text-cyan-400" />
+                </div>
+                <span className="rounded-full bg-cyan-500/15 border border-cyan-500/40 px-3 py-1 text-xs font-black uppercase tracking-widest text-cyan-300">
+                  STANDARD LEAGUE
+                </span>
               </div>
 
               <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Standard Format
-                </span>
-                <h2 className="text-xl font-bold text-white mt-1">
-                  Classic Scrim / League
+                <h2 className="font-display text-3xl font-black uppercase tracking-wider text-white group-hover:text-cyan-300 transition-colors">
+                  CLASSIC SCRIM
                 </h2>
+                <p className="mt-2 text-sm font-semibold text-neutral-300 leading-relaxed">
+                  Fixed series of matches (e.g. 4, 6, 8, 12). Teams earn placement and kill points on every match. The squad with the highest aggregate points wins the championship.
+                </p>
               </div>
 
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Fixed number of matches (e.g. 5, 6, 8 matches). All placement and kill points accumulate into an overall leaderboard. Highest total score wins.
-              </p>
+              <div className="space-y-2.5 pt-2 border-t border-white/10">
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-300">
+                  <CheckCircle2 className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <span>Fixed match count series (4, 6, 8 or custom)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-300">
+                  <CheckCircle2 className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <span>Cumulative Placement &amp; Kill scoring</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-300">
+                  <CheckCircle2 className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <span>Real-time overall leaderboard with Booyah count</span>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-8 pt-4 border-t border-white/[0.06] flex items-center justify-between text-xs font-semibold text-zinc-300 group-hover:text-white">
-              <span>Choose Classic Scrim</span>
-              <ArrowRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
+            <div className="mt-10 flex items-center justify-between rounded-xl bg-cyan-500/10 border border-cyan-500/30 px-5 py-3.5 text-xs sm:text-sm font-black uppercase tracking-wider text-cyan-300 group-hover:bg-cyan-500 group-hover:text-black transition-all shadow-md">
+              <span>SELECT CLASSIC SCRIM PROTOCOL</span>
+              <ArrowRight className="h-4 w-4 group-hover:translate-x-1.5 transition-transform" />
             </div>
           </div>
 
-          {/* Option 2: Champion Rush */}
+          {/* Protocol 2: Champion Rush */}
           <div
             onClick={() => setSelectedMode('CHAMPION_RUSH')}
-            className="group cursor-pointer rounded-2xl border border-white/[0.08] bg-[#111114] p-7 transition-all hover:border-amber-500/50 hover:bg-[#15151A] flex flex-col justify-between shadow-xl"
+            className="group relative cursor-pointer overflow-hidden rounded-3xl border border-purple-500/40 bg-gradient-to-br from-[#1C1327] via-[#140D1D] to-[#0D0814] p-8 shadow-2xl hover:border-purple-400 hover:shadow-[0_0_40px_rgba(168,85,247,0.35)] transition-all duration-300 hover:-translate-y-1.5 flex flex-col justify-between"
           >
-            <div className="space-y-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-900 border border-white/[0.08] text-zinc-300 group-hover:bg-amber-400 group-hover:text-black transition-all shadow-md">
-                <Target className="h-6 w-6" />
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-purple-500/20 border border-purple-400/50 text-purple-300 shadow-[0_0_20px_rgba(168,85,247,0.3)] group-hover:scale-110 transition-transform">
+                  <Flame className="h-8 w-8 text-amber-400" />
+                </div>
+                <span className="rounded-full bg-purple-500/15 border border-purple-500/40 px-3 py-1 text-xs font-black uppercase tracking-widest text-purple-300">
+                  HIGH STAKES CLUTCH
+                </span>
               </div>
 
               <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-400">
-                  Match-Point Thriller
-                </span>
-                <h2 className="text-xl font-bold text-white mt-1">
-                  Champion Rush
+                <h2 className="font-display text-3xl font-black uppercase tracking-wider text-white group-hover:text-purple-300 transition-colors">
+                  CHAMPION RUSH
                 </h2>
+                <p className="mt-2 text-sm font-semibold text-neutral-300 leading-relaxed">
+                  Point-Rush Race! Teams race to breach a Target Point threshold (e.g. 80 pts). Once unlocked, getting a subsequent Booyah instantly crowns the Champion!
+                </p>
               </div>
 
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Squads race to reach a point threshold (e.g. 50 pts). Once unlocked, the first activated squad to capture a Booyah wins the title immediately.
-              </p>
+              <div className="space-y-2.5 pt-2 border-t border-white/10">
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-300">
+                  <CheckCircle2 className="h-4 w-4 text-purple-400 shrink-0" />
+                  <span>Target Point Threshold (50, 75, 80, 100+ pts)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-300">
+                  <CheckCircle2 className="h-4 w-4 text-purple-400 shrink-0" />
+                  <span>Match-point qualification &amp; Championship Booyah</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-300">
+                  <CheckCircle2 className="h-4 w-4 text-purple-400 shrink-0" />
+                  <span>Emergency Match Cap fallback limit</span>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-8 pt-4 border-t border-white/[0.06] flex items-center justify-between text-xs font-semibold text-amber-400 group-hover:text-amber-300">
-              <span>Choose Champion Rush</span>
-              <ArrowRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
+            <div className="mt-10 flex items-center justify-between rounded-xl bg-purple-500/10 border border-purple-500/30 px-5 py-3.5 text-xs sm:text-sm font-black uppercase tracking-wider text-purple-300 group-hover:bg-purple-500 group-hover:text-black transition-all shadow-md">
+              <span>SELECT CHAMPION RUSH PROTOCOL</span>
+              <ArrowRight className="h-4 w-4 group-hover:translate-x-1.5 transition-transform" />
             </div>
           </div>
-        </div>
-
-        <div className="text-center pt-2">
-          <button
-            type="button"
-            onClick={() => setCurrentTab('home')}
-            className="text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors"
-          >
-            ← Back to Dashboard
-          </button>
         </div>
       </div>
     );
   }
 
-  // Step 2: Configure Details & Squads
+  // STEP 2: CONFIGURATION & DEPLOYMENT DECK
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 space-y-6 animate-in fade-in duration-200">
-      {/* Header Banner */}
-      <div className="flex items-center justify-between pb-4 border-b border-white/[0.08]">
-        <div>
+    <div className="relative mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-8 select-none animate-in fade-in duration-200">
+      {/* Top Protocol Status Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-white/15 bg-[#121522] p-5 shadow-xl">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setSelectedMode(null)}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-white transition-colors mb-1"
+            className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all active:scale-95"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Change Format ({selectedMode === 'CHAMPION_RUSH' ? 'Champion Rush' : 'Classic Scrim'})</span>
+            <ArrowLeft className="h-4 w-4 text-amber-400" />
+            <span>CHANGE FORMAT</span>
           </button>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-            Configure {selectedMode === 'CHAMPION_RUSH' ? 'Champion Rush' : 'Classic Scrim'}
-          </h1>
+
+          <div className="h-6 w-[1px] bg-white/15 hidden sm:block" />
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+              ACTIVE PROTOCOL:
+            </span>
+            <span
+              className={`rounded-md px-2.5 py-0.5 text-xs font-black uppercase tracking-wider border ${
+                selectedMode === 'CHAMPION_RUSH'
+                  ? 'bg-purple-950/80 border-purple-500/50 text-purple-300'
+                  : 'bg-cyan-950/80 border-cyan-500/50 text-cyan-300'
+              }`}
+            >
+              {selectedMode === 'CHAMPION_RUSH' ? 'Champion Rush' : 'Classic Scrim'}
+            </span>
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setCurrentTab('home')}
-          className="rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white transition-colors"
-        >
-          Cancel
-        </button>
+        <div className="text-xs font-bold uppercase tracking-widest text-amber-400">
+          STEP 2 // TACTICAL DEPLOYMENT
+        </div>
       </div>
 
-      <form onSubmit={handleCreate} className="space-y-6">
-        {/* FORMAT SPECIFIC CONTROLS */}
-        {selectedMode === 'SCRIM' ? (
-          <section className="rounded-2xl border border-white/[0.08] bg-[#111114] p-6 space-y-4 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
-              Match Schedule
+      <form onSubmit={handleCreate} className="space-y-8">
+        {/* SECTION 1: IDENTITY & BROADCAST LABELS */}
+        <div className="rounded-3xl border border-white/15 bg-[#121522] p-6 sm:p-8 shadow-2xl space-y-6">
+          <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+            <Trophy className="h-6 w-6 text-amber-400" />
+            <h2 className="font-display text-2xl font-black uppercase tracking-wider text-white">
+              TOURNAMENT IDENTITY &amp; BROADCAST LABELS
             </h2>
+          </div>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-medium text-zinc-400">
-                Number of Matches Planned
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-                {[3, 4, 5, 6, 8, 10, 12].map((num) => (
-                  <button
-                    key={num}
-                    type="button"
-                    onClick={() => setTotalMatchesPlanned(num)}
-                    className={`rounded-xl px-4 py-2 text-xs font-semibold transition-all ${
-                      totalMatchesPlanned === num
-                        ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                        : 'bg-zinc-900 border border-white/[0.08] text-zinc-300 hover:text-white'
-                    }`}
-                  >
-                    {num} Matches
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-        ) : (
-          <section className="rounded-2xl border border-white/[0.08] bg-[#111114] p-6 space-y-5 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-amber-400">
-              Champion Rush Threshold &amp; Cutoff
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {/* Target Point Threshold */}
-              <div className="space-y-2.5">
-                <label className="block text-xs font-medium text-zinc-400">
-                  Target Point Threshold (To Activate Champion Point)
-                </label>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {[40, 50, 60, 70, 80, 100].map((pts) => (
-                    <button
-                      key={pts}
-                      type="button"
-                      onClick={() => setTargetPoints(pts)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                        targetPoints === pts
-                          ? 'bg-amber-400 text-zinc-950 shadow-sm'
-                          : 'bg-zinc-900 border border-white/[0.08] text-zinc-300 hover:text-white'
-                      }`}
-                    >
-                      {pts} PTS
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 pt-1 text-xs text-zinc-400">
-                  <span>Custom:</span>
-                  <input
-                    type="number"
-                    min={10}
-                    max={500}
-                    value={targetPoints}
-                    onChange={(e) => setTargetPoints(Math.max(1, parseInt(e.target.value) || 50))}
-                    className="w-20 rounded-lg border border-white/[0.08] bg-zinc-900 px-2.5 py-1 text-xs font-semibold text-amber-400 text-center focus:outline-none"
-                  />
-                  <span>Points</span>
-                </div>
-              </div>
-
-              {/* Max Matches */}
-              <div className="space-y-2.5">
-                <label className="block text-xs font-medium text-zinc-400">
-                  Max Match Cutoff
-                </label>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {[6, 8, 10, 12, 14].map((num) => (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => setMaxMatches(num)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                        maxMatches === num
-                          ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                          : 'bg-zinc-900 border border-white/[0.08] text-zinc-300 hover:text-white'
-                      }`}
-                    >
-                      {num} Matches
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 pt-1 text-xs text-zinc-400">
-                  <span>Custom:</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={maxMatches}
-                    onChange={(e) => setMaxMatches(Math.max(1, parseInt(e.target.value) || 8))}
-                    className="w-20 rounded-lg border border-white/[0.08] bg-zinc-900 px-2.5 py-1 text-xs font-semibold text-white text-center focus:outline-none"
-                  />
-                  <span>Matches</span>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* METADATA */}
-        <section className="rounded-2xl border border-white/[0.08] bg-[#111114] p-6 space-y-4 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
-            Tournament Details
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-zinc-400">
-                Tournament Name
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                TOURNAMENT TITLE *
               </label>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. FREE FIRE BANGLADESH CHAMPIONSHIP"
-                className="w-full rounded-xl border border-white/[0.08] bg-zinc-900 px-3.5 py-2 text-sm font-semibold text-white focus:outline-none focus:border-zinc-500"
+                className="mt-2 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm sm:text-base font-bold text-white focus:border-amber-400 focus:outline-none"
+                placeholder="e.g. FREE FIRE PRO LEAGUE"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-zinc-400">
-                Phase / Day / Subtitle
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                ROUND / STAGE HEADER
               </label>
               <input
                 type="text"
-                required
                 value={roundOrDay}
                 onChange={(e) => setRoundOrDay(e.target.value)}
+                className="mt-2 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm sm:text-base font-bold text-white focus:border-amber-400 focus:outline-none"
                 placeholder="e.g. GRAND FINALS - DAY 1"
-                className="w-full rounded-xl border border-white/[0.08] bg-zinc-900 px-3.5 py-2 text-sm font-semibold text-white focus:outline-none focus:border-zinc-500"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-zinc-400">
-                Host / Organizer Name
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                HOST / ORGANIZER
               </label>
               <input
                 type="text"
                 value={hostName}
                 onChange={(e) => setHostName(e.target.value)}
+                className="mt-2 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm sm:text-base font-bold text-white focus:border-amber-400 focus:outline-none"
                 placeholder="e.g. BD ESPORTS ARENA"
-                className="w-full rounded-xl border border-white/[0.08] bg-zinc-900 px-3.5 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-zinc-400">
-                Sponsor(s)
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                SPONSOR / PARTNER
               </label>
               <input
                 type="text"
                 value={sponsorName}
                 onChange={(e) => setSponsorName(e.target.value)}
-                placeholder="e.g. RED BULL / ASUS ROG"
-                className="w-full rounded-xl border border-white/[0.08] bg-zinc-900 px-3.5 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                className="mt-2 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm sm:text-base font-bold text-white focus:border-amber-400 focus:outline-none"
+                placeholder="e.g. ASUS ROG / MONSTER"
               />
             </div>
           </div>
 
-          {/* Logo Uploader */}
+          {/* Tournament Crest Upload */}
           <div className="pt-2">
-            <label className="block text-xs font-medium text-zinc-400 mb-2">
-              Tournament Logo Badge (Optional)
+            <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+              CUSTOM TOURNAMENT LOGO (OPTIONAL)
             </label>
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-dashed border-white/[0.1] bg-zinc-900 overflow-hidden text-zinc-500">
-                {customLogoUrl ? (
-                  <img src={customLogoUrl} alt="Logo" className="h-full w-full object-cover" />
-                ) : (
-                  <ImageIcon className="h-5 w-5" />
-                )}
-              </div>
-              <label className="cursor-pointer rounded-lg border border-white/[0.08] bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors flex items-center gap-1.5">
-                <Upload className="h-3.5 w-3.5" />
-                <span>Upload Badge</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) handleTournamentLogoUpload(e.target.files[0]);
-                  }}
-                  className="hidden"
-                />
-              </label>
-              {customLogoUrl && (
-                <button
-                  type="button"
-                  onClick={() => setCustomLogoUrl(undefined)}
-                  className="rounded-lg border border-white/[0.08] px-2.5 py-1.5 text-xs text-zinc-400 hover:text-red-400"
-                >
-                  Remove
-                </button>
+            <div className="mt-2 flex items-center gap-4">
+              {customLogoUrl ? (
+                <div className="relative h-14 w-14 rounded-xl border border-amber-400 overflow-hidden bg-black/60 shadow-lg">
+                  <img
+                    src={customLogoUrl}
+                    alt="Logo"
+                    className="h-full w-full object-contain p-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCustomLogoUrl(undefined)}
+                    className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-white/20 bg-white/5 hover:border-amber-400/50 hover:bg-white/10 px-4 py-3 text-xs font-bold uppercase tracking-wider text-neutral-300 transition-all">
+                  <Upload className="h-4 w-4 text-amber-400" />
+                  <span>UPLOAD PNG / SVG LOGO</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleTournamentLogoUpload(f);
+                    }}
+                  />
+                </label>
               )}
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* SQUADS & ROSTER */}
-        <section className="rounded-2xl border border-white/[0.08] bg-[#111114] p-6 space-y-5 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-white/[0.06] pb-4">
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
-                Squad Roster ({teams.length})
-              </h2>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                Customize team names and optional logos.
-              </p>
-            </div>
+        {/* SECTION 2: MATCH PROTOCOL SETTINGS */}
+        <div className="rounded-3xl border border-white/15 bg-[#121522] p-6 sm:p-8 shadow-2xl space-y-6">
+          <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+            <Target className="h-6 w-6 text-cyan-400" />
+            <h2 className="font-display text-2xl font-black uppercase tracking-wider text-white">
+              {selectedMode === 'CHAMPION_RUSH'
+                ? 'CHAMPION RUSH TARGET & LIMITS'
+                : 'SERIES MATCH COUNT SETTINGS'}
+            </h2>
+          </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-lg border border-white/[0.08] bg-zinc-950 p-1">
-                {[12, 16].map((count) => (
+          {selectedMode === 'SCRIM' ? (
+            /* Classic Scrim: Match Count Selector */
+            <div className="space-y-4">
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                PLANNED NUMBER OF MATCHES
+              </label>
+              <div className="flex flex-wrap gap-2.5">
+                {[4, 5, 6, 8, 10, 12].map((cnt) => (
                   <button
-                    key={count}
+                    key={cnt}
                     type="button"
-                    onClick={() => handleSetCount(count)}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
-                      teams.length === count
-                        ? 'bg-zinc-800 text-white'
-                        : 'text-zinc-400 hover:text-white'
+                    onClick={() => setTotalMatchesPlanned(cnt)}
+                    className={`rounded-xl px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider transition-all active:scale-95 ${
+                      totalMatchesPlanned === cnt
+                        ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.5)] border border-cyan-400'
+                        : 'border border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10'
                     }`}
                   >
-                    {count} Teams
+                    {cnt} MATCHES
                   </button>
                 ))}
               </div>
+              <div className="flex items-center gap-3 pt-2">
+                <span className="text-xs font-bold uppercase text-neutral-400">CUSTOM:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="25"
+                  value={totalMatchesPlanned}
+                  onChange={(e) =>
+                    setTotalMatchesPlanned(Math.max(1, parseInt(e.target.value, 10) || 1))
+                  }
+                  className="w-24 rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-sm font-bold text-white focus:border-cyan-400 focus:outline-none"
+                />
+              </div>
+            </div>
+          ) : (
+            /* Champion Rush: Target Points + Max Matches */
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {/* Target Points Threshold */}
+              <div className="space-y-4">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  TARGET POINT THRESHOLD (POINTS TO ACTIVATE RUSH)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[50, 75, 80, 100, 120].map((pts) => (
+                    <button
+                      key={pts}
+                      type="button"
+                      onClick={() => setTargetPoints(pts)}
+                      className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all active:scale-95 ${
+                        targetPoints === pts
+                          ? 'bg-purple-500 text-black shadow-[0_0_20px_rgba(168,85,247,0.5)] border border-purple-400'
+                          : 'border border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {pts} PTS
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 pt-1">
+                  <span className="text-xs font-bold uppercase text-neutral-400">CUSTOM:</span>
+                  <input
+                    type="number"
+                    min="10"
+                    max="500"
+                    value={targetPoints}
+                    onChange={(e) =>
+                      setTargetPoints(Math.max(10, parseInt(e.target.value, 10) || 10))
+                    }
+                    className="w-28 rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-sm font-bold text-white focus:border-purple-400 focus:outline-none"
+                  />
+                </div>
+              </div>
 
-              <button
-                type="button"
-                onClick={handleFillDemoNames}
-                className="rounded-lg border border-white/[0.08] bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors flex items-center gap-1.5"
-              >
-                <Flame className="h-3.5 w-3.5 text-amber-400" />
-                <span>Fill Names</span>
-              </button>
+              {/* Max Matches Fallback Limit */}
+              <div className="space-y-4">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  MAX MATCHES CEILING (FALLBACK LIMIT)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[6, 8, 10, 12].map((cnt) => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => setMaxMatches(cnt)}
+                      className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all active:scale-95 ${
+                        maxMatches === cnt
+                          ? 'bg-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.5)] border border-amber-400'
+                          : 'border border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {cnt} MATCHES
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 pt-1">
+                  <span className="text-xs font-bold uppercase text-neutral-400">CUSTOM:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="25"
+                    value={maxMatches}
+                    onChange={(e) =>
+                      setMaxMatches(Math.max(1, parseInt(e.target.value, 10) || 1))
+                    }
+                    className="w-28 rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* SECTION 3: SQUAD ROSTER BUILDER */}
+        <div className="rounded-3xl border border-white/15 bg-[#121522] p-6 sm:p-8 shadow-2xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/10 pb-4">
+            <div className="flex items-center gap-3">
+              <Shield className="h-6 w-6 text-emerald-400" />
+              <div>
+                <h2 className="font-display text-2xl font-black uppercase tracking-wider text-white">
+                  SQUAD ROSTER DECK
+                </h2>
+                <p className="text-xs font-semibold text-neutral-400">
+                  {teams.length} Squads Enrolled // Free Fire Standard is 12 Squads
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Count Presets & Bulk Import */}
+            <div className="flex flex-wrap items-center gap-2">
+              {[12, 16, 18].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => handleSetCount(num)}
+                  className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wider transition-all ${
+                    teams.length === num
+                      ? 'bg-emerald-500 text-black border border-emerald-400 shadow-md'
+                      : 'border border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10'
+                  }`}
+                >
+                  {num} SQUADS
+                </button>
+              ))}
 
               <button
                 type="button"
                 onClick={() => setShowBulkPaste(!showBulkPaste)}
-                className="rounded-lg border border-white/[0.08] bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors flex items-center gap-1.5"
+                className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-neutral-300"
               >
-                <ClipboardList className="h-3.5 w-3.5" />
-                <span>Bulk Paste</span>
+                <ClipboardList className="h-4 w-4 text-amber-400" />
+                <span>BULK PASTE</span>
               </button>
             </div>
           </div>
 
           {/* Bulk Paste Drawer */}
           {showBulkPaste && (
-            <div className="rounded-xl border border-white/[0.08] bg-zinc-950 p-4 space-y-2.5">
-              <label className="block text-xs font-medium text-zinc-300">
-                Paste Teams (One squad per line)
+            <div className="rounded-2xl border border-amber-500/30 bg-black/60 p-5 space-y-3 animate-in fade-in duration-150">
+              <label className="text-xs font-black uppercase tracking-wider text-amber-300">
+                PASTE SQUAD NAMES (ONE TEAM PER LINE)
               </label>
               <textarea
-                rows={4}
+                rows={5}
                 value={bulkPasteText}
                 onChange={(e) => setBulkPasteText(e.target.value)}
-                placeholder="Team Elite&#10;Total Gaming&#10;GodLike Esports"
-                className="w-full rounded-lg border border-white/[0.08] bg-zinc-900 p-2.5 text-xs font-mono text-white focus:outline-none focus:border-zinc-500"
+                placeholder={"TOTAL GAMING\nEVOS ESPORTS\nRRQ KAZU\nMAGIC SQUAD"}
+                className="w-full rounded-xl border border-white/15 bg-black/80 p-3.5 text-xs sm:text-sm font-semibold text-white focus:border-amber-400 focus:outline-none"
               />
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleBulkImport}
-                  className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-950 hover:bg-white"
-                >
-                  Import List
-                </button>
+              <div className="flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowBulkPaste(false)}
-                  className="rounded-lg border border-white/[0.08] px-2.5 py-1 text-xs text-zinc-400 hover:text-white"
+                  className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold uppercase text-neutral-400 hover:text-white"
                 >
-                  Cancel
+                  CANCEL
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkImport}
+                  className="rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-2 text-xs font-black uppercase tracking-wider text-black shadow-md"
+                >
+                  APPLY SQUAD LIST
                 </button>
               </div>
             </div>
           )}
 
-          {/* Squads Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {/* Squad Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {teams.map((team, idx) => (
               <div
                 key={idx}
-                className="flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-zinc-900/60 p-2.5 hover:border-zinc-700 transition-colors"
+                className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-black/40 p-2.5 hover:border-white/20 transition-all"
               >
-                <span className="font-mono text-xs text-zinc-500 w-5 text-center">
+                <span className="w-8 shrink-0 text-center text-xs font-black text-amber-400">
                   #{idx + 1}
                 </span>
 
-                {/* Logo Uploader */}
-                <div className="relative group shrink-0">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-950 border border-white/[0.08] text-xs font-bold text-amber-400 overflow-hidden">
-                    {team.logoUrl ? (
-                      <img src={team.logoUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      team.name.slice(0, 3).toUpperCase()
-                    )}
-                  </div>
-                  <label className="absolute inset-0 cursor-pointer flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 rounded-lg transition-opacity">
-                    <Upload className="h-3 w-3 text-white" />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files?.[0]) handleLogoUpload(idx, e.target.files[0]);
-                      }}
-                      className="hidden"
+                {/* Team Logo Button */}
+                <label className="relative flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-white/15 bg-white/5 hover:border-amber-400 overflow-hidden">
+                  {team.logoUrl ? (
+                    <img
+                      src={team.logoUrl}
+                      alt={team.name}
+                      className="h-full w-full object-contain p-0.5"
                     />
-                  </label>
-                  {team.logoUrl && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveLogo(idx)}
-                      className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-red-600 text-white flex items-center justify-center"
-                    >
-                      <X className="h-2 w-2" />
-                    </button>
+                  ) : (
+                    <Upload className="h-3.5 w-3.5 text-neutral-400" />
                   )}
-                </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleLogoUpload(idx, f);
+                    }}
+                  />
+                </label>
 
-                {/* Name */}
+                {/* Team Name Input */}
                 <input
                   type="text"
                   required
                   value={team.name}
                   onChange={(e) => handleNameChange(idx, e.target.value)}
-                  className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-white focus:outline-none border-b border-transparent focus:border-zinc-500"
+                  className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-bold text-white focus:outline-none"
+                  placeholder={`Squad ${idx + 1}`}
                 />
 
                 {teams.length > 2 && (
                   <button
                     type="button"
                     onClick={() => handleRemoveTeam(idx)}
-                    className="text-zinc-600 hover:text-red-400 p-1"
+                    className="text-neutral-500 hover:text-red-400 p-1"
+                    title="Remove squad"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -619,32 +651,35 @@ export const CreateTournamentView: React.FC = () => {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={handleAddTeam}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white transition-colors pt-1"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Add Squad</span>
-          </button>
-        </section>
+          <div className="flex justify-start pt-2">
+            <button
+              type="button"
+              onClick={handleAddTeam}
+              className="flex items-center gap-2 rounded-xl border border-dashed border-white/20 bg-white/5 hover:border-amber-400/50 hover:bg-white/10 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-neutral-300"
+            >
+              <Plus className="h-4 w-4 text-amber-400" />
+              <span>ADD EXTRA SQUAD SLOT</span>
+            </button>
+          </div>
+        </div>
 
-        {/* BOTTOM ACTION BAR */}
-        <div className="flex items-center justify-between pt-2">
+        {/* BOTTOM DEPLOYMENT ACTION */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-white/10">
           <button
             type="button"
-            onClick={() => setSelectedMode(null)}
-            className="text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors"
+            onClick={() => setCurrentTab('home')}
+            className="w-full sm:w-auto rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 px-6 py-4 text-xs sm:text-sm font-bold uppercase tracking-wider text-neutral-300"
           >
-            ← Change Format
+            DISCARD &amp; RETURN HOME
           </button>
 
           <button
             type="submit"
-            className="inline-flex items-center gap-2 rounded-xl bg-zinc-100 px-6 py-2.5 text-xs font-semibold text-zinc-950 hover:bg-white shadow-md active:scale-95 transition-all"
+            className="w-full sm:w-auto flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-10 py-4 text-base font-black uppercase tracking-wider text-black shadow-[0_0_35px_rgba(245,158,11,0.6)] hover:brightness-110 active:scale-95 transition-all"
           >
-            <span>Launch Tournament</span>
-            <ArrowRight className="h-4 w-4" />
+            <Trophy className="h-5 w-5 stroke-[2.5]" />
+            <span>DEPLOY &amp; START TOURNAMENT</span>
+            <ArrowRight className="h-5 w-5 ml-1" />
           </button>
         </div>
       </form>
