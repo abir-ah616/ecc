@@ -1,8 +1,6 @@
 import React from 'react';
 import {
   RotateCcw,
-  Download,
-  RefreshCw,
   Trophy,
   ArrowLeft,
   Plus,
@@ -15,11 +13,11 @@ import { useAuthStore } from '../../store/authStore';
 import type { ThemePreset } from '../../types/tournament';
 
 interface HeaderProps {
-  onOpenReset: () => void;
+  onOpenReset?: () => void;
   onOpenJson: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenReset, onOpenJson }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenJson }) => {
   const {
     currentTab,
     settings,
@@ -33,7 +31,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenReset, onOpenJson }) => {
   const {
     firebaseUser,
     isAdmin,
-    allUsers,
     setAdminDashboardOpen,
     logout,
   } = useAuthStore();
@@ -49,76 +46,73 @@ export const Header: React.FC<HeaderProps> = ({ onOpenReset, onOpenJson }) => {
   const completedCount = matches.filter((m) => m.isCompleted).length;
 
   return (
-    <header className="border-b border-neutral-800/80 bg-[#0E0B10]/95 backdrop-blur-md px-4 py-3 sm:px-6 relative z-20 select-none">
-      <div className="mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between max-w-7xl">
+    <header className="border-b border-neutral-800 bg-[#0E0E11] px-4 py-2.5 sm:px-6 relative z-30 select-none">
+      <div className="mx-auto flex items-center justify-between gap-3 max-w-7xl">
         {/* Left Section */}
         {isInsideTournament ? (
-          /* INSIDE TOURNAMENT WORKSPACE */
+          /* When inside tournament workspace */
           <div className="flex items-center gap-3 min-w-0">
-            {/* Dashboard Back Button */}
             <button
               type="button"
               onClick={() => setCurrentTab('home')}
-              title="Return to Tournaments Dashboard"
-              className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900/90 hover:bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:text-white transition-colors shrink-0"
+              title="Return to Home Dashboard"
+              className="flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors shrink-0"
             >
-              <ArrowLeft className="h-3.5 w-3.5 text-neutral-400" />
-              <span>Dashboard</span>
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Dashboard</span>
             </button>
 
-            <div className="h-5 w-px bg-neutral-800 shrink-0" />
+            <div className="h-4 w-px bg-neutral-800 shrink-0" />
 
-            {/* Tournament Details */}
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="font-display text-base sm:text-lg font-black tracking-wide text-white uppercase truncate">
+                <h1 className="text-sm sm:text-base font-bold text-white uppercase truncate">
                   {settings.name}
                 </h1>
-                <span className="rounded-md bg-neutral-900 border border-neutral-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-300 shrink-0">
-                  {settings.mode === 'CHAMPION_RUSH' ? 'CHAMPION RUSH' : 'SCRIM'}
+                <span className="rounded bg-neutral-900 border border-neutral-800 px-1.5 py-0.5 text-[10px] font-bold uppercase text-neutral-400 shrink-0">
+                  {settings.mode === 'CHAMPION_RUSH' ? 'Rush' : 'Scrim'}
                 </span>
               </div>
-              <p className="text-xs text-neutral-400 font-medium">
-                {settings.roundOrDay} •{' '}
-                <span className="text-emerald-400 font-bold">{completedCount}</span> of{' '}
-                <span className="text-white font-bold">{matches.length}</span> matches concluded
+              <p className="text-[11px] text-neutral-400 truncate">
+                {settings.roundOrDay} • {completedCount}/{matches.length} matches completed
               </p>
             </div>
           </div>
         ) : (
-          /* GLOBAL DASHBOARD */
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-600 to-rose-700 text-white shadow-md shadow-red-950/60">
-              <Trophy className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-lg tracking-wider text-white font-black uppercase">
-                  ESP CALC
-                </h1>
-                <span className="text-neutral-600 text-xs">•</span>
-                <span className="text-xs text-neutral-400 font-medium">
-                  Free Fire Esports Broadcast Engine
-                </span>
+          /* Global Brand */
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setCurrentTab('home')}
+              className="flex items-center gap-2.5 hover:opacity-90 transition-opacity"
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-200">
+                <Trophy className="h-4 w-4 text-amber-500" />
               </div>
-            </div>
+              <div className="text-left">
+                <div className="font-display text-base font-bold uppercase tracking-wider text-white leading-none">
+                  ESP CALC
+                </div>
+                <div className="text-[10px] text-neutral-400 font-medium leading-none mt-1">
+                  Esports Broadcast Studio
+                </div>
+              </div>
+            </button>
           </div>
         )}
 
-        {/* Right Section Toolbar */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        {/* Right Section Tools */}
+        <div className="flex items-center gap-2 shrink-0">
           {isInsideTournament ? (
-            /* TOURNAMENT TOOLS */
             <>
-              {/* Theme Selector */}
-              <div className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900/90 px-3 py-1.5 text-xs text-neutral-300">
-                <Palette className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                <span className="text-neutral-500 text-[11px] font-semibold uppercase">Style:</span>
+              {/* Theme selector */}
+              <div className="flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs">
+                <Palette className="h-3.5 w-3.5 text-neutral-400 shrink-0" />
                 <select
                   value={settings.theme || 'v2'}
                   onChange={(e) => handleThemeChange(e.target.value as ThemePreset)}
                   aria-label="Color Theme"
-                  className="bg-transparent font-bold text-neutral-200 focus:outline-none cursor-pointer text-xs"
+                  className="bg-transparent font-semibold text-neutral-200 focus:outline-none cursor-pointer text-xs"
                 >
                   <option value="v2" className="bg-neutral-900 text-amber-400">Yellow</option>
                   <option value="blue" className="bg-neutral-900 text-cyan-400">Arctic Cyan</option>
@@ -135,87 +129,66 @@ export const Header: React.FC<HeaderProps> = ({ onOpenReset, onOpenJson }) => {
                 type="button"
                 onClick={undo}
                 disabled={history.length === 0}
-                title="Undo last change"
-                className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900/90 hover:bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-300 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                title="Undo"
+                className="rounded-lg border border-neutral-800 bg-neutral-900 p-1.5 text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Undo</span>
               </button>
 
-              {/* JSON Export/Import */}
+              {/* JSON */}
               <button
                 type="button"
                 onClick={onOpenJson}
-                title="Export or Import JSON data"
-                className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900/90 hover:bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition-colors"
+                title="JSON Backup"
+                className="hidden sm:inline-flex rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors"
               >
-                <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">JSON</span>
-              </button>
-
-              {/* Reset Data */}
-              <button
-                type="button"
-                onClick={onOpenReset}
-                title="Reset or clear tournament data"
-                className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900/90 hover:bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Reset</span>
+                JSON
               </button>
             </>
           ) : (
-            /* GLOBAL DASHBOARD TOOLS */
             <>
-              {/* Quick Launch Button */}
+              {/* Home top action: Quick create */}
               <button
                 type="button"
                 onClick={() => setCurrentTab('create')}
-                className="flex items-center gap-1.5 rounded-xl bg-red-600 px-3.5 py-1.5 text-xs font-display font-black uppercase tracking-wider text-white hover:bg-red-500 transition-colors shadow-sm"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-500 transition-colors"
               >
                 <Plus className="h-3.5 w-3.5" />
-                <span>New Tournament</span>
+                <span>New</span>
               </button>
 
-              {/* JSON Manager */}
               <button
                 type="button"
                 onClick={onOpenJson}
-                title="Export or Import tournament JSON"
-                className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900/90 hover:bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition-colors"
+                title="JSON Data Backup & Restore"
+                className="hidden sm:inline-flex rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors"
               >
-                <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">JSON</span>
+                JSON
               </button>
             </>
           )}
 
-          {/* Admin Dashboard Trigger */}
+          {/* Admin panel */}
           {isAdmin && (
             <button
               type="button"
               onClick={() => setAdminDashboardOpen(true)}
-              title="Admin Dashboard (User Allowlist)"
-              className="flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-amber-300 hover:bg-amber-500/20 transition-colors"
+              title="Admin allowlist"
+              className="rounded-lg border border-neutral-800 bg-neutral-900 p-1.5 text-amber-400 hover:bg-neutral-800 transition-colors"
             >
-              <Shield className="h-3.5 w-3.5 text-amber-400" />
-              <span>Admin ({allUsers.length})</span>
+              <Shield className="h-3.5 w-3.5" />
             </button>
           )}
 
-          {/* User Profile Avatar / Logout */}
+          {/* User profile & logout */}
           {firebaseUser && (
-            <div className="flex items-center gap-2 pl-2 border-l border-neutral-800">
+            <div className="flex items-center gap-1.5 pl-1.5 border-l border-neutral-800">
               <div
                 title={firebaseUser.email || ''}
-                className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-800 border border-neutral-700 text-xs font-bold text-neutral-200 overflow-hidden"
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-800 text-xs font-bold text-neutral-300 overflow-hidden"
               >
                 {firebaseUser.photoURL ? (
-                  <img
-                    src={firebaseUser.photoURL}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={firebaseUser.photoURL} alt="" className="h-full w-full object-cover" />
                 ) : (
                   (firebaseUser.displayName || firebaseUser.email || 'U')[0].toUpperCase()
                 )}
@@ -223,8 +196,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenReset, onOpenJson }) => {
               <button
                 type="button"
                 onClick={() => logout()}
-                title="Sign out of ESP CALC"
-                className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-900 hover:text-red-400 transition-colors"
+                title="Logout"
+                className="rounded-lg p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
               >
                 <LogOut className="h-3.5 w-3.5" />
               </button>
