@@ -93,40 +93,40 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6 animate-in fade-in duration-150">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left Column: Match Input Table (7 cols on desktop) */}
         <div className="space-y-4 lg:col-span-7">
-          {/* Action Bar inside Match view */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-neutral-800 bg-[#121215] p-4">
+          {/* Header Action Strip */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#111114] p-4 shadow-sm">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-display text-xl font-bold uppercase tracking-wider text-white">
-                  Match {match.matchNumber} Entry
+                <h2 className="text-base font-bold text-white uppercase tracking-tight">
+                  Match {match.matchNumber} Scorecard
                 </h2>
                 {match.isCompleted ? (
-                  <span className="flex items-center gap-1 rounded bg-emerald-950 border border-emerald-800 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
                     <CheckCircle2 className="h-3 w-3" />
-                    <span>SAVED</span>
+                    <span>Saved</span>
                   </span>
                 ) : (
-                  <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] font-bold text-neutral-300">
-                    IN PROGRESS
+                  <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                    In Progress
                   </span>
                 )}
               </div>
-              <p className="text-xs text-neutral-400 mt-0.5">
-                Input rank finish and kills for each team.
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Enter finish placement and kill count for each squad.
               </p>
             </div>
 
-            {/* Action buttons */}
+            {/* Actions */}
             <div className="flex items-center gap-2">
               {match.isCompleted ? (
                 <button
                   type="button"
                   onClick={() => reopenMatch(match.id)}
-                  className="flex items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-800 transition-colors"
+                  className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
                 >
                   <Edit3 className="h-3.5 w-3.5" />
                   <span>Edit</span>
@@ -136,7 +136,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   type="button"
                   onClick={() => completeMatch(match.id)}
                   disabled={hasErrors}
-                  className="flex items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-800 disabled:opacity-40 transition-colors"
+                  className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 transition-colors"
                 >
                   <Save className="h-3.5 w-3.5 text-emerald-400" />
                   <span>Save</span>
@@ -148,7 +148,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                 type="button"
                 onClick={handleSaveAndGoNextMatch}
                 disabled={hasErrors}
-                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-500 disabled:opacity-40 transition-colors"
+                className="flex items-center gap-1.5 rounded-xl bg-zinc-100 px-4 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-white disabled:opacity-40 transition-all shadow-sm active:scale-95"
               >
                 <span>{nextMatchInList ? `Next (M${nextMatchInList.matchNumber})` : 'Next Match'}</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -163,7 +163,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                     }
                   }}
                   title="Delete match"
-                  className="rounded-lg border border-neutral-800 bg-neutral-900 p-1.5 text-neutral-400 hover:text-red-400 transition-colors"
+                  className="rounded-lg p-1.5 text-zinc-500 hover:text-red-400 transition-colors"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -173,7 +173,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
 
           {/* Validation Banner */}
           {hasErrors && (
-            <div className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-950/30 p-3 text-xs text-amber-300">
+            <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
               <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
               <span>
                 Duplicate rank detected:{' '}
@@ -186,11 +186,11 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
           )}
 
           {/* Table Container */}
-          <div className="overflow-hidden rounded-xl border border-neutral-800 bg-[#121215]">
+          <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111114] shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-neutral-800 bg-neutral-900/60 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                  <tr className="border-b border-white/[0.06] bg-zinc-950/40 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
                     <th className="py-2.5 pl-3 pr-2 w-10 text-center">#</th>
                     <th className="py-2.5 px-3">Squad Name</th>
                     <th className="py-2.5 px-2 w-24 text-center">Rank</th>
@@ -198,7 +198,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                     <th className="py-2.5 pr-3 pl-2 w-16 text-right">Pts</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-800/60 font-body">
+                <tbody className="divide-y divide-white/[0.04]">
                   {teams.map((team, idx) => {
                     const entry = match.entries[team.id] || {
                       teamId: team.id,
@@ -222,19 +222,19 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                     return (
                       <tr
                         key={team.id}
-                        className={`transition-colors hover:bg-neutral-900/40 ${
-                          isBooyah ? 'bg-amber-500/[0.04]' : ''
+                        className={`transition-colors hover:bg-white/[0.02] ${
+                          isBooyah ? 'bg-amber-500/[0.03]' : ''
                         }`}
                       >
                         {/* Index */}
-                        <td className="py-2.5 pl-3 pr-2 text-center text-neutral-500 font-bold">
+                        <td className="py-2.5 pl-3 pr-2 text-center text-zinc-600 font-mono">
                           {idx + 1}
                         </td>
 
                         {/* Squad name & logo */}
                         <td className="py-2.5 px-3">
                           <div className="flex items-center gap-2">
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black text-amber-400 font-display font-black text-xs overflow-hidden border border-neutral-800">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-amber-400 font-bold text-xs overflow-hidden border border-white/[0.08]">
                               {team.logoUrl ? (
                                 <img
                                   src={team.logoUrl}
@@ -245,11 +245,11 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                                 generateInitials(team.name)
                               )}
                             </div>
-                            <span className="font-bold text-white uppercase truncate max-w-[150px] sm:max-w-[200px]">
+                            <span className="font-semibold text-white truncate max-w-[150px] sm:max-w-[200px]">
                               {team.name}
                             </span>
                             {isBooyah && (
-                              <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300 border border-amber-500/30">
+                              <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-400 border border-amber-500/20">
                                 Booyah
                               </span>
                             )}
@@ -267,12 +267,12 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                               handlePlacementChange(team.id, e.target.value)
                             }
                             placeholder="-"
-                            className={`w-14 rounded px-2 py-1.5 text-center font-bold text-xs transition-colors focus:outline-none ${
+                            className={`w-14 rounded-lg px-2 py-1 text-center font-bold text-xs transition-colors focus:outline-none ${
                               isDuplicate
                                 ? 'border border-amber-500 bg-amber-950/40 text-amber-200'
                                 : entry.placement === 1
-                                ? 'border border-amber-500/80 bg-neutral-900 text-amber-300'
-                                : 'border border-neutral-700 bg-neutral-900 text-white focus:border-neutral-500'
+                                ? 'border border-amber-500/60 bg-zinc-900 text-amber-300'
+                                : 'border border-white/[0.08] bg-zinc-900 text-white focus:border-zinc-500'
                             }`}
                           />
                         </td>
@@ -283,7 +283,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                             <button
                               type="button"
                               onClick={() => handleAdjustKills(team.id, -1)}
-                              className="h-7 w-7 rounded border border-neutral-800 bg-neutral-900 font-bold text-neutral-400 hover:bg-neutral-800 hover:text-white"
+                              className="h-6 w-6 rounded-md border border-white/[0.08] bg-zinc-900 text-xs font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white"
                             >
                               -
                             </button>
@@ -294,12 +294,12 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                               onChange={(e) =>
                                 handleKillsChange(team.id, e.target.value)
                               }
-                              className="w-10 rounded border border-neutral-700 bg-neutral-900 py-1.5 text-center font-bold text-xs text-white focus:outline-none font-numbers"
+                              className="w-10 rounded-md border border-white/[0.08] bg-zinc-900 py-1 text-center font-semibold text-xs text-white focus:outline-none font-mono"
                             />
                             <button
                               type="button"
                               onClick={() => handleAdjustKills(team.id, 1)}
-                              className="h-7 w-7 rounded border border-neutral-800 bg-neutral-900 font-bold text-neutral-400 hover:bg-neutral-800 hover:text-white"
+                              className="h-6 w-6 rounded-md border border-white/[0.08] bg-zinc-900 text-xs font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white"
                             >
                               +
                             </button>
@@ -307,10 +307,10 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                         </td>
 
                         {/* Match Pts */}
-                        <td className="py-2.5 pr-3 pl-2 text-right font-numbers font-bold text-xs">
+                        <td className="py-2.5 pr-3 pl-2 text-right font-mono font-bold text-xs">
                           <span
                             className={
-                              totalMatchPts > 0 ? 'text-amber-400' : 'text-neutral-500'
+                              totalMatchPts > 0 ? 'text-zinc-200' : 'text-zinc-600'
                             }
                           >
                             {totalMatchPts}
@@ -327,7 +327,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
 
         {/* Right Column: Live Standings Leaderboard */}
         <div className="lg:col-span-5">
-          <div className="sticky top-4">
+          <div className="sticky top-16">
             <LiveStandingsPanel />
           </div>
         </div>

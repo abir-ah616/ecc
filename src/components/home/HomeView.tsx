@@ -8,7 +8,6 @@ import {
   Settings,
   Crown,
   History,
-  ChevronRight,
   X,
 } from 'lucide-react';
 import { useTournamentStore, generateInitials } from '../../store/tournamentStore';
@@ -26,7 +25,6 @@ export const HomeView: React.FC = () => {
 
   const [isPointModalOpen, setIsPointModalOpen] = useState(false);
 
-  // Separate active and ended tournaments
   const liveTournaments = tournaments.filter((t) => !t.isEnded);
   const endedTournaments = tournaments.filter((t) => t.isEnded);
 
@@ -45,84 +43,61 @@ export const HomeView: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 space-y-6">
-      {/* 1. TOP CONTROL BAR / ACTION HUB */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* Button 1: Create Tournament */}
-        <button
-          type="button"
-          onClick={() => setCurrentTab('create')}
-          className="flex items-center justify-between p-4 rounded-xl border border-neutral-800 bg-[#121215] hover:bg-[#18181D] hover:border-neutral-700 transition-all text-left group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-600/10 text-red-500 border border-red-500/20 group-hover:bg-red-600 group-hover:text-white transition-all">
-              <Plus className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-white uppercase tracking-wider">
-                Create Tournament
-              </div>
-              <div className="text-xs text-neutral-400">
-                Classic Scrim or Champion Rush
-              </div>
-            </div>
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-8 animate-in fade-in duration-150">
+      {/* 1. HERO CONTROL STRIP: Quick Actions */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#111114] p-6 shadow-xl">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-400">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+            <span>Esports Production Studio</span>
           </div>
-          <ChevronRight className="h-4 w-4 text-neutral-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-        </button>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            Free Fire Point Table &amp; Broadcast Engine
+          </h1>
+          <p className="text-xs sm:text-sm text-zinc-400 max-w-xl">
+            Live scrim scoring, Champion Rush match-point tracking, and instant 4K standing graphics in 7 themes.
+          </p>
+        </div>
 
-        {/* Button 2: History Archive */}
-        <button
-          type="button"
-          onClick={() => setCurrentTab('history')}
-          className="flex items-center justify-between p-4 rounded-xl border border-neutral-800 bg-[#121215] hover:bg-[#18181D] hover:border-neutral-700 transition-all text-left group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:bg-amber-500 group-hover:text-black transition-all">
-              <History className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-white uppercase tracking-wider">
-                Tournament History
-              </div>
-              <div className="text-xs text-neutral-400">
-                {tournaments.length} Saved {tournaments.length === 1 ? 'Tournament' : 'Tournaments'}
-              </div>
-            </div>
-          </div>
-          <ChevronRight className="h-4 w-4 text-neutral-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-        </button>
+        {/* 3 Quick Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0 pt-2 md:pt-0">
+          <button
+            type="button"
+            onClick={() => setCurrentTab('create')}
+            className="inline-flex items-center gap-2 rounded-xl bg-zinc-100 px-4 py-2.5 text-xs font-semibold text-zinc-950 hover:bg-white shadow-md transition-all active:scale-95"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Tournament</span>
+          </button>
 
-        {/* Button 3: Edit Point System */}
-        <button
-          type="button"
-          onClick={() => setIsPointModalOpen(true)}
-          className="flex items-center justify-between p-4 rounded-xl border border-neutral-800 bg-[#121215] hover:bg-[#18181D] hover:border-neutral-700 transition-all text-left group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-800 text-neutral-300 border border-neutral-700 group-hover:bg-neutral-700 group-hover:text-white transition-all">
-              <Sliders className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-white uppercase tracking-wider">
-                Scoring Rules
-              </div>
-              <div className="text-xs text-neutral-400">
-                1st: {defaultPointSystem.placementPoints[0]} pts • Kill: {defaultPointSystem.killPoints} pt
-              </div>
-            </div>
-          </div>
-          <ChevronRight className="h-4 w-4 text-neutral-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-        </button>
+          <button
+            type="button"
+            onClick={() => setCurrentTab('history')}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-zinc-900/90 hover:bg-zinc-800 px-3.5 py-2.5 text-xs font-medium text-zinc-300 transition-colors"
+          >
+            <History className="h-4 w-4 text-zinc-400" />
+            <span>History ({tournaments.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsPointModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-zinc-900/90 hover:bg-zinc-800 px-3.5 py-2.5 text-xs font-medium text-zinc-300 transition-colors"
+          >
+            <Sliders className="h-4 w-4 text-zinc-400" />
+            <span>Scoring Rules</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. LIVE ACTIVE TOURNAMENTS SECTION */}
       {liveTournaments.length > 0 ? (
         <section className="space-y-4">
-          <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                Live Tournaments in Progress ({liveTournaments.length})
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                Active In-Progress ({liveTournaments.length})
               </h2>
             </div>
           </div>
@@ -138,37 +113,37 @@ export const HomeView: React.FC = () => {
               return (
                 <div
                   key={t.id}
-                  className="rounded-xl border border-neutral-800 bg-[#121215] p-5 sm:p-6 transition-all hover:border-neutral-700"
+                  className="rounded-2xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6 transition-all hover:border-zinc-700 shadow-md"
                 >
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
                     {/* Left: Tournament Details */}
                     <div className="space-y-2 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="inline-flex items-center gap-1.5 rounded bg-emerald-950 px-2 py-0.5 font-bold text-emerald-400 border border-emerald-800/60 text-[10px]">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-medium text-emerald-400 border border-emerald-500/20 text-[11px]">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          <span>LIVE</span>
+                          <span>Live</span>
                         </span>
-                        <span className="rounded bg-neutral-900 border border-neutral-800 px-2 py-0.5 text-[10px] font-bold uppercase text-neutral-300">
+                        <span className="rounded-full bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-medium text-zinc-400">
                           {t.settings.mode === 'CHAMPION_RUSH' ? 'Champion Rush' : 'Classic Scrim'}
                         </span>
-                        <span className="text-neutral-500 font-medium">
+                        <span className="text-zinc-500">
                           {t.createdAt}
                         </span>
                       </div>
 
-                      <h3 className="font-display text-2xl sm:text-3xl font-black uppercase tracking-wider text-white truncate">
+                      <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-white truncate">
                         {t.name}
                       </h3>
 
-                      <p className="text-xs text-neutral-400">
-                        {t.settings.roundOrDay} • Hosted by <strong className="text-neutral-200">{t.settings.hostName || 'BD Esports Arena'}</strong> • {completedMatches.length} of {t.matches.length} Matches Concluded
+                      <p className="text-xs text-zinc-400">
+                        {t.settings.roundOrDay} • Hosted by <strong className="text-zinc-200">{t.settings.hostName || 'BD Esports Arena'}</strong> • {completedMatches.length} of {t.matches.length} Matches Concluded
                       </p>
                     </div>
 
                     {/* Right: Leader squad card */}
                     {leader && (
-                      <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3 shrink-0">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-black border border-neutral-800 text-amber-400 font-display text-sm font-black overflow-hidden">
+                      <div className="flex items-center gap-3.5 rounded-xl border border-white/[0.06] bg-zinc-900/60 p-3.5 shrink-0">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-zinc-950 border border-white/[0.08] text-amber-400 font-display text-sm font-black overflow-hidden">
                           {leader.logoUrl ? (
                             <img src={leader.logoUrl} alt="" className="h-full w-full object-cover" />
                           ) : (
@@ -176,14 +151,14 @@ export const HomeView: React.FC = () => {
                           )}
                         </div>
                         <div>
-                          <div className="text-[10px] font-bold uppercase text-amber-400 flex items-center gap-1">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1">
                             <Crown className="h-3 w-3" />
-                            <span>1st Place</span>
+                            <span>Current Leader</span>
                           </div>
-                          <div className="font-bold text-white text-sm uppercase truncate max-w-[140px]">
+                          <div className="font-semibold text-white text-sm truncate max-w-[150px]">
                             {leader.teamName}
                           </div>
-                          <div className="text-xs text-neutral-400">
+                          <div className="text-xs text-zinc-400 font-mono">
                             {leader.totalPoints} PTS • {leader.kills} Kills
                           </div>
                         </div>
@@ -192,20 +167,20 @@ export const HomeView: React.FC = () => {
                   </div>
 
                   {/* Actions Toolbar */}
-                  <div className="mt-5 pt-4 border-t border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                  <div className="mt-5 pt-4 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={() => {
                           switchActiveTournament(t.id, currentMatch ? currentMatch.id : 'results');
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-500 transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-100 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-white transition-all shadow-sm"
                       >
                         <Play className="h-3.5 w-3.5" />
                         <span>
                           {pendingMatch
                             ? `Enter Match ${pendingMatch.matchNumber}`
-                            : 'Score Matches'}
+                            : 'Open Scorecard'}
                         </span>
                       </button>
 
@@ -214,7 +189,7 @@ export const HomeView: React.FC = () => {
                         onClick={() => {
                           switchActiveTournament(t.id, 'results');
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-neutral-200 hover:bg-neutral-800 transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-zinc-900 px-3.5 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
                       >
                         <Trophy className="h-3.5 w-3.5 text-amber-400" />
                         <span>Standing Graphic</span>
@@ -225,9 +200,9 @@ export const HomeView: React.FC = () => {
                         onClick={() => {
                           switchActiveTournament(t.id, 'edit');
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
                       >
-                        <Settings className="h-3.5 w-3.5 text-neutral-400" />
+                        <Settings className="h-3.5 w-3.5 text-zinc-400" />
                         <span>Edit Squads</span>
                       </button>
                     </div>
@@ -239,7 +214,7 @@ export const HomeView: React.FC = () => {
                           endTournamentById(t.id);
                         }
                       }}
-                      className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-red-400 transition-colors"
+                      className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400 transition-colors px-2 py-1"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       <span>Conclude</span>
@@ -252,40 +227,40 @@ export const HomeView: React.FC = () => {
         </section>
       ) : (
         /* Zero state when no tournaments exist */
-        <div className="rounded-xl border border-neutral-800 bg-[#121215] p-10 text-center space-y-3">
-          <div className="flex h-12 w-12 mx-auto items-center justify-center rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400">
+        <div className="rounded-2xl border border-dashed border-white/[0.08] bg-[#111114] p-12 text-center space-y-3">
+          <div className="flex h-12 w-12 mx-auto items-center justify-center rounded-xl bg-zinc-900 border border-white/[0.08] text-zinc-400">
             <Trophy className="h-6 w-6" />
           </div>
-          <h2 className="font-display text-xl font-black uppercase tracking-wider text-white">
+          <h2 className="text-lg font-bold text-white">
             No Active Tournaments
           </h2>
-          <p className="text-xs text-neutral-400 max-w-sm mx-auto">
-            Get started by launching a new tournament or adjusting your custom scoring rules.
+          <p className="text-xs text-zinc-400 max-w-sm mx-auto">
+            Ready to host a tournament? Create a Classic Scrim or Champion Rush with custom point systems.
           </p>
           <div className="pt-2">
             <button
               type="button"
               onClick={() => setCurrentTab('create')}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-500 transition-colors"
+              className="inline-flex items-center gap-2 rounded-xl bg-zinc-100 px-5 py-2.5 text-xs font-semibold text-zinc-950 hover:bg-white transition-all shadow-sm"
             >
               <Plus className="h-4 w-4" />
-              <span>Create Tournament</span>
+              <span>Launch First Tournament</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* 3. RECENT CONCLUDED TOURNAMENTS (If any exist) */}
+      {/* 3. RECENT CONCLUDED ARCHIVE (If any exist) */}
       {endedTournaments.length > 0 && (
         <section className="space-y-3 pt-2">
-          <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+          <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
               Recently Concluded Tournaments
             </h3>
             <button
               type="button"
               onClick={() => setCurrentTab('history')}
-              className="text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
+              className="text-xs font-medium text-zinc-400 hover:text-white transition-colors"
             >
               View All ({endedTournaments.length}) →
             </button>
@@ -295,11 +270,11 @@ export const HomeView: React.FC = () => {
             {endedTournaments.slice(0, 3).map((t) => (
               <div
                 key={t.id}
-                className="rounded-lg border border-neutral-800 bg-[#121215] p-4 flex flex-col justify-between hover:border-neutral-700 transition-all"
+                className="rounded-xl border border-white/[0.08] bg-[#111114] p-4 flex flex-col justify-between hover:border-zinc-700 transition-all"
               >
                 <div>
-                  <div className="text-[10px] text-neutral-500 mb-1">{t.createdAt}</div>
-                  <h4 className="font-bold text-white uppercase text-sm truncate">
+                  <div className="text-[10px] text-zinc-500 mb-1">{t.createdAt}</div>
+                  <h4 className="font-semibold text-white text-sm truncate">
                     {t.name}
                   </h4>
                   {t.championTeamName && (
@@ -310,14 +285,14 @@ export const HomeView: React.FC = () => {
                   )}
                 </div>
 
-                <div className="pt-3 mt-3 border-t border-neutral-800">
+                <div className="pt-3 mt-3 border-t border-white/[0.06]">
                   <button
                     type="button"
                     onClick={() => {
                       switchActiveTournament(t.id);
                       setCurrentTab('results');
                     }}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-800 text-center"
+                    className="w-full rounded-lg border border-white/[0.08] bg-zinc-900 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 text-center transition-colors"
                   >
                     View Poster
                   </button>
@@ -331,18 +306,18 @@ export const HomeView: React.FC = () => {
       {/* 4. POINT SYSTEM EDIT MODAL */}
       {isPointModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-2xl rounded-xl border border-neutral-800 bg-[#121215] p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/[0.1] bg-[#141417] p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div className="flex items-center gap-2">
-                <Sliders className="h-5 w-5 text-neutral-300" />
-                <h3 className="font-display text-lg font-bold uppercase tracking-wider text-white">
-                  Default Point System Settings
+                <Sliders className="h-5 w-5 text-zinc-300" />
+                <h3 className="text-base font-bold text-white">
+                  Scoring Rules &amp; Points Scale
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsPointModalOpen(false)}
-                className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+                className="rounded-lg p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -350,18 +325,18 @@ export const HomeView: React.FC = () => {
 
             {/* Quick Presets */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-neutral-400 font-semibold mr-1">Presets:</span>
+              <span className="text-xs text-zinc-400 font-medium mr-1">Presets:</span>
               <button
                 type="button"
                 onClick={applyOfficialPreset}
-                className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-800"
+                className="rounded-lg border border-white/[0.08] bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
               >
                 Official 12-Pt
               </button>
               <button
                 type="button"
                 onClick={applyClassicPreset}
-                className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-800"
+                className="rounded-lg border border-white/[0.08] bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
               >
                 Classic 20-Pt
               </button>
@@ -369,8 +344,8 @@ export const HomeView: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-1">
               {/* Kill Points */}
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-neutral-400">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-zinc-400">
                   Kill Points
                 </label>
                 <input
@@ -382,21 +357,21 @@ export const HomeView: React.FC = () => {
                       killPoints: Math.max(0, parseInt(e.target.value) || 0),
                     })
                   }
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-neutral-500"
+                  className="w-full rounded-xl border border-white/[0.08] bg-zinc-900 px-3 py-2 text-sm font-semibold text-white focus:outline-none focus:border-zinc-500"
                 />
               </div>
 
               {/* Placement Scale Grid */}
-              <div className="md:col-span-3 space-y-1">
-                <label className="block text-xs font-semibold text-neutral-400">
+              <div className="md:col-span-3 space-y-1.5">
+                <label className="block text-xs font-medium text-zinc-400">
                   Placement Scale (1st – 15th Position)
                 </label>
-                <div className="grid grid-cols-5 gap-1 text-center text-xs">
+                <div className="grid grid-cols-5 gap-1.5 text-center text-xs">
                   {Array.from({ length: 15 }, (_, i) => {
                     const pts = defaultPointSystem.placementPoints[i] ?? 0;
                     return (
-                      <div key={i} className="rounded bg-neutral-900 border border-neutral-800 p-1">
-                        <div className="text-[10px] text-neutral-500 font-bold mb-0.5">
+                      <div key={i} className="rounded-xl bg-zinc-900 border border-white/[0.06] p-1.5">
+                        <div className="text-[10px] text-zinc-500 font-medium mb-0.5">
                           #{i + 1}
                         </div>
                         <input
@@ -417,13 +392,13 @@ export const HomeView: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-neutral-800 flex justify-end">
+            <div className="pt-3 border-t border-white/[0.08] flex justify-end">
               <button
                 type="button"
                 onClick={() => setIsPointModalOpen(false)}
-                className="rounded-lg bg-neutral-800 px-4 py-2 text-xs font-bold uppercase text-white hover:bg-neutral-700"
+                className="rounded-xl bg-zinc-100 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-white"
               >
-                Done
+                Save &amp; Close
               </button>
             </div>
           </div>

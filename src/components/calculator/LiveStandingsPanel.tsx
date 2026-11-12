@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Zap, Crown } from 'lucide-react';
+import { Trophy, Crown, Zap } from 'lucide-react';
 import { useTournamentStore, generateInitials } from '../../store/tournamentStore';
 
 export const LiveStandingsPanel: React.FC = () => {
@@ -11,34 +11,34 @@ export const LiveStandingsPanel: React.FC = () => {
   const targetPts = settings.championRush.targetPoints;
 
   return (
-    <div className="rounded border border-neutral-800 bg-[#14080A] p-4 shadow-sm">
+    <div className="rounded-2xl border border-white/[0.08] bg-[#111114] p-5 shadow-sm space-y-4">
       {/* Panel Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-neutral-800 mb-3">
+      <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
         <div className="flex items-center gap-2">
-          <Trophy className="h-4 w-4 text-amber-500" />
-          <h3 className="font-display text-base tracking-wider text-neutral-100">
-            LIVE OVERALL STANDINGS
+          <Trophy className="h-4 w-4 text-zinc-400" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+            Live Standings Preview
           </h3>
         </div>
-        <span className="rounded bg-neutral-900 px-2 py-0.5 text-[11px] font-bold text-neutral-400 border border-neutral-800">
-          {standings.length} TEAMS
+        <span className="rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+          {standings.length} Teams
         </span>
       </div>
 
       {/* Champion / Conclusion Notice */}
       {tournamentConcluded && (
-        <div className="mb-3 rounded border border-amber-600/40 bg-amber-950/30 p-2.5 text-xs text-amber-200">
-          <div className="flex items-center gap-2 font-bold uppercase tracking-wider">
-            <Crown className="h-4 w-4 text-amber-400" />
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/05 p-3 text-xs text-amber-300">
+          <div className="flex items-center gap-1.5 font-semibold text-amber-400">
+            <Crown className="h-4 w-4" />
             <span>
               {conclusionReason === 'CHAMPION_CROWNED'
-                ? 'CHAMPION DECLARED — TOURNAMENT CONCLUDED'
-                : 'TOURNAMENT COMPLETED'}
+                ? 'Champion Declared!'
+                : 'Tournament Concluded'}
             </span>
           </div>
-          <p className="text-[11px] text-amber-300/80 mt-0.5">
+          <p className="text-[11px] text-zinc-400 mt-0.5">
             {conclusionReason === 'CHAMPION_CROWNED'
-              ? 'An active rush team captured Booyah to claim 1st place overall.'
+              ? 'An active rush team captured Booyah to win 1st place overall.'
               : 'All matches have been concluded and final standings are locked.'}
           </p>
         </div>
@@ -46,9 +46,9 @@ export const LiveStandingsPanel: React.FC = () => {
 
       {/* Standings Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs font-numbers">
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-neutral-800/80 text-[10px] uppercase font-bold tracking-wider text-neutral-400">
+            <tr className="border-b border-white/[0.06] text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
               <th className="py-2 px-1 text-center w-7">#</th>
               <th className="py-2 px-2">Team</th>
               <th className="py-2 px-1.5 text-center">Booyah</th>
@@ -57,37 +57,31 @@ export const LiveStandingsPanel: React.FC = () => {
               <th className="py-2 px-2 text-right">Total</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-850">
+          <tbody className="divide-y divide-white/[0.04] font-mono">
             {standings.map((team) => {
               const isChamp = team.rushStatus.status === 'CHAMPION';
               const isRushActive = team.rushStatus.status === 'ACTIVE';
 
-              // Top 3 distinct metallic border accents
-              let rankAccent = 'text-neutral-400';
-              if (team.rank === 1) rankAccent = 'text-amber-400 font-extrabold';
-              else if (team.rank === 2) rankAccent = 'text-neutral-300 font-bold';
-              else if (team.rank === 3) rankAccent = 'text-amber-600 font-bold';
-
               return (
                 <tr
                   key={team.teamId}
-                  className={`transition-colors hover:bg-neutral-900/60 ${
+                  className={`transition-colors hover:bg-white/[0.02] ${
                     isChamp
-                      ? 'bg-amber-950/25 border-l-2 border-amber-500'
+                      ? 'bg-amber-500/05'
                       : isRushActive
-                      ? 'bg-red-950/20'
+                      ? 'bg-amber-500/[0.03]'
                       : ''
                   }`}
                 >
                   {/* Rank */}
-                  <td className={`py-2 px-1 text-center font-display text-sm ${rankAccent}`}>
+                  <td className="py-2 px-1 text-center font-bold text-zinc-400">
                     {team.rank}
                   </td>
 
                   {/* Team Info */}
-                  <td className="py-2 px-2">
+                  <td className="py-2 px-2 font-sans font-medium text-white">
                     <div className="flex items-center gap-2">
-                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-black/60 text-[9px] font-bold text-red-400 overflow-hidden border border-neutral-800">
+                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-zinc-950 text-[9px] font-bold text-zinc-300 overflow-hidden border border-white/[0.08]">
                         {team.logoUrl ? (
                           <img
                             src={team.logoUrl}
@@ -98,8 +92,8 @@ export const LiveStandingsPanel: React.FC = () => {
                           <span>{team.shortCode || generateInitials(team.teamName)}</span>
                         )}
                       </div>
-                      <div className="min-w-0 max-w-[130px] sm:max-w-[180px]">
-                        <div className="truncate font-semibold text-neutral-100 text-xs">
+                      <div className="min-w-0 max-w-[120px] sm:max-w-[160px]">
+                        <div className="truncate text-xs">
                           {team.teamName}
                         </div>
 
@@ -107,28 +101,26 @@ export const LiveStandingsPanel: React.FC = () => {
                         {isRush && (
                           <div className="mt-0.5">
                             {isChamp ? (
-                              <span className="inline-flex items-center gap-1 rounded bg-amber-500/20 px-1 py-0.2 text-[9px] font-bold uppercase text-amber-400 border border-amber-500/40">
+                              <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1 py-0.2 text-[9px] font-semibold text-amber-400 border border-amber-500/20">
                                 <Crown className="h-2.5 w-2.5" />
                                 <span>Champion</span>
                               </span>
                             ) : isRushActive ? (
-                              <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1 py-0.2 text-[9px] font-bold uppercase text-amber-400 border border-amber-500/30">
-                                <Zap className="h-2.5 w-2.5 text-amber-400" />
-                                <span>
-                                  Rush Active (M{team.rushStatus.status === 'ACTIVE' ? team.rushStatus.activatedAtMatch : 1})
-                                </span>
+                              <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1 py-0.2 text-[9px] font-semibold text-amber-400 border border-amber-500/20">
+                                <Zap className="h-2.5 w-2.5" />
+                                <span>Rush Active</span>
                               </span>
                             ) : (
                               <div className="flex items-center gap-1.5">
-                                <div className="h-1 w-12 rounded-full bg-neutral-800 overflow-hidden">
+                                <div className="h-1 w-10 rounded-full bg-zinc-800 overflow-hidden">
                                   <div
-                                    className="h-full bg-neutral-600 transition-all duration-300"
+                                    className="h-full bg-zinc-500 transition-all duration-300"
                                     style={{
                                       width: `${Math.round(team.progressToTarget * 100)}%`,
                                     }}
                                   />
                                 </div>
-                                <span className="text-[9px] text-neutral-500">
+                                <span className="text-[9px] text-zinc-500">
                                   {team.totalPoints}/{targetPts}
                                 </span>
                               </div>
@@ -140,22 +132,22 @@ export const LiveStandingsPanel: React.FC = () => {
                   </td>
 
                   {/* Booyah */}
-                  <td className="py-2 px-1.5 text-center text-xs font-semibold text-neutral-300">
-                    X{team.booyahCount}
+                  <td className="py-2 px-1.5 text-center text-xs text-zinc-400">
+                    {team.booyahCount}
                   </td>
 
                   {/* Kills */}
-                  <td className="py-2 px-1.5 text-center text-xs text-neutral-300">
+                  <td className="py-2 px-1.5 text-center text-xs text-zinc-400">
                     {team.kills}
                   </td>
 
                   {/* Pos Pts */}
-                  <td className="py-2 px-1.5 text-center text-xs text-neutral-400">
+                  <td className="py-2 px-1.5 text-center text-xs text-zinc-500">
                     {team.placementPoints}
                   </td>
 
                   {/* Total */}
-                  <td className="py-2 px-2 text-right text-xs font-bold text-neutral-100">
+                  <td className="py-2 px-2 text-right text-xs font-bold text-white">
                     {team.totalPoints}
                   </td>
                 </tr>
