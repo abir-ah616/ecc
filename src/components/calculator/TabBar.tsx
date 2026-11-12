@@ -41,12 +41,12 @@ export const TabBar: React.FC = () => {
   const canAddMatch = !standings.tournamentConcluded && !maxMatchesReached;
 
   return (
-    <div className="border-b border-white/10 bg-[#0E111B]/95 backdrop-blur-xl px-4 sm:px-6 select-none sticky top-20 z-30 shadow-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 overflow-x-auto py-2.5 scrollbar-thin">
+    <div className="border-b border-neutral-800 bg-[#11131A] px-4 sm:px-6 select-none sticky top-0 z-20 shadow-sm">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 overflow-x-auto py-2 scrollbar-thin">
         {/* Match Navigation Tabs + Actions */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Matches List */}
-          <div className="flex items-center gap-2 pr-3 border-r border-white/15">
+          <div className="flex items-center gap-1.5 pr-2.5 border-r border-neutral-800">
             {matches.map((m) => {
               const isActive = currentTab === m.id;
               return (
@@ -54,16 +54,16 @@ export const TabBar: React.FC = () => {
                   key={m.id}
                   type="button"
                   onClick={() => setCurrentTab(m.id)}
-                  className={`flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-black uppercase tracking-wider transition-all active:scale-95 ${
+                  className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
                     isActive
-                      ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/10 text-amber-300 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
-                      : 'text-neutral-400 hover:bg-white/5 hover:text-white border border-transparent'
+                      ? 'bg-neutral-800 text-white border border-neutral-700 shadow-sm'
+                      : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
                   }`}
                 >
                   {m.isCompleted ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    <CheckCircle2 className="h-3 w-3 text-emerald-500" />
                   ) : (
-                    <Circle className="h-3 w-3 text-amber-400 fill-amber-400/20" />
+                    <Circle className="h-2 w-2 text-amber-500 fill-amber-500/20" />
                   )}
                   <span>Match {m.matchNumber}</span>
                 </button>
@@ -76,10 +76,10 @@ export const TabBar: React.FC = () => {
                 type="button"
                 onClick={() => createMatch()}
                 title="Add next match"
-                className="flex shrink-0 items-center gap-1.5 rounded-xl border border-dashed border-white/25 hover:border-amber-400/60 bg-white/5 hover:bg-amber-500/10 px-3 py-2 text-xs font-black uppercase tracking-wider text-neutral-300 hover:text-amber-300 transition-all active:scale-95"
+                className="flex shrink-0 items-center gap-1 rounded-md border border-dashed border-neutral-700 hover:border-neutral-500 bg-neutral-900/60 px-2.5 py-1.5 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
               >
-                <Plus className="h-4 w-4 text-amber-400" />
-                <span>+ MATCH</span>
+                <Plus className="h-3 w-3" />
+                <span>Match</span>
               </button>
             )}
           </div>
@@ -88,37 +88,37 @@ export const TabBar: React.FC = () => {
           <button
             type="button"
             onClick={() => setCurrentTab('results')}
-            className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-black uppercase tracking-wider transition-all active:scale-95 ${
+            className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
               currentTab === 'results'
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-black shadow-[0_0_20px_rgba(245,158,11,0.5)] border border-amber-400'
-                : 'text-neutral-300 hover:bg-white/10 hover:text-amber-300 border border-white/10'
+                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/40 shadow-sm'
+                : 'text-neutral-400 hover:bg-neutral-900 hover:text-amber-300'
             }`}
           >
-            <Trophy className={`h-4 w-4 ${currentTab === 'results' ? 'text-black' : 'text-amber-400'}`} />
-            <span>STANDINGS GRAPHIC</span>
+            <Trophy className="h-3.5 w-3.5 text-amber-400" />
+            <span>Standing Graphic</span>
           </button>
 
           {/* Edit Squads Tab */}
           <button
             type="button"
             onClick={() => setCurrentTab('edit')}
-            className={`flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all active:scale-95 ${
+            className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
               currentTab === 'edit'
-                ? 'bg-white/15 text-white border border-white/30 shadow-md'
-                : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200 border border-transparent'
+                ? 'bg-neutral-800 text-white border border-neutral-700'
+                : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
             }`}
           >
-            <Settings className="h-4 w-4 text-neutral-400" />
-            <span>SQUADS &amp; SETTINGS</span>
+            <Settings className="h-3.5 w-3.5 text-neutral-400" />
+            <span>Squads</span>
           </button>
         </div>
 
         {/* Right: Conclude or Reopen Trigger */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {standings.tournamentConcluded ? (
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
-                <Crown className="h-4 w-4 text-amber-400" />
+              <span className="flex items-center gap-1 rounded bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-xs font-bold text-amber-400">
+                <Crown className="h-3.5 w-3.5" />
                 <span>
                   {teams.find((t) => t.id === standings.championTeamId)?.name || 'CHAMPION'} WINS
                 </span>
@@ -127,20 +127,20 @@ export const TabBar: React.FC = () => {
               <button
                 type="button"
                 onClick={reopenTournament}
-                className="flex items-center gap-1 rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-neutral-300 hover:bg-white/15 hover:text-white transition-all active:scale-95"
+                className="flex items-center gap-1 rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 transition-colors"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
-                <span>REOPEN</span>
+                <RotateCcw className="h-3 w-3" />
+                <span>Reopen</span>
               </button>
             </div>
           ) : (
             <button
               type="button"
               onClick={endTournament}
-              className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-950/20 hover:bg-red-950/40 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-red-400 hover:border-red-500/60 transition-all active:scale-95"
+              className="flex items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-neutral-400 hover:text-red-400 hover:border-red-900/60 transition-colors"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>CONCLUDE TOURNAMENT</span>
+              <span>Conclude Tournament</span>
             </button>
           )}
         </div>

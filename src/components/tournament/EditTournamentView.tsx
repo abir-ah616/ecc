@@ -8,9 +8,6 @@ import {
   CheckCircle2,
   Upload,
   ClipboardList,
-  Target,
-  Trophy,
-  Shield,
 } from 'lucide-react';
 import { useTournamentStore, generateInitials } from '../../store/tournamentStore';
 import type { Team, TournamentMode } from '../../types/tournament';
@@ -32,8 +29,6 @@ export const EditTournamentView: React.FC = () => {
   const [totalMatchesPlanned, setTotalMatchesPlanned] = useState(6);
   const [targetPoints, setTargetPoints] = useState(80);
   const [maxMatches, setMaxMatches] = useState(8);
-  const [allowSameMatch, setAllowSameMatch] = useState(false);
-  const [showLogos, setShowLogos] = useState(true);
   const [customLogoUrl, setCustomLogoUrl] = useState<string | undefined>(undefined);
 
   // Editable squads list
@@ -53,24 +48,22 @@ export const EditTournamentView: React.FC = () => {
       setTotalMatchesPlanned(activeTournament.settings.totalMatchesPlanned);
       setTargetPoints(activeTournament.settings.championRush?.targetPoints ?? 80);
       setMaxMatches(activeTournament.settings.championRush?.maxMatches ?? 8);
-      setAllowSameMatch(activeTournament.settings.championRush?.allowSameMatchBooyahActivation ?? false);
-      setShowLogos(activeTournament.settings.showLogos ?? true);
       setTeams(activeTournament.teams.map((t) => ({ ...t })));
     }
   }, [activeTournament?.id]);
 
   if (!activeTournament) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center space-y-4">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-wider text-white">
-          NO TOURNAMENT SELECTED
+      <div className="mx-auto max-w-4xl px-4 py-16 text-center space-y-3">
+        <h2 className="font-display text-xl font-bold uppercase tracking-wider text-white">
+          No Tournament Selected
         </h2>
         <button
           type="button"
           onClick={() => setCurrentTab('home')}
-          className="rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 px-6 py-2.5 text-xs font-black uppercase tracking-wider text-black"
+          className="rounded-lg bg-neutral-800 hover:bg-neutral-700 px-4 py-2 text-xs font-semibold text-white"
         >
-          RETURN TO DASHBOARD
+          Return to Dashboard
         </button>
       </div>
     );
@@ -174,13 +167,13 @@ export const EditTournamentView: React.FC = () => {
       hostName,
       sponsorName,
       customLogoUrl,
-      showLogos,
+      showLogos: true,
       mode,
       totalMatchesPlanned,
       championRush: {
         targetPoints,
         maxMatches,
-        allowSameMatchBooyahActivation: allowSameMatch,
+        allowSameMatchBooyahActivation: false,
       },
       teams,
     });
@@ -189,103 +182,97 @@ export const EditTournamentView: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-8 select-none animate-in fade-in duration-200">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 space-y-6 select-none">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-white/15 bg-[#121522] p-5 shadow-xl">
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-neutral-800 bg-[#11131A] p-4">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setCurrentTab('home')}
-            className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all active:scale-95"
+            className="flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition-colors"
           >
-            <ArrowLeft className="h-4 w-4 text-amber-400" />
-            <span>DASHBOARD</span>
+            <ArrowLeft className="h-3.5 w-3.5 text-neutral-400" />
+            <span>Dashboard</span>
           </button>
-
-          <div className="h-6 w-[1px] bg-white/15 hidden sm:block" />
-
-          <h1 className="font-display text-2xl font-black uppercase tracking-wider text-white">
-            EDIT SQUADS &amp; PARAMETERS
-          </h1>
+          <span className="font-display text-lg font-bold uppercase tracking-wider text-white">
+            Edit Tournament &amp; Squads
+          </span>
         </div>
 
         {savedSuccess && (
-          <div className="flex items-center gap-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 px-3.5 py-1.5 text-xs font-black uppercase tracking-wider text-emerald-300">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            <span>CHANGES SAVED</span>
+          <div className="flex items-center gap-1.5 rounded-md bg-emerald-950/60 border border-emerald-800 px-3 py-1 text-xs font-bold text-emerald-400">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            <span>Changes Saved</span>
           </div>
         )}
       </div>
 
-      <form onSubmit={handleSave} className="space-y-8">
-        {/* Identity & Broadcast Labels */}
-        <div className="rounded-3xl border border-white/15 bg-[#121522] p-6 sm:p-8 shadow-2xl space-y-6">
-          <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-            <Trophy className="h-6 w-6 text-amber-400" />
-            <h2 className="font-display text-2xl font-black uppercase tracking-wider text-white">
-              TOURNAMENT DETAILS
-            </h2>
-          </div>
+      <form onSubmit={handleSave} className="space-y-6">
+        {/* Tournament Details */}
+        <div className="rounded-xl border border-neutral-800 bg-[#11131A] p-6 space-y-4">
+          <h2 className="font-display text-lg font-bold uppercase tracking-wider text-white border-b border-neutral-800 pb-2">
+            Tournament Information
+          </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                TOURNAMENT TITLE *
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                Tournament Title *
               </label>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
+                className="mt-1.5 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:border-neutral-500"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                ROUND / STAGE HEADER
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                Stage / Round Label
               </label>
               <input
                 type="text"
                 value={roundOrDay}
                 onChange={(e) => setRoundOrDay(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
+                className="mt-1.5 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:border-neutral-500"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                HOST / ORGANIZER
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                Host / Organizer
               </label>
               <input
                 type="text"
                 value={hostName}
                 onChange={(e) => setHostName(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
+                className="mt-1.5 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:border-neutral-500"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                SPONSOR / PARTNER
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                Sponsor / Partner
               </label>
               <input
                 type="text"
                 value={sponsorName}
                 onChange={(e) => setSponsorName(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
+                className="mt-1.5 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:border-neutral-500"
               />
             </div>
           </div>
 
-          {/* Tournament Crest Upload */}
+          {/* Logo upload */}
           <div className="pt-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-              CUSTOM TOURNAMENT LOGO (OPTIONAL)
+            <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+              Tournament Logo
             </label>
-            <div className="mt-2 flex items-center gap-4">
+            <div className="mt-1.5 flex items-center gap-3">
               {customLogoUrl ? (
-                <div className="relative h-14 w-14 rounded-xl border border-amber-400 overflow-hidden bg-black/60 shadow-lg">
+                <div className="relative h-12 w-12 rounded-lg border border-neutral-700 overflow-hidden bg-neutral-900">
                   <img
                     src={customLogoUrl}
                     alt="Logo"
@@ -294,15 +281,15 @@ export const EditTournamentView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setCustomLogoUrl(undefined)}
-                    className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white"
+                    className="absolute top-0 right-0 p-0.5 bg-red-600 text-white"
                   >
                     <X className="h-3 w-3" />
                   </button>
                 </div>
               ) : (
-                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-white/20 bg-white/5 hover:border-amber-400/50 hover:bg-white/10 px-4 py-3 text-xs font-bold uppercase tracking-wider text-neutral-300 transition-all">
-                  <Upload className="h-4 w-4 text-amber-400" />
-                  <span>UPLOAD PNG / SVG LOGO</span>
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-neutral-700 bg-neutral-900 hover:bg-neutral-800 px-3.5 py-2 text-xs font-semibold text-neutral-300 transition-colors">
+                  <Upload className="h-3.5 w-3.5 text-neutral-400" />
+                  <span>Upload Logo</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -318,80 +305,102 @@ export const EditTournamentView: React.FC = () => {
           </div>
         </div>
 
-        {/* Match Count / Target Points */}
-        <div className="rounded-3xl border border-white/15 bg-[#121522] p-6 sm:p-8 shadow-2xl space-y-6">
-          <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-            <Target className="h-6 w-6 text-cyan-400" />
-            <h2 className="font-display text-2xl font-black uppercase tracking-wider text-white">
-              {mode === 'CHAMPION_RUSH' ? 'CHAMPION RUSH TARGET' : 'MATCH COUNT PLANNED'}
-            </h2>
-          </div>
+        {/* Match Settings */}
+        <div className="rounded-xl border border-neutral-800 bg-[#11131A] p-6 space-y-4">
+          <h2 className="font-display text-lg font-bold uppercase tracking-wider text-white border-b border-neutral-800 pb-2">
+            {mode === 'CHAMPION_RUSH' ? 'Champion Rush Settings' : 'Match Series Settings'}
+          </h2>
 
           {mode === 'SCRIM' ? (
-            <div className="space-y-4">
-              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                PLANNED MATCHES
+            <div className="space-y-3">
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                Number of Matches Planned
               </label>
-              <div className="flex flex-wrap gap-2.5">
-                {[4, 5, 6, 8, 10, 12].map((cnt) => (
+              <div className="flex flex-wrap items-center gap-2">
+                {[4, 5, 6, 7, 8, 10, 12].map((cnt) => (
                   <button
                     key={cnt}
                     type="button"
                     onClick={() => setTotalMatchesPlanned(cnt)}
-                    className={`rounded-xl px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider transition-all ${
+                    className={`rounded-lg px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
                       totalMatchesPlanned === cnt
-                        ? 'bg-cyan-500 text-black border border-cyan-400 shadow-md'
-                        : 'border border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10'
+                        ? 'bg-red-600 text-white'
+                        : 'border border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
                     }`}
                   >
-                    {cnt} MATCHES
+                    {cnt} Matches
                   </button>
                 ))}
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="text-xs text-neutral-500 font-semibold">Custom:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="30"
+                    value={totalMatchesPlanned}
+                    onChange={(e) =>
+                      setTotalMatchesPlanned(Math.max(1, parseInt(e.target.value, 10) || 1))
+                    }
+                    className="w-16 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs font-bold text-white text-center focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                  TARGET POINT THRESHOLD
+              {/* Target Points: direct input */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                  Target Point Threshold
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {[50, 75, 80, 100, 120].map((pts) => (
-                    <button
-                      key={pts}
-                      type="button"
-                      onClick={() => setTargetPoints(pts)}
-                      className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all ${
-                        targetPoints === pts
-                          ? 'bg-purple-500 text-black border border-purple-400 shadow-md'
-                          : 'border border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10'
-                      }`}
-                    >
-                      {pts} PTS
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="500"
+                  value={targetPoints}
+                  onChange={(e) =>
+                    setTargetPoints(Math.max(1, parseInt(e.target.value, 10) || 1))
+                  }
+                  className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3.5 py-2 text-sm font-bold text-white focus:outline-none focus:border-neutral-500"
+                />
+                <p className="text-[11px] text-neutral-500 font-medium">
+                  Points needed to unlock rush status. (e.g. 50, 75, 80, 100).
+                </p>
               </div>
 
-              <div className="space-y-4">
-                <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                  MAX MATCHES LIMIT
+              {/* Max Matches: 5, 6, 7, 8, 10 or custom */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                  Max Matches Ceiling
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {[6, 8, 10, 12].map((cnt) => (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[5, 6, 7, 8, 10].map((cnt) => (
                     <button
                       key={cnt}
                       type="button"
                       onClick={() => setMaxMatches(cnt)}
-                      className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all ${
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
                         maxMatches === cnt
-                          ? 'bg-amber-500 text-black border border-amber-400 shadow-md'
-                          : 'border border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10'
+                          ? 'bg-amber-500 text-black font-extrabold'
+                          : 'border border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
                       }`}
                     >
-                      {cnt} MATCHES
+                      {cnt}
                     </button>
                   ))}
+                  <div className="flex items-center gap-1 ml-1.5">
+                    <span className="text-xs text-neutral-500">Custom:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={maxMatches}
+                      onChange={(e) =>
+                        setMaxMatches(Math.max(1, parseInt(e.target.value, 10) || 1))
+                      }
+                      className="w-14 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs font-bold text-white text-center focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -399,15 +408,12 @@ export const EditTournamentView: React.FC = () => {
         </div>
 
         {/* Squad Roster */}
-        <div className="rounded-3xl border border-white/15 bg-[#121522] p-6 sm:p-8 shadow-2xl space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/10 pb-4">
-            <div className="flex items-center gap-3">
-              <Shield className="h-6 w-6 text-emerald-400" />
-              <div>
-                <h2 className="font-display text-2xl font-black uppercase tracking-wider text-white">
-                  SQUAD ROSTER ({teams.length} SQUADS)
-                </h2>
-              </div>
+        <div className="rounded-xl border border-neutral-800 bg-[#11131A] p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-neutral-800 pb-3">
+            <div>
+              <h2 className="font-display text-lg font-bold uppercase tracking-wider text-white">
+                Squad Roster ({teams.length} Teams)
+              </h2>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -416,71 +422,71 @@ export const EditTournamentView: React.FC = () => {
                   key={num}
                   type="button"
                   onClick={() => handleSetCount(num)}
-                  className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wider transition-all ${
+                  className={`rounded-lg px-3 py-1 text-xs font-bold uppercase tracking-wider transition-colors ${
                     teams.length === num
-                      ? 'bg-emerald-500 text-black border border-emerald-400 shadow-md'
-                      : 'border border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10'
+                      ? 'bg-neutral-800 text-white border border-neutral-700'
+                      : 'border border-neutral-800 bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
                   }`}
                 >
-                  {num} SQUADS
+                  {num} Teams
                 </button>
               ))}
 
               <button
                 type="button"
                 onClick={() => setShowBulkPaste(!showBulkPaste)}
-                className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-neutral-300"
+                className="flex items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 px-3 py-1 text-xs font-semibold text-neutral-300 transition-colors"
               >
-                <ClipboardList className="h-4 w-4 text-amber-400" />
-                <span>BULK PASTE</span>
+                <ClipboardList className="h-3.5 w-3.5 text-neutral-400" />
+                <span>Bulk Paste</span>
               </button>
             </div>
           </div>
 
           {/* Bulk Paste Drawer */}
           {showBulkPaste && (
-            <div className="rounded-2xl border border-amber-500/30 bg-black/60 p-5 space-y-3">
-              <label className="text-xs font-black uppercase tracking-wider text-amber-300">
-                PASTE SQUAD NAMES (ONE TEAM PER LINE)
+            <div className="rounded-lg border border-neutral-700 bg-neutral-950 p-4 space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                Paste team names (one per line):
               </label>
               <textarea
-                rows={5}
+                rows={4}
                 value={bulkPasteText}
                 onChange={(e) => setBulkPasteText(e.target.value)}
                 placeholder={"TOTAL GAMING\nEVOS ESPORTS\nRRQ KAZU\nMAGIC SQUAD"}
-                className="w-full rounded-xl border border-white/15 bg-black/80 p-3.5 text-xs sm:text-sm font-semibold text-white focus:border-amber-400 focus:outline-none"
+                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 p-2.5 text-xs font-mono text-white focus:outline-none"
               />
-              <div className="flex justify-end gap-2.5">
+              <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowBulkPaste(false)}
-                  className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold uppercase text-neutral-400 hover:text-white"
+                  className="rounded px-3 py-1 text-xs text-neutral-400 hover:text-white"
                 >
-                  CANCEL
+                  Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleBulkImport}
-                  className="rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-2 text-xs font-black uppercase tracking-wider text-black shadow-md"
+                  className="rounded bg-neutral-800 hover:bg-neutral-700 px-4 py-1 text-xs font-bold uppercase text-white"
                 >
-                  APPLY SQUAD LIST
+                  Apply List
                 </button>
               </div>
             </div>
           )}
 
           {/* Squad Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
             {teams.map((team, idx) => (
               <div
                 key={team.id || idx}
-                className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-black/40 p-2.5 hover:border-white/20 transition-all"
+                className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900 p-2"
               >
-                <span className="w-8 shrink-0 text-center text-xs font-black text-amber-400">
-                  #{idx + 1}
+                <span className="w-6 shrink-0 text-center text-xs font-bold text-neutral-500">
+                  {idx + 1}
                 </span>
 
-                <label className="relative flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-white/15 bg-white/5 hover:border-amber-400 overflow-hidden">
+                <label className="relative flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded border border-neutral-700 bg-neutral-950 hover:border-neutral-500 overflow-hidden">
                   {team.logoUrl ? (
                     <img
                       src={team.logoUrl}
@@ -488,7 +494,7 @@ export const EditTournamentView: React.FC = () => {
                       className="h-full w-full object-contain p-0.5"
                     />
                   ) : (
-                    <Upload className="h-3.5 w-3.5 text-neutral-400" />
+                    <Upload className="h-3 w-3 text-neutral-500" />
                   )}
                   <input
                     type="file"
@@ -506,7 +512,7 @@ export const EditTournamentView: React.FC = () => {
                   required
                   value={team.name}
                   onChange={(e) => handleNameChange(idx, e.target.value)}
-                  className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-bold text-white focus:outline-none"
+                  className="flex-1 min-w-0 bg-transparent text-xs font-bold text-white focus:outline-none"
                 />
 
                 {teams.length > 2 && (
@@ -514,43 +520,41 @@ export const EditTournamentView: React.FC = () => {
                     type="button"
                     onClick={() => handleRemoveTeam(idx)}
                     className="text-neutral-500 hover:text-red-400 p-1"
-                    title="Remove squad"
+                    title="Remove"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3 w-3" />
                   </button>
                 )}
               </div>
             ))}
           </div>
 
-          <div className="flex justify-start pt-2">
-            <button
-              type="button"
-              onClick={handleAddTeam}
-              className="flex items-center gap-2 rounded-xl border border-dashed border-white/20 bg-white/5 hover:border-amber-400/50 hover:bg-white/10 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-neutral-300"
-            >
-              <Plus className="h-4 w-4 text-amber-400" />
-              <span>ADD SQUAD SLOT</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleAddTeam}
+            className="flex items-center gap-1.5 rounded-lg border border-dashed border-neutral-700 bg-neutral-900/60 hover:bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5 text-neutral-400" />
+            <span>Add Squad</span>
+          </button>
         </div>
 
-        {/* Bottom Save Action */}
-        <div className="flex items-center justify-between gap-4 pt-4 border-t border-white/10">
+        {/* Submit */}
+        <div className="flex items-center justify-between gap-4 pt-2">
           <button
             type="button"
             onClick={() => setCurrentTab('home')}
-            className="rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 px-6 py-4 text-xs sm:text-sm font-bold uppercase tracking-wider text-neutral-300"
+            className="rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
           >
-            CANCEL &amp; RETURN
+            Cancel
           </button>
 
           <button
             type="submit"
-            className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-8 py-4 text-sm sm:text-base font-black uppercase tracking-wider text-black shadow-[0_0_25px_rgba(245,158,11,0.5)] hover:brightness-110 active:scale-95 transition-all"
+            className="flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-500 px-6 py-2.5 text-xs sm:text-sm font-bold uppercase tracking-wider text-white transition-colors shadow-sm"
           >
-            <Save className="h-5 w-5" />
-            <span>SAVE TOURNAMENT CHANGES</span>
+            <Save className="h-4 w-4" />
+            <span>Save Changes</span>
           </button>
         </div>
       </form>
