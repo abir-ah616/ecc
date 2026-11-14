@@ -190,19 +190,19 @@ export const AdminDashboardModal: React.FC = () => {
   const activeUsers = allUsers.filter((u) => u.status === 'active').length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-neutral-800 bg-[#0E0E11] text-neutral-100 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 font-ui">
+      <div className="glass-modal relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl text-slate-100">
         {/* Top Modal Header */}
-        <div className="flex items-center justify-between border-b border-neutral-800 bg-[#141418] px-6 py-4">
+        <div className="flex items-center justify-between border-b border-white/[0.08] bg-white/[0.03] px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded border border-amber-500/40 bg-amber-500/10">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-500/35 bg-amber-500/12">
               <Shield className="h-5 w-5 text-amber-400" />
             </div>
             <div>
-              <h2 className="font-display text-2xl font-bold uppercase tracking-wider text-white leading-none">
-                ADMIN ACCESS CONTROL DASHBOARD
+              <h2 className="text-base font-bold text-white leading-tight">
+                Admin Access Control
               </h2>
-              <p className="mt-0.5 text-xs text-neutral-400">
+              <p className="mt-0.5 text-xs text-slate-400">
                 Manage authorized Google emails, roles, and workspace permissions
               </p>
             </div>
@@ -211,7 +211,7 @@ export const AdminDashboardModal: React.FC = () => {
           <button
             type="button"
             onClick={() => setAdminDashboardOpen(false)}
-            className="flex h-8 w-8 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors cursor-pointer"
+            className="glass-pill flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -221,27 +221,27 @@ export const AdminDashboardModal: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Summary Counters */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="rounded border border-neutral-800 bg-neutral-900/70 px-4 py-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-                TOTAL ALLOWED EMAILS
+            <div className="glass-tile rounded-xl px-4 py-3">
+              <span className="text-[11px] font-medium text-slate-400">
+                Total Allowed Emails
               </span>
-              <div className="mt-1 font-display text-3xl font-bold text-white">
+              <div className="mt-1 text-2xl font-bold text-white tabular-nums">
                 {totalAllowed}
               </div>
             </div>
-            <div className="rounded border border-neutral-800 bg-neutral-900/70 px-4 py-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
-                ACTIVE ADMINS
+            <div className="glass-tile rounded-xl px-4 py-3">
+              <span className="text-[11px] font-medium text-amber-400">
+                Active Admins
               </span>
-              <div className="mt-1 font-display text-3xl font-bold text-amber-300">
+              <div className="mt-1 text-2xl font-bold text-amber-300 tabular-nums">
                 {activeAdmins}
               </div>
             </div>
-            <div className="rounded border border-neutral-800 bg-neutral-900/70 px-4 py-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                ACTIVE ACCOUNTS
+            <div className="glass-tile rounded-xl px-4 py-3">
+              <span className="text-[11px] font-medium text-emerald-400">
+                Active Accounts
               </span>
-              <div className="mt-1 font-display text-3xl font-bold text-emerald-300">
+              <div className="mt-1 text-2xl font-bold text-emerald-300 tabular-nums">
                 {activeUsers}
               </div>
             </div>
@@ -264,7 +264,7 @@ export const AdminDashboardModal: React.FC = () => {
           {/* Add / Authorize New Email Form */}
           <form
             onSubmit={handleAddUser}
-            className="rounded-md border border-neutral-800 bg-[#141418] p-4 space-y-3"
+            className="glass-tile rounded-xl p-4 space-y-3"
           >
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-400">
               <UserPlus className="h-4 w-4" />
@@ -273,7 +273,7 @@ export const AdminDashboardModal: React.FC = () => {
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
               <div className="sm:col-span-4">
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Google Email Address *
                 </label>
                 <input
@@ -282,12 +282,12 @@ export const AdminDashboardModal: React.FC = () => {
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   placeholder="user@gmail.com"
-                  className="w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:border-amber-500 focus:outline-none"
+                  className="glass-input w-full rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
                 />
               </div>
 
               <div className="sm:col-span-3">
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Display Name / Label
                 </label>
                 <input
@@ -295,21 +295,21 @@ export const AdminDashboardModal: React.FC = () => {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="e.g. Tournament Moderator"
-                  className="w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:border-amber-500 focus:outline-none"
+                  className="glass-input w-full rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
                 />
               </div>
 
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Access Role
                 </label>
                 <select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as UserRole)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                  className="glass-input w-full rounded-lg px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
                 >
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
+                  <option value="user" className="bg-[#121622] text-white">User</option>
+                  <option value="admin" className="bg-[#121622] text-white">Admin</option>
                 </select>
               </div>
 
@@ -317,7 +317,7 @@ export const AdminDashboardModal: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex w-full items-center justify-center gap-1.5 rounded bg-amber-500 px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-950 hover:bg-amber-400 transition-colors disabled:opacity-50 cursor-pointer h-[38px]"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold uppercase tracking-wider text-zinc-950 hover:bg-amber-400 transition-colors disabled:opacity-50 cursor-pointer h-[38px]"
                 >
                   <UserPlus className="h-4 w-4" />
                   <span>{isSubmitting ? 'SAVING...' : 'ALLOW EMAIL'}</span>
@@ -329,26 +329,26 @@ export const AdminDashboardModal: React.FC = () => {
           {/* Search & Filter Bar */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by email, name, or note..."
-                className="w-full rounded border border-neutral-800 bg-neutral-950 pl-9 pr-3 py-2 text-xs text-white placeholder-neutral-500 focus:border-neutral-600 focus:outline-none"
+                className="glass-input w-full rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-white/25 focus:outline-none"
               />
             </div>
 
-            <div className="flex items-center gap-1 rounded border border-neutral-800 bg-neutral-950 p-1 text-xs">
+            <div className="glass-input flex items-center gap-1 rounded-lg p-1 text-xs">
               {(['ALL', 'ADMIN', 'USER', 'DISABLED'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setRoleFilter(tab)}
-                  className={`rounded px-2.5 py-1 font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
+                  className={`rounded-md px-2.5 py-1 font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
                     roleFilter === tab
-                      ? 'bg-neutral-800 text-white'
-                      : 'text-neutral-400 hover:text-white'
+                      ? 'bg-white/[0.14] text-white'
+                      : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   {tab}
@@ -358,10 +358,10 @@ export const AdminDashboardModal: React.FC = () => {
           </div>
 
           {/* Allowed Users Table */}
-          <div className="overflow-hidden rounded-md border border-neutral-800 bg-[#121216]">
-            <div className="divide-y divide-neutral-800/80">
+          <div className="glass-tile overflow-hidden rounded-xl">
+            <div className="divide-y divide-white/[0.07]">
               {filteredUsers.length === 0 ? (
-                <div className="py-10 text-center text-xs text-neutral-500">
+                <div className="py-10 text-center text-xs text-slate-500">
                   No matching users found.
                 </div>
               ) : (
@@ -373,11 +373,11 @@ export const AdminDashboardModal: React.FC = () => {
                     return (
                       <div
                         key={u.email}
-                        className="bg-neutral-900/90 p-4 space-y-3"
+                        className="bg-white/[0.04] p-4 space-y-3"
                       >
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
                           <div className="sm:col-span-4">
-                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                               Email Address
                             </label>
                             <input
@@ -385,24 +385,24 @@ export const AdminDashboardModal: React.FC = () => {
                               disabled={isSuper}
                               value={editEmailInput}
                               onChange={(e) => setEditEmailInput(e.target.value)}
-                              className="w-full rounded border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
+                              className="glass-input w-full rounded-lg px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
                             />
                           </div>
 
                           <div className="sm:col-span-3">
-                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                               Display Name
                             </label>
                             <input
                               type="text"
                               value={editNameInput}
                               onChange={(e) => setEditNameInput(e.target.value)}
-                              className="w-full rounded border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-white"
+                              className="glass-input w-full rounded-lg px-2.5 py-1.5 text-xs text-white"
                             />
                           </div>
 
                           <div className="sm:col-span-2">
-                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                               Role
                             </label>
                             <select
@@ -411,15 +411,15 @@ export const AdminDashboardModal: React.FC = () => {
                               onChange={(e) =>
                                 setEditRoleInput(e.target.value as UserRole)
                               }
-                              className="w-full rounded border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
+                              className="glass-input w-full rounded-lg px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
                             >
-                              <option value="user">User</option>
-                              <option value="admin">Admin</option>
+                              <option value="user" className="bg-[#121622] text-white">User</option>
+                              <option value="admin" className="bg-[#121622] text-white">Admin</option>
                             </select>
                           </div>
 
                           <div className="sm:col-span-3">
-                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                               Account Status
                             </label>
                             <select
@@ -428,10 +428,10 @@ export const AdminDashboardModal: React.FC = () => {
                               onChange={(e) =>
                                 setEditStatusInput(e.target.value as UserStatus)
                               }
-                              className="w-full rounded border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
+                              className="glass-input w-full rounded-lg px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
                             >
-                              <option value="active">Active (Allowed)</option>
-                              <option value="disabled">Disabled (Blocked)</option>
+                              <option value="active" className="bg-[#121622] text-white">Active (Allowed)</option>
+                              <option value="disabled" className="bg-[#121622] text-white">Disabled (Blocked)</option>
                             </select>
                           </div>
                         </div>
@@ -440,7 +440,7 @@ export const AdminDashboardModal: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setEditingEmail(null)}
-                            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 cursor-pointer"
+                            className="glass-pill rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300 cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -448,7 +448,7 @@ export const AdminDashboardModal: React.FC = () => {
                             type="button"
                             onClick={() => handleSaveEdit(u.email)}
                             disabled={isSubmitting}
-                            className="flex items-center gap-1 rounded bg-emerald-600 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-emerald-500 cursor-pointer"
+                            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-emerald-500 cursor-pointer"
                           >
                             <Check className="h-3.5 w-3.5" />
                             <span>Save Changes</span>
@@ -461,16 +461,16 @@ export const AdminDashboardModal: React.FC = () => {
                   return (
                     <div
                       key={u.email}
-                      className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between hover:bg-neutral-900/40 transition-colors"
+                      className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between hover:bg-white/[0.03] transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded border font-display text-sm font-bold uppercase ${
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-xs font-bold uppercase ${
                             u.status === 'disabled'
-                              ? 'border-red-500/30 bg-red-950/30 text-red-400'
+                              ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
                               : u.role === 'admin'
-                                ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-                                : 'border-neutral-700 bg-neutral-900 text-neutral-300'
+                                ? 'border-amber-500/40 bg-amber-500/12 text-amber-300'
+                                : 'border-white/[0.12] bg-white/[0.06] text-slate-300'
                           }`}
                         >
                           {u.displayName.slice(0, 2).toUpperCase()}
@@ -485,10 +485,10 @@ export const AdminDashboardModal: React.FC = () => {
                             <span
                               className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                                 isSuper
-                                  ? 'bg-amber-500 text-neutral-950'
+                                  ? 'bg-amber-500 text-zinc-950'
                                   : u.role === 'admin'
                                     ? 'border border-amber-500/40 bg-amber-500/10 text-amber-300'
-                                    : 'border border-neutral-700 bg-neutral-900 text-neutral-300'
+                                    : 'border border-white/[0.12] bg-white/[0.06] text-slate-300'
                               }`}
                             >
                               {isSuper ? 'SUPER ADMIN' : u.role.toUpperCase()}
@@ -505,7 +505,7 @@ export const AdminDashboardModal: React.FC = () => {
                             </span>
                           </div>
 
-                          <div className="mt-0.5 truncate font-mono text-xs text-neutral-400">
+                          <div className="mt-0.5 truncate font-mono text-xs text-slate-400">
                             {u.email}
                           </div>
                         </div>
@@ -516,7 +516,7 @@ export const AdminDashboardModal: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => startEditing(u)}
-                          className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-800 transition-colors cursor-pointer"
+                          className="glass-pill flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors cursor-pointer"
                           title="Edit user name, role, or email"
                         >
                           <Edit3 className="h-3.5 w-3.5" />

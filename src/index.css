@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@import "@fontsource/plus-jakarta-sans/400.css";
+@import "@fontsource/plus-jakarta-sans/500.css";
+@import "@fontsource/plus-jakarta-sans/600.css";
+@import "@fontsource/plus-jakarta-sans/700.css";
+@import "@fontsource/plus-jakarta-sans/800.css";
 @import "@fontsource/bebas-neue";
 @import "@fontsource/oswald/400.css";
 @import "@fontsource/oswald/500.css";
@@ -39,6 +44,7 @@
 
   --font-display: 'Bebas Neue', 'Oswald', sans-serif;
   --font-body: 'Barlow Condensed', sans-serif;
+  --font-ui: 'Plus Jakarta Sans', sans-serif;
 }
 
 [data-theme="v2"] {
@@ -114,12 +120,74 @@
 }
 
 body {
-  background-color: #090A0F;
-  color: #F4F4F5;
-  font-family: var(--font-body);
+  background-color: #080B11;
+  color: #F3F4F6;
+  font-family: var(--font-ui);
   margin: 0;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+}
+
+.font-ui {
+  font-family: var(--font-ui);
+}
+
+@layer components {
+  .glass-canvas {
+    background-color: #080B12;
+    background-image: url("data:image/svg+xml,%3Csvg width='28' height='28' viewBox='0 0 28 28' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='1.5' cy='1.5' r='1' fill='%23E2E8F0' fill-opacity='0.085'/%3E%3C/svg%3E");
+  }
+
+  .glass-chrome {
+    background-color: rgba(12, 16, 26, 0.68);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .glass-panel {
+    background-color: rgba(24, 31, 48, 0.45);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 10px 28px rgba(0, 0, 0, 0.28);
+  }
+
+  .glass-tile {
+    background-color: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+
+  .glass-pill {
+    background-color: rgba(255, 255, 255, 0.065);
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  }
+
+  .glass-pill:hover {
+    background-color: rgba(255, 255, 255, 0.115);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+
+  .glass-input {
+    background-color: rgba(9, 12, 20, 0.52);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  }
+
+  .glass-accent {
+    background-color: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.36);
+    box-shadow: inset 0 1px 0 rgba(253, 224, 71, 0.16);
+  }
+
+  .glass-modal {
+    background-color: rgba(16, 20, 30, 0.84);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 20px 44px rgba(0, 0, 0, 0.45);
+  }
 }
 
 .font-display {
@@ -149,6 +217,7 @@ input[type=number]::-webkit-outer-spin-button {
 }
 input[type=number] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Custom angular bevel clip-paths for graphic themes (MUST PRESERVE) */

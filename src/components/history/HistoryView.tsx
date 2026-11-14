@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import {
-  Trophy,
   Trash2,
   Plus,
   Crown,
   Play,
   Search,
+  Image as ImageIcon,
+  Calendar,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 
@@ -19,7 +20,9 @@ export const HistoryView: React.FC = () => {
   } = useTournamentStore();
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [filterMode, setFilterMode] = useState<'ALL' | 'ACTIVE' | 'ENDED'>('ALL');
+  const [filterMode, setFilterMode] = useState<'ALL' | 'ACTIVE' | 'ENDED'>(
+    'ALL'
+  );
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredTournaments = tournaments.filter((t) => {
@@ -42,24 +45,19 @@ export const HistoryView: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-6 select-none">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-neutral-800">
-        <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold uppercase tracking-wide text-white">
-            Tournament History
-          </h1>
-          <p className="text-xs sm:text-sm text-neutral-400 font-medium mt-0.5">
-            Saved tournaments, scorecards, and standing graphics.
-          </p>
-        </div>
+    <div className="space-y-5 select-none">
+      {/* Borderless Action Intro Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p className="text-sm text-slate-300/90">
+          Open past scorecards, track winners, or export tournament graphics.
+        </p>
 
         <button
           type="button"
           onClick={() => setCurrentTab('create')}
-          className="self-start sm:self-auto flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-500 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition-colors shadow-sm"
+          className="self-start sm:self-auto inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs sm:text-sm font-semibold text-zinc-950 transition-colors"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-4 w-4" />
           <span>New Tournament</span>
         </button>
       </div>
@@ -67,27 +65,27 @@ export const HistoryView: React.FC = () => {
       {/* Filter & Search Bar */}
       {tournaments.length > 0 && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
+          <div className="relative flex-1 max-w-md">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search tournaments or teams..."
+              placeholder="Search tournament, stage, or winner..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-neutral-700 bg-neutral-900 pl-8 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-500"
+              className="glass-input w-full rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
             />
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="glass-panel inline-flex rounded-xl p-1">
             {(['ALL', 'ACTIVE', 'ENDED'] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => setFilterMode(mode)}
-                className={`rounded-md px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   filterMode === mode
-                    ? 'bg-neutral-800 text-white'
-                    : 'text-neutral-500 hover:text-neutral-300'
+                    ? 'bg-white/[0.12] text-white'
+                    : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 {mode === 'ALL'
@@ -101,56 +99,88 @@ export const HistoryView: React.FC = () => {
         </div>
       )}
 
-      {/* Tournaments List */}
-      {filteredTournaments.length > 0 ? (
+      {/* List */}
+      {tournaments.length === 0 ? (
+        <div className="glass-panel rounded-2xl border-dashed p-12 text-center space-y-3">
+          <div className="text-sm font-semibold text-slate-200">
+            No saved tournaments yet
+          </div>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            Create your first Classic Scrim or Champion Rush event to track matches and export standings posters.
+          </p>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setCurrentTab('create')}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs font-semibold text-zinc-950 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Create Tournament</span>
+            </button>
+          </div>
+        </div>
+      ) : filteredTournaments.length > 0 ? (
         <div className="grid grid-cols-1 gap-3.5">
           {filteredTournaments.map((t) => {
             const completedCount = t.matches.filter((m) => m.isCompleted).length;
             const isCurrentActive = activeTournamentId === t.id;
+            const dateLabel = new Date(t.createdAt).toLocaleDateString();
 
             return (
               <div
                 key={t.id}
-                className={`rounded-xl border p-5 transition-colors shadow-sm ${
+                className={`glass-panel rounded-2xl p-5 transition-colors ${
                   isCurrentActive
-                    ? 'border-neutral-700 bg-[#141722]'
-                    : 'border-neutral-800 bg-[#11131A] hover:bg-[#141722]'
+                    ? 'border-amber-500/40'
+                    : 'hover:border-white/[0.18]'
                 }`}
               >
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                  {/* Left: Tournament Details */}
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-neutral-900 border border-neutral-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-300">
-                        {t.settings.mode === 'CHAMPION_RUSH' ? 'Champion Rush' : 'Classic Scrim'}
+                      <span className="glass-tile rounded-md px-2 py-0.5 text-[11px] font-medium text-slate-300">
+                        {t.settings.mode === 'CHAMPION_RUSH'
+                          ? 'Champion Rush'
+                          : 'Classic Scrim'}
                       </span>
 
-                      {t.isEnded ? (
-                        <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                          Ended
-                        </span>
-                      ) : (
-                        <span className="rounded bg-emerald-950/40 border border-emerald-900/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                          Active
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                          t.isEnded
+                            ? 'bg-white/[0.08] text-slate-300'
+                            : 'bg-emerald-500/15 text-emerald-300'
+                        }`}
+                      >
+                        {t.isEnded ? 'Concluded' : 'Active'}
+                      </span>
+
+                      {isCurrentActive && (
+                        <span className="glass-accent rounded-md px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+                          Loaded
                         </span>
                       )}
 
-                      <span className="text-xs text-neutral-400 font-medium">
-                        {completedCount} of {t.matches.length} matches completed
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                        <Calendar className="h-3 w-3" />
+                        {dateLabel}
                       </span>
                     </div>
 
-                    <h2 className="font-display text-xl sm:text-2xl font-bold uppercase tracking-wide text-white truncate">
-                      {t.name}
+                    <h2 className="text-lg sm:text-xl font-bold text-white truncate">
+                      {t.settings.name}
                     </h2>
 
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-400 font-medium">
-                      <span>{t.settings.roundOrDay}</span>
+                    <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-400">
+                      <span>{t.settings.roundOrDay || 'Main Stage'}</span>
+                      <span>·</span>
+                      <span>
+                        {completedCount} of {t.matches.length} matches scored
+                      </span>
                       {t.championTeamName && (
                         <>
-                          <span>•</span>
-                          <span className="text-amber-400 font-bold flex items-center gap-1">
-                            <Crown className="h-3 w-3" />
+                          <span>·</span>
+                          <span className="inline-flex items-center gap-1 font-semibold text-amber-400">
+                            <Crown className="h-3.5 w-3.5" />
                             Winner: {t.championTeamName}
                           </span>
                         </>
@@ -158,7 +188,6 @@ export const HistoryView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Right: Actions */}
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <button
                       type="button"
@@ -166,10 +195,10 @@ export const HistoryView: React.FC = () => {
                         switchActiveTournament(t.id);
                         setCurrentTab(t.matches[0]?.id || 'results');
                       }}
-                      className="flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-500 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-white transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs font-semibold text-zinc-950 transition-colors"
                     >
-                      <Play className="h-3.5 w-3.5 fill-white" />
-                      <span>Open</span>
+                      <Play className="h-3.5 w-3.5 fill-current" />
+                      <span>Open Matches</span>
                     </button>
 
                     <button
@@ -178,25 +207,25 @@ export const HistoryView: React.FC = () => {
                         switchActiveTournament(t.id);
                         setCurrentTab('results');
                       }}
-                      className="flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-200 transition-colors"
+                      className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-200 transition-colors"
                     >
-                      <Trophy className="h-3.5 w-3.5 text-amber-400" />
-                      <span>Graphic</span>
+                      <ImageIcon className="h-3.5 w-3.5 text-amber-400" />
+                      <span>Poster</span>
                     </button>
 
                     {confirmDeleteId === t.id ? (
-                      <div className="flex items-center gap-1 rounded-lg border border-red-900 bg-red-950/60 p-1">
+                      <div className="inline-flex items-center gap-1 rounded-xl border border-rose-500/40 bg-rose-500/15 p-1">
                         <button
                           type="button"
                           onClick={() => handleDelete(t.id)}
-                          className="rounded bg-red-600 px-2 py-0.5 text-xs font-bold text-white hover:bg-red-500"
+                          className="rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-500"
                         >
-                          Delete
+                          Confirm
                         </button>
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteId(null)}
-                          className="rounded px-2 py-0.5 text-xs font-medium text-neutral-400 hover:text-white"
+                          className="rounded-lg px-2 py-1 text-xs text-slate-300 hover:text-white"
                         >
                           Cancel
                         </button>
@@ -205,7 +234,7 @@ export const HistoryView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteId(t.id)}
-                        className="rounded p-1.5 text-neutral-500 hover:text-red-400 transition-colors"
+                        className="glass-pill flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-300 transition-colors"
                         title="Delete tournament"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -218,8 +247,8 @@ export const HistoryView: React.FC = () => {
           })}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-neutral-800 bg-[#11131A]/40 p-8 text-center text-xs text-neutral-500 font-medium">
-          No tournaments found matching your search.
+        <div className="glass-panel rounded-2xl border-dashed p-10 text-center text-xs text-slate-400">
+          No tournaments found matching your filter.
         </div>
       )}
     </div>

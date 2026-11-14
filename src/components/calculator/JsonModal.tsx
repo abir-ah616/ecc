@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { Download, Upload, Copy, Check, X, AlertCircle } from 'lucide-react';
+import {
+  X,
+  Download,
+  Upload,
+  Copy,
+  Check,
+  AlertTriangle,
+  Database,
+} from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 
 interface JsonModalProps {
@@ -9,163 +17,199 @@ interface JsonModalProps {
 
 export const JsonModal: React.FC<JsonModalProps> = ({ isOpen, onClose }) => {
   const { exportJson, importJson } = useTournamentStore();
-  const [jsonText, setJsonText] = useState('');
+  const [importText, setImportText] = useState('');
+  const [statusMessage, setStatusMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const currentJson = exportJson();
+  const jsonData = exportJson();
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(currentJson);
+    navigator.clipboard.writeText(jsonData);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownloadFile = () => {
-    const blob = new Blob([currentJson], { type: 'application/json' });
+    const blob = new Blob([jsonData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tournament-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `esp-calc-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleImport = () => {
-    setError(null);
-    setSuccessMsg(null);
-    if (!jsonText.trim()) {
-      setError('Please paste JSON data to import.');
+    if (!importText.trim()) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Please paste valid backup JSON first.',
+      });
       return;
     }
-    const success = importJson(jsonText);
-    if (success) {
-      setSuccessMsg('Tournament successfully restored!');
+
+    const restored = importJson(importText);
+    if (restored) {
+      setStatusMessage({
+        type: 'success',
+        text: 'Backup restored cleanly.',
+      });
       setTimeout(() => {
         onClose();
-      }, 1200);
+        setStatusMessage(null);
+        setImportText('');
+      }, 1000);
     } else {
-      setError('Invalid JSON format or corrupted tournament schema.');
+      setStatusMessage({
+        type: 'error',
+        text: 'Invalid JSON structure. Verify backup file contents.',
+      });
     }
   };
 
-  const handleFileUpload = (file: File) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      setJsonText(content);
+    reader.onload = (ev) => {
+      const content = ev.target?.result as string;
+      if (content) setImportText(content);
     };
     reader.readAsText(file);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
-      <div className="w-full max-w-xl rounded border border-neutral-800 bg-[#14080A] p-5 shadow-2xl">
-        <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
-          <h3 className="font-display text-lg tracking-wider text-neutral-100 flex items-center gap-2">
-            <Download className="h-5 w-5 text-red-500" />
-            <span>EXPORT / IMPORT TOURNAMENT DATA</span>
-          </h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 select-none">
+      <div className="glass-modal w-full max-w-2xl rounded-2xl p-5 sm:p-6 space-y-5">
+        <div className="flex items-start justify-between border-b border-white/[0.08] pb-4">
+          <div className="flex items-center gap-3">
+            <div className="glass-tile flex h-10 w-10 items-center justify-center rounded-xl text-amber-400">
+              <Database className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">
+                Backup & Restore Data
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Export active tournament records or import a JSON backup.
+              </p>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+            aria-label="Close backup modal"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/[0.08] hover:text-white transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Export Section */}
-        <div className="py-3 border-b border-neutral-800">
-          <span className="block text-xs font-semibold uppercase tracking-wider text-neutral-300 mb-1.5">
-            Backup Current Tournament
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-800"
-            >
-              {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-              <span>{copied ? 'Copied JSON!' : 'Copy to Clipboard'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleDownloadFile}
-              className="flex items-center gap-1.5 rounded border border-red-800/60 bg-red-950/40 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-900/50"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>Download .json file</span>
-            </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Export */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Export Backup
+              </h4>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-200 transition-colors"
+                >
+                  {copied ? (
+                    <Check className="h-3 w-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3 w-3 text-slate-400" />
+                  )}
+                  <span>{copied ? 'Copied' : 'Copy'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadFile}
+                  className="inline-flex items-center gap-1 rounded-lg bg-amber-500 hover:bg-amber-400 px-2.5 py-1 text-xs font-semibold text-zinc-950 transition-colors"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>Save</span>
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              readOnly
+              value={jsonData}
+              rows={9}
+              className="glass-input w-full rounded-xl p-3 font-mono text-[11px] text-slate-300 focus:outline-none"
+            />
+          </div>
+
+          {/* Import */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Restore Backup
+              </h4>
+
+              <label className="glass-pill inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-200 transition-colors">
+                <Upload className="h-3 w-3 text-slate-400" />
+                <span>Load File</span>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            <textarea
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder="Paste exported JSON here..."
+              rows={9}
+              className="glass-input w-full rounded-xl p-3 font-mono text-[11px] text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+            />
           </div>
         </div>
 
-        {/* Import Section */}
-        <div className="pt-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
-              Restore from Backup
-            </span>
-            <label className="cursor-pointer text-xs font-medium text-red-400 hover:text-red-300 flex items-center gap-1">
-              <Upload className="h-3.5 w-3.5" />
-              <span>Upload file</span>
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileUpload(file);
-                }}
-                className="hidden"
-              />
-            </label>
+        {statusMessage && (
+          <div
+            className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs ${
+              statusMessage.type === 'success'
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                : 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+            }`}
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{statusMessage.text}</span>
           </div>
+        )}
 
-          <textarea
-            rows={5}
-            value={jsonText}
-            onChange={(e) => {
-              setJsonText(e.target.value);
-              if (error) setError(null);
-            }}
-            placeholder="Paste your tournament JSON here..."
-            className="w-full rounded border border-neutral-700 bg-neutral-950 p-2.5 font-mono text-[11px] text-neutral-200 placeholder-neutral-600 focus:border-red-500 focus:outline-none"
-          />
+        <div className="flex items-center justify-end gap-2 border-t border-white/[0.08] pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="glass-pill rounded-xl px-4 py-2 text-xs font-medium text-slate-200 transition-colors"
+          >
+            Close
+          </button>
 
-          {error && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-red-400">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {successMsg && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-400">
-              <Check className="h-3.5 w-3.5 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded border border-neutral-700 bg-neutral-900 px-3.5 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-neutral-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleImport}
-              className="flex items-center gap-1.5 rounded bg-red-700 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-600 shadow-sm"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              <span>Restore Tournament</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleImport}
+            disabled={!importText.trim()}
+            className="rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs font-semibold text-zinc-950 disabled:opacity-40 transition-colors"
+          >
+            Restore Data
+          </button>
         </div>
       </div>
     </div>
