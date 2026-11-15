@@ -16,7 +16,10 @@ export interface RosterDraftItem {
   logoUrl?: string;
 }
 
+const SCRIM_MATCH_PRESETS = [3, 4, 5, 6, 8, 10] as const;
+const RUSH_TARGET_PRESETS = [50, 75, 80, 100, 120] as const;
 const RUSH_MATCH_CEILINGS = [5, 6, 7, 8, 10] as const;
+const SQUAD_COUNT_PRESETS = [6, 8, 12, 16] as const;
 
 interface TournamentDetailsSectionProps {
   name: string;
@@ -186,6 +189,17 @@ export const FormatRulesSection: React.FC<FormatRulesSectionProps> = ({
   pointSystemSummary,
   onOpenRules,
 }) => {
+  const [showCustomTargetPts, setShowCustomTargetPts] = useState(
+    () => !(RUSH_TARGET_PRESETS as readonly number[]).includes(targetPoints)
+  );
+  const [showCustomMaxMatches, setShowCustomMaxMatches] = useState(
+    () => !(RUSH_MATCH_CEILINGS as readonly number[]).includes(maxMatches)
+  );
+  const [showCustomScrimMatches, setShowCustomScrimMatches] = useState(
+    () =>
+      !(SCRIM_MATCH_PRESETS as readonly number[]).includes(totalMatchesPlanned)
+  );
+
   return (
     <div className="glass-panel rounded-2xl p-5 space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -228,50 +242,89 @@ export const FormatRulesSection: React.FC<FormatRulesSectionProps> = ({
 
       {mode === 'CHAMPION_RUSH' ? (
         <div className="space-y-4">
-          {/* Open Numeric Field Only for Target Points */}
+          {/* Preset Chips + Custom Toggle for Target Points */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-300">
               Target Points Threshold *
             </label>
-            <div className="relative">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={999}
-                required
-                value={targetPoints || ''}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  onTargetPointsChange(Number.isNaN(val) ? 0 : Math.max(1, val));
-                }}
-                placeholder="80"
-                className="glass-input w-full rounded-xl px-3.5 py-2.5 pr-12 text-sm font-semibold text-white tabular-nums focus:border-amber-400 focus:outline-none"
-              />
-              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
-                pts
-              </span>
+            <div className="flex flex-wrap gap-2">
+              {RUSH_TARGET_PRESETS.map((pts) => {
+                const isSelected = !showCustomTargetPts && targetPoints === pts;
+                return (
+                  <button
+                    key={pts}
+                    type="button"
+                    onClick={() => {
+                      setShowCustomTargetPts(false);
+                      onTargetPointsChange(pts);
+                    }}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold tabular-nums transition-colors ${
+                      isSelected
+                        ? 'border-amber-500 bg-amber-500 text-zinc-950'
+                        : 'glass-tile text-slate-300 hover:border-white/[0.2] hover:text-white'
+                    }`}
+                  >
+                    {pts} pts
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setShowCustomTargetPts((v) => !v)}
+                className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                  showCustomTargetPts
+                    ? 'border-amber-500 bg-amber-500 text-zinc-950'
+                    : 'glass-tile text-slate-300 hover:border-white/[0.2] hover:text-white'
+                }`}
+              >
+                Custom
+              </button>
             </div>
+
+            {showCustomTargetPts && (
+              <div className="relative mt-2.5">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={999}
+                  required
+                  value={targetPoints || ''}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    onTargetPointsChange(Number.isNaN(val) ? 0 : Math.max(1, val));
+                  }}
+                  placeholder="Enter custom target points (e.g. 65)"
+                  className="glass-input w-full rounded-xl px-3.5 py-2.5 pr-12 text-sm font-semibold text-white tabular-nums focus:border-amber-400 focus:outline-none"
+                />
+                <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+                  pts
+                </span>
+              </div>
+            )}
             <p className="mt-1.5 text-[11px] text-slate-400">
-              Enter any custom point target needed before a Booyah crowns the champion.
+              Activation target before a Booyah crowns the champion.
             </p>
           </div>
 
-          {/* Exact Button Group 5, 6, 7, 8, 10 for Max Matches Ceiling */}
+          {/* Preset Buttons + Custom Toggle for Max Matches Ceiling */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-300">
               Max Matches Ceiling
             </label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="flex flex-wrap gap-2">
               {RUSH_MATCH_CEILINGS.map((count) => {
-                const isSelected = maxMatches === count;
+                const isSelected = !showCustomMaxMatches && maxMatches === count;
                 return (
                   <button
                     key={count}
                     type="button"
-                    onClick={() => onMaxMatchesChange(count)}
-                    className={`rounded-xl border py-2.5 text-center text-sm font-semibold tabular-nums transition-colors ${
+                    onClick={() => {
+                      setShowCustomMaxMatches(false);
+                      onMaxMatchesChange(count);
+                    }}
+                    className={`min-w-[46px] rounded-xl border px-3 py-2 text-center text-xs font-semibold tabular-nums transition-colors ${
                       isSelected
                         ? 'border-amber-500 bg-amber-500 text-zinc-950'
                         : 'glass-tile text-slate-300 hover:border-white/[0.2] hover:text-white'
@@ -281,7 +334,43 @@ export const FormatRulesSection: React.FC<FormatRulesSectionProps> = ({
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => setShowCustomMaxMatches((v) => !v)}
+                className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                  showCustomMaxMatches
+                    ? 'border-amber-500 bg-amber-500 text-zinc-950'
+                    : 'glass-tile text-slate-300 hover:border-white/[0.2] hover:text-white'
+                }`}
+              >
+                Custom
+              </button>
             </div>
+
+            {showCustomMaxMatches && (
+              <div className="relative mt-2.5">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={50}
+                  required
+                  value={maxMatches || ''}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    onMaxMatchesChange(
+                      Number.isNaN(val) ? 1 : Math.max(1, Math.min(50, val))
+                    );
+                  }}
+                  placeholder="Enter custom max matches (e.g. 12)"
+                  className="glass-input w-full rounded-xl px-3.5 py-2.5 pr-16 text-sm font-semibold text-white tabular-nums focus:border-amber-400 focus:outline-none"
+                />
+                <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+                  matches
+                </span>
+              </div>
+            )}
             <p className="mt-1.5 text-[11px] text-slate-400">
               If nobody activates and claims a Booyah earlier, standings finalize after {maxMatches} matches.
             </p>
@@ -292,28 +381,65 @@ export const FormatRulesSection: React.FC<FormatRulesSectionProps> = ({
           <label className="mb-1.5 block text-xs font-medium text-slate-300">
             Total Planned Matches *
           </label>
-          <div className="relative">
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={50}
-              required
-              value={totalMatchesPlanned || ''}
-              onFocus={(e) => e.target.select()}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                onTotalMatchesPlannedChange(
-                  Number.isNaN(val) ? 1 : Math.max(1, Math.min(50, val))
-                );
-              }}
-              placeholder="6"
-              className="glass-input w-full rounded-xl px-3.5 py-2.5 pr-16 text-sm font-semibold text-white tabular-nums focus:border-amber-400 focus:outline-none"
-            />
-            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
-              matches
-            </span>
+          <div className="flex flex-wrap gap-2">
+            {SCRIM_MATCH_PRESETS.map((count) => {
+              const isSelected =
+                !showCustomScrimMatches && totalMatchesPlanned === count;
+              return (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => {
+                    setShowCustomScrimMatches(false);
+                    onTotalMatchesPlannedChange(count);
+                  }}
+                  className={`min-w-[46px] rounded-xl border px-3 py-2 text-center text-xs font-semibold tabular-nums transition-colors ${
+                    isSelected
+                      ? 'border-amber-500 bg-amber-500 text-zinc-950'
+                      : 'glass-tile text-slate-300 hover:border-white/[0.2] hover:text-white'
+                  }`}
+                >
+                  {count}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setShowCustomScrimMatches((v) => !v)}
+              className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                showCustomScrimMatches
+                  ? 'border-amber-500 bg-amber-500 text-zinc-950'
+                  : 'glass-tile text-slate-300 hover:border-white/[0.2] hover:text-white'
+              }`}
+            >
+              Custom
+            </button>
           </div>
+
+          {showCustomScrimMatches && (
+            <div className="relative mt-2.5">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={50}
+                required
+                value={totalMatchesPlanned || ''}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  onTotalMatchesPlannedChange(
+                    Number.isNaN(val) ? 1 : Math.max(1, Math.min(50, val))
+                  );
+                }}
+                placeholder="Enter custom matches (e.g. 7)"
+                className="glass-input w-full rounded-xl px-3.5 py-2.5 pr-16 text-sm font-semibold text-white tabular-nums focus:border-amber-400 focus:outline-none"
+              />
+              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+                matches
+              </span>
+            </div>
+          )}
           <p className="mt-1.5 text-[11px] text-slate-400">
             Matches can also be added incrementally while the tournament is live.
           </p>
@@ -367,6 +493,12 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
 }) => {
   const [showBulkPaste, setShowBulkPaste] = useState(false);
   const [bulkText, setBulkText] = useState('');
+  const [showCustomSquadCount, setShowCustomSquadCount] = useState(
+    () => !(SQUAD_COUNT_PRESETS as readonly number[]).includes(teams.length)
+  );
+  const [customSquadDraft, setCustomSquadDraft] = useState(() =>
+    String(teams.length)
+  );
 
   const handleApplyPaste = () => {
     const lines = bulkText
@@ -393,13 +525,16 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {[6, 8, 12, 16].map((cnt) => (
+          {SQUAD_COUNT_PRESETS.map((cnt) => (
             <button
               key={cnt}
               type="button"
-              onClick={() => onSetCount(cnt)}
+              onClick={() => {
+                setShowCustomSquadCount(false);
+                onSetCount(cnt);
+              }}
               className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium tabular-nums transition-colors ${
-                teams.length === cnt
+                !showCustomSquadCount && teams.length === cnt
                   ? 'glass-accent text-amber-300'
                   : 'glass-tile text-slate-400 hover:text-white'
               }`}
@@ -407,6 +542,21 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
               {cnt}
             </button>
           ))}
+
+          <button
+            type="button"
+            onClick={() => {
+              setCustomSquadDraft(String(teams.length));
+              setShowCustomSquadCount((v) => !v);
+            }}
+            className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              showCustomSquadCount
+                ? 'glass-accent text-amber-300'
+                : 'glass-tile text-slate-400 hover:text-white'
+            }`}
+          >
+            Custom
+          </button>
 
           <button
             type="button"
@@ -429,6 +579,32 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
           )}
         </div>
       </div>
+
+      {showCustomSquadCount && (
+        <div className="glass-tile flex flex-wrap items-center gap-2.5 rounded-xl p-3">
+          <label className="text-xs font-medium text-slate-300">
+            Custom team count (2-24):
+          </label>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={2}
+            max={24}
+            value={customSquadDraft}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setCustomSquadDraft(raw);
+              const parsed = parseInt(raw, 10);
+              if (!Number.isNaN(parsed) && parsed >= 2) {
+                onSetCount(Math.min(24, parsed));
+              }
+            }}
+            placeholder="e.g. 14"
+            className="glass-input w-24 rounded-lg px-3 py-1.5 text-xs font-semibold text-white tabular-nums focus:border-amber-400 focus:outline-none"
+          />
+        </div>
+      )}
 
       {showBulkPaste && (
         <div className="glass-tile rounded-xl p-3.5 space-y-2.5">

@@ -62,7 +62,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ESP CALC'), findsOneWidget);
-    expect(find.text('Mobile Standings Studio'), findsOneWidget);
+    expect(find.text('BROADCAST STUDIO'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.byType(MaterialApp), findsOneWidget);
   });
@@ -153,9 +153,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Poster Studio'), findsOneWidget);
 
-    await tester.tap(find.text('Crimson'));
+    await tester.tap(find.text('Scarlet Strike'));
     await tester.pumpAndSettle();
-    expect(store.activeTournament?.settings.theme.name, 'crimson');
+    expect(store.activeTournament?.settings.theme.name, 'scarlet');
 
     final posterList = find
         .descendant(

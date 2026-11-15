@@ -256,13 +256,44 @@ class _OrganizerShellState extends State<OrganizerShell> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              kTournamentTemplates[i].title,
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    kTournamentTemplates[i].title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accentSurface,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: AppColors.accentBorder,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    kTournamentTemplates[i].badge,
+                                    style: const TextStyle(
+                                      color: AppColors.accentBright,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 2),
                             Text(

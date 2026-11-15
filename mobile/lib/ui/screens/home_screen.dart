@@ -1065,17 +1065,29 @@ class _RecentProjectTile extends StatelessWidget {
                 height: 52,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(9),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      palette.secondary.withValues(alpha: 0.9),
-                      const Color(0xFF121318),
-                      palette.primary.withValues(alpha: 0.78),
-                    ],
-                  ),
+                  gradient: palette.preset == ThemePreset.whiteout
+                      ? const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFFFFFFF),
+                            Color(0xFFE2E8F0),
+                            Color(0xFFDC142C),
+                          ],
+                        )
+                      : LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            palette.secondary.withValues(alpha: 0.9),
+                            const Color(0xFF121318),
+                            palette.primary.withValues(alpha: 0.78),
+                          ],
+                        ),
                   border: Border.all(
-                    color: palette.primary.withValues(alpha: 0.45),
+                    color: palette.preset == ThemePreset.whiteout
+                        ? const Color(0x88DC142C)
+                        : palette.primary.withValues(alpha: 0.45),
                   ),
                 ),
                 clipBehavior: Clip.antiAlias,
@@ -1090,7 +1102,9 @@ class _RecentProjectTile extends StatelessWidget {
                         child: Container(
                           width: 42,
                           height: 80,
-                          color: Colors.white.withValues(alpha: 0.08),
+                          color: palette.preset == ThemePreset.whiteout
+                              ? const Color(0x33DC142C)
+                              : Colors.white.withValues(alpha: 0.08),
                         ),
                       ),
                     ),
@@ -1098,16 +1112,20 @@ class _RecentProjectTile extends StatelessWidget {
                       child: Text(
                         thumbLabel,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: palette.preset == ThemePreset.whiteout
+                              ? const Color(0xFF111318)
+                              : Colors.white,
                           fontSize: 10.5,
                           fontWeight: FontWeight.w900,
                           fontStyle: FontStyle.italic,
                           height: 1.08,
                           letterSpacing: 0.2,
-                          shadows: [
-                            Shadow(color: Colors.black87, blurRadius: 8),
-                          ],
+                          shadows: palette.preset == ThemePreset.whiteout
+                              ? null
+                              : const [
+                                  Shadow(color: Colors.black87, blurRadius: 8),
+                                ],
                         ),
                       ),
                     ),

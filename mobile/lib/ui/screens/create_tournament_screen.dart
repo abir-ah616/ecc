@@ -24,6 +24,7 @@ class _DraftSquad {
 class TournamentLayoutPreset {
   final String title;
   final String subtitle;
+  final String badge;
   final TournamentMode mode;
   final String roundOrDay;
   final int squadCount;
@@ -33,6 +34,7 @@ class TournamentLayoutPreset {
   const TournamentLayoutPreset({
     required this.title,
     required this.subtitle,
+    required this.badge,
     required this.mode,
     required this.roundOrDay,
     required this.squadCount,
@@ -43,40 +45,49 @@ class TournamentLayoutPreset {
 
 const List<TournamentLayoutPreset> kTournamentTemplates = [
   TournamentLayoutPreset(
-    title: 'Classic Scrim (5 Matches)',
-    subtitle: '12 squads · 5 matches · Standard Finals layout',
+    title: 'Default Scrim',
+    subtitle: '3 matches · 12 teams · Standard Scrim format',
+    badge: 'DEFAULT',
+    mode: TournamentMode.scrim,
+    roundOrDay: 'SCRIM SERIES',
+    squadCount: 12,
+    matchesPlanned: 3,
+  ),
+  TournamentLayoutPreset(
+    title: 'Quick Champion Rush',
+    subtitle: '5 max matches · 50 pts activate · 12 teams',
+    badge: 'RUSH 50',
+    mode: TournamentMode.championRush,
+    roundOrDay: 'FINALS · RUSH 50',
+    squadCount: 12,
+    matchesPlanned: 5,
+    rushTargetPoints: 50,
+  ),
+  TournamentLayoutPreset(
+    title: 'Scrim Pro',
+    subtitle: '5 matches · 12 teams · Pro Finals layout',
+    badge: 'SCRIM PRO',
     mode: TournamentMode.scrim,
     roundOrDay: 'GRAND FINALS',
     squadCount: 12,
     matchesPlanned: 5,
   ),
   TournamentLayoutPreset(
-    title: 'Champion Rush 50',
-    subtitle: '12 squads · 50 pts target · Up to 8 matches',
+    title: 'Champion Rush Pro',
+    subtitle: '8 max matches · 80 pts activate · 12 teams',
+    badge: 'RUSH PRO',
     mode: TournamentMode.championRush,
-    roundOrDay: 'CHAMPION RUSH',
-    squadCount: 12,
-    matchesPlanned: 8,
-    rushTargetPoints: 50,
-  ),
-  TournamentLayoutPreset(
-    title: 'Champion Rush 80 Pro',
-    subtitle: '12 squads · 80 pts target · Up to 8 matches',
-    mode: TournamentMode.championRush,
-    roundOrDay: 'PRO FINALS',
+    roundOrDay: 'GRAND FINALS',
     squadCount: 12,
     matchesPlanned: 8,
     rushTargetPoints: 80,
   ),
-  TournamentLayoutPreset(
-    title: 'Fast Lobby Qualifier',
-    subtitle: '12 squads · 3 quick qualifier matches',
-    mode: TournamentMode.scrim,
-    roundOrDay: 'GROUP STAGE',
-    squadCount: 12,
-    matchesPlanned: 3,
-  ),
 ];
+
+const List<int> _kScrimMatchPresets = [3, 4, 5, 6, 8, 10];
+const List<int> _kRushTargetPresets = [50, 75, 80, 100, 120];
+const List<int> _kRushMaxMatchPresets = [5, 6, 7, 8, 10];
+const List<int> _kSquadCountPresets = [4, 6, 8, 12, 16, 18, 20];
 
 class CreateTournamentScreen extends StatefulWidget {
   final TournamentStore store;
@@ -108,8 +119,13 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
   late TextEditingController _targetPointsCtrl;
   late TextEditingController _maxMatchesCtrl;
   late TextEditingController _scrimMatchesCtrl;
+  late TextEditingController _customSquadCtrl;
   late bool _allowSameMatchActivation;
   late bool _showLogos;
+  late bool _customScrimMatches;
+  late bool _customTargetPoints;
+  late bool _customMaxMatches;
+  late bool _customSquadCount;
   String? _customLogoUrl;
   late List<_DraftSquad> _squads;
 
@@ -145,22 +161,27 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
             (t) => _DraftSquad(id: t.id, name: t.name, logoUrl: t.logoUrl),
           )
           .toList();
+      _customTargetPoints =
+          !_kRushTargetPresets.contains(s.championRush.targetPoints);
+      _customMaxMatches =
+          !_kRushMaxMatchPresets.contains(s.championRush.maxMatches);
+      _customScrimMatches =
+          !_kScrimMatchPresets.contains(s.totalMatchesPlanned);
+      _customSquadCount = !_kSquadCountPresets.contains(_squads.length);
+      _customSquadCtrl = TextEditingController(text: '${_squads.length}');
     } else {
       final preset = widget.initialPreset;
+      final initRushTarget = preset?.rushTargetPoints ?? 80;
+      final initRushMax = preset?.matchesPlanned ?? 8;
+      final initScrimMatches = preset?.matchesPlanned ?? 5;
       _mode = preset?.mode ?? TournamentMode.scrim;
       _nameCtrl = TextEditingController();
       _roundCtrl = TextEditingController(text: preset?.roundOrDay ?? 'GRAND FINALS');
       _hostCtrl = TextEditingController();
       _sponsorCtrl = TextEditingController();
-      _targetPointsCtrl = TextEditingController(
-        text: (preset?.rushTargetPoints ?? 80).toString(),
-      );
-      _maxMatchesCtrl = TextEditingController(
-        text: (preset?.matchesPlanned ?? 8).toString(),
-      );
-      _scrimMatchesCtrl = TextEditingController(
-        text: (preset?.matchesPlanned ?? 5).toString(),
-      );
+      _targetPointsCtrl = TextEditingController(text: '$initRushTarget');
+      _maxMatchesCtrl = TextEditingController(text: '$initRushMax');
+      _scrimMatchesCtrl = TextEditingController(text: '$initScrimMatches');
       _allowSameMatchActivation = false;
       _showLogos = true;
       _customLogoUrl = null;
@@ -169,6 +190,11 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
         for (int i = 1; i <= count; i++)
           _DraftSquad(id: 'new_$i', name: 'Team $i'),
       ];
+      _customTargetPoints = !_kRushTargetPresets.contains(initRushTarget);
+      _customMaxMatches = !_kRushMaxMatchPresets.contains(initRushMax);
+      _customScrimMatches = !_kScrimMatchPresets.contains(initScrimMatches);
+      _customSquadCount = !_kSquadCountPresets.contains(_squads.length);
+      _customSquadCtrl = TextEditingController(text: '${_squads.length}');
     }
   }
 
@@ -181,6 +207,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
     _targetPointsCtrl.dispose();
     _maxMatchesCtrl.dispose();
     _scrimMatchesCtrl.dispose();
+    _customSquadCtrl.dispose();
     for (final s in _squads) {
       s.dispose();
     }
@@ -211,7 +238,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
   }
 
   void _setTeamCount(int target) {
-    final clamped = target.clamp(2, 20);
+    final clamped = target.clamp(2, 24);
     HapticFeedback.selectionClick();
     setState(() {
       if (_squads.length < clamped) {
@@ -230,6 +257,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
         }
         _squads = _squads.sublist(0, clamped);
       }
+      _customSquadCtrl.text = '$clamped';
     });
   }
 
@@ -252,7 +280,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
             children: [
               const SheetHeader(
                 title: 'Paste Squad Roster',
-                subtitle: 'One squad per line or comma-separated (max 20)',
+                subtitle: 'One squad per line or comma-separated (max 24)',
               ),
               const SizedBox(height: 14),
               TextField(
@@ -274,7 +302,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                       .split(RegExp(r'[\r\n,;]+'))
                       .map((e) => e.trim())
                       .where((e) => e.isNotEmpty)
-                      .take(20)
+                      .take(24)
                       .toList();
                   Navigator.pop(ctx, parsed);
                 },
@@ -600,39 +628,56 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Pick a match count or type any custom number.',
+                  'Pick a match count or tap Custom.',
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: [3, 4, 5, 6, 8, 10].map((val) {
-                    return _QuickValueChip(
-                      label: '$val Matches',
-                      selected: currentScrimMatches == val,
+                  children: [
+                    ..._kScrimMatchPresets.map((val) {
+                      return _QuickValueChip(
+                        label: '$val Matches',
+                        selected:
+                            !_customScrimMatches && currentScrimMatches == val,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            _customScrimMatches = false;
+                            _scrimMatchesCtrl.text = '$val';
+                          });
+                        },
+                      );
+                    }),
+                    _QuickValueChip(
+                      label: 'Custom',
+                      selected: _customScrimMatches,
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        setState(() => _scrimMatchesCtrl.text = '$val');
+                        setState(() => _customScrimMatches = !_customScrimMatches);
                       },
-                    );
-                  }).toList(),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _scrimMatchesCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onChanged: (_) => setState(() {}),
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700,
+                if (_customScrimMatches) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _scrimMatchesCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Custom Total Matches',
+                      hintText: 'e.g. 7',
+                      suffixText: 'matches',
+                    ),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Custom Total Matches',
-                    suffixText: 'matches',
-                  ),
-                ),
+                ],
               ],
             ),
           )
@@ -664,34 +709,51 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: [50, 75, 80, 100, 120].map((val) {
-                    return _QuickValueChip(
-                      label: '$val pts',
-                      selected: currentTargetPts == val,
+                  children: [
+                    ..._kRushTargetPresets.map((val) {
+                      return _QuickValueChip(
+                        label: '$val pts',
+                        selected: !_customTargetPoints && currentTargetPts == val,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            _customTargetPoints = false;
+                            _targetPointsCtrl.text = '$val';
+                          });
+                        },
+                      );
+                    }),
+                    _QuickValueChip(
+                      label: 'Custom',
+                      selected: _customTargetPoints,
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        setState(() => _targetPointsCtrl.text = '$val');
+                        setState(
+                          () => _customTargetPoints = !_customTargetPoints,
+                        );
                       },
-                    );
-                  }).toList(),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _targetPointsCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onChanged: (_) => setState(() {}),
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
+                if (_customTargetPoints) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _targetPointsCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Custom Target Points',
+                      hintText: 'Enter custom target points (e.g. 65)',
+                      suffixText: 'pts',
+                    ),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Target Points',
-                    hintText: 'Enter any target point threshold',
-                    suffixText: 'pts',
-                  ),
-                ),
+                ],
                 const SizedBox(height: 18),
                 const Text(
                   'MAX MATCHES CEILING',
@@ -706,32 +768,48 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: [5, 6, 7, 8, 10].map((val) {
-                    return _QuickValueChip(
-                      label: '$val',
-                      selected: currentMaxMatches == val,
+                  children: [
+                    ..._kRushMaxMatchPresets.map((val) {
+                      return _QuickValueChip(
+                        label: '$val',
+                        selected: !_customMaxMatches && currentMaxMatches == val,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            _customMaxMatches = false;
+                            _maxMatchesCtrl.text = '$val';
+                          });
+                        },
+                      );
+                    }),
+                    _QuickValueChip(
+                      label: 'Custom',
+                      selected: _customMaxMatches,
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        setState(() => _maxMatchesCtrl.text = '$val');
+                        setState(() => _customMaxMatches = !_customMaxMatches);
                       },
-                    );
-                  }).toList(),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _maxMatchesCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onChanged: (_) => setState(() {}),
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700,
+                if (_customMaxMatches) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _maxMatchesCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Custom Max Matches Ceiling',
+                      hintText: 'e.g. 12',
+                      suffixText: 'matches',
+                    ),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Custom Max Matches Ceiling',
-                    suffixText: 'matches',
-                  ),
-                ),
+                ],
                 const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -948,14 +1026,53 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: [4, 6, 8, 12, 16, 18, 20].map((cnt) {
-            return _QuickValueChip(
-              label: '$cnt Squads',
-              selected: _squads.length == cnt,
-              onTap: () => _setTeamCount(cnt),
-            );
-          }).toList(),
+          children: [
+            ..._kSquadCountPresets.map((cnt) {
+              return _QuickValueChip(
+                label: '$cnt Squads',
+                selected: !_customSquadCount && _squads.length == cnt,
+                onTap: () {
+                  setState(() => _customSquadCount = false);
+                  _setTeamCount(cnt);
+                },
+              );
+            }),
+            _QuickValueChip(
+              label: 'Custom',
+              selected: _customSquadCount,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() {
+                  _customSquadCount = !_customSquadCount;
+                  _customSquadCtrl.text = '${_squads.length}';
+                });
+              },
+            ),
+          ],
         ),
+        if (_customSquadCount) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: _customSquadCtrl,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onChanged: (raw) {
+              final parsed = int.tryParse(raw.trim());
+              if (parsed != null && parsed >= 2) {
+                _setTeamCount(parsed);
+              }
+            },
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'Custom Squad Count (2-24)',
+              hintText: 'e.g. 14',
+              suffixText: 'squads',
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
 
         ...List.generate(_squads.length, (i) {
@@ -1050,7 +1167,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
           );
         }),
 
-        if (_squads.length < 20)
+        if (_squads.length < 24)
           SecondaryPillButton(
             label: 'Add Squad Slot',
             icon: Icons.add_rounded,
