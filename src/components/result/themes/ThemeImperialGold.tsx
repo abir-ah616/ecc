@@ -6,6 +6,7 @@ import {
   BroadcastWinnerMonolith,
 } from './BroadcastVectors';
 import { generateInitials } from '../../../store/tournamentStore';
+import { getTableDensity } from './themeHelpers';
 
 export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
   settings,
@@ -16,9 +17,13 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
   matchHeaderSubtitle,
 }) => {
   const isRush = settings.mode === 'CHAMPION_RUSH';
-  const rushTarget = settings.championRush?.targetPoints ?? 80;
   const tournamentLogo = settings.customLogoUrl;
   const showWinnerHero = isFinalResult && !!championTeam;
+  const density = getTableDensity(
+    standings.length,
+    isPortrait,
+    showWinnerHero
+  );
 
   const stageTitle = settings.roundOrDay || 'GRAND FINALS';
 
@@ -263,22 +268,22 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
           {/* Upper Row: Left Swept Wing Ribbon + Center Hexagonal Shield Crest + Right Swept Wing Ribbon */}
           <div className="flex w-full items-center justify-center">
             {/* LEFT SWEPT VECTOR WING RIBBON (ORGANIZER) */}
-            <div className="flex flex-1 items-center justify-end">
+            <div className="flex min-w-0 flex-1 items-center justify-end overflow-hidden">
               {/* Outer Decorative Vector Feather */}
               <div
-                className="mr-1.5 hidden h-8 w-5 bg-[#FF2A4B] sm:block"
+                className="mr-1.5 hidden h-8 w-5 shrink-0 bg-[#FF2A4B] sm:block"
                 style={{
                   clipPath: 'polygon(100% 0, 100% 100%, 0 100%, 45% 0)',
                 }}
               />
               <div
-                className="mr-1.5 h-9 w-4 bg-[#FFB800]"
+                className="mr-1.5 h-9 w-4 shrink-0 bg-[#FFB800]"
                 style={{
                   clipPath: 'polygon(100% 0, 100% 100%, 0 100%, 40% 0)',
                 }}
               />
               <div
-                className={`flex items-center justify-end bg-white py-1.5 pl-6 pr-7 text-[#0A0A0A] shadow-[0_10px_25px_rgba(0,0,0,0.85)] ${
+                className={`flex min-w-0 max-w-full items-center justify-end overflow-hidden bg-white py-1.5 pl-6 pr-7 text-[#0A0A0A] shadow-[0_10px_25px_rgba(0,0,0,0.85)] ${
                   isPortrait ? 'min-w-[260px]' : 'min-w-[380px]'
                 }`}
                 style={{
@@ -286,8 +291,8 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                     'polygon(16px 0, 100% 0, calc(100% - 14px) 100%, 0 100%)',
                 }}
               >
-                <div className="flex items-center gap-2.5 truncate">
-                  <span className="font-headline text-xs font-black uppercase tracking-[0.22em] text-[#FF2A4B]">
+                <div className="flex min-w-0 max-w-full items-center gap-2.5 overflow-hidden">
+                  <span className="shrink-0 font-headline text-xs font-black uppercase tracking-[0.22em] text-[#FF2A4B]">
                     HOSTED BY //
                   </span>
                   <span className="truncate font-headline text-base font-black uppercase tracking-[0.14em] text-[#0A0A0A]">
@@ -347,9 +352,9 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
             </div>
 
             {/* RIGHT SWEPT VECTOR WING RIBBON (SPONSOR / STAGE) */}
-            <div className="flex flex-1 items-center justify-start">
+            <div className="flex min-w-0 flex-1 items-center justify-start overflow-hidden">
               <div
-                className={`flex items-center justify-start bg-gradient-to-r from-[#FFB800] via-[#FF8A00] to-[#FF2A4B] py-1.5 pl-7 pr-6 text-[#0A0A0A] shadow-[0_10px_25px_rgba(0,0,0,0.85)] ${
+                className={`flex min-w-0 max-w-full items-center justify-start overflow-hidden bg-gradient-to-r from-[#FFB800] via-[#FF8A00] to-[#FF2A4B] py-1.5 pl-7 pr-6 text-[#0A0A0A] shadow-[0_10px_25px_rgba(0,0,0,0.85)] ${
                   isPortrait ? 'min-w-[260px]' : 'min-w-[380px]'
                 }`}
                 style={{
@@ -357,8 +362,8 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                     'polygon(14px 0, calc(100% - 16px) 0, 100% 100%, 0 100%)',
                 }}
               >
-                <div className="flex items-center gap-2.5 truncate">
-                  <span className="font-headline text-xs font-black uppercase tracking-[0.22em] text-[#0A0A0A]/80">
+                <div className="flex min-w-0 max-w-full items-center gap-2.5 overflow-hidden">
+                  <span className="shrink-0 font-headline text-xs font-black uppercase tracking-[0.22em] text-[#0A0A0A]/80">
                     {settings.sponsorName ? 'SPONSOR //' : 'STAGE //'}
                   </span>
                   <span className="truncate font-headline text-base font-black uppercase tracking-[0.14em] text-[#0A0A0A]">
@@ -367,13 +372,13 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                 </div>
               </div>
               <div
-                className="ml-1.5 h-9 w-4 bg-white"
+                className="ml-1.5 h-9 w-4 shrink-0 bg-white"
                 style={{
                   clipPath: 'polygon(0 0, 60% 0, 100% 100%, 0 100%)',
                 }}
               />
               <div
-                className="ml-1.5 hidden h-8 w-5 bg-[#FFB800] sm:block"
+                className="ml-1.5 hidden h-8 w-5 shrink-0 bg-[#FFB800] sm:block"
                 style={{
                   clipPath: 'polygon(0 0, 55% 0, 100% 100%, 0 100%)',
                 }}
@@ -382,9 +387,9 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
           </div>
 
           {/* Lower Center Lockup: Giant 3D-Shadowed Poster Title + Interlocking Trapezoid Stamp */}
-          <div className="mt-1 flex flex-col items-center text-center">
+          <div className="mt-1 flex w-full max-w-full flex-col items-center text-center">
             <h1
-              className={`max-w-full truncate whitespace-nowrap font-headline font-black italic uppercase leading-[0.88] tracking-tight text-white drop-shadow-[0_6px_0_#0A0A0A] ${
+              className={`w-full max-w-full truncate whitespace-nowrap font-headline font-black italic uppercase leading-[0.88] tracking-tight text-white drop-shadow-[0_6px_0_#0A0A0A] ${
                 isPortrait ? 'text-[56px]' : 'text-[70px]'
               }`}
             >
@@ -392,16 +397,16 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
             </h1>
 
             {/* Overlapping Interlocking Graphic Stamp Ribbons Under Title */}
-            <div className="mt-1.5 flex flex-nowrap items-center justify-center whitespace-nowrap">
+            <div className="mt-1.5 flex max-w-full flex-nowrap items-center justify-center whitespace-nowrap">
               {/* Left Vermilion Stage Tag */}
               <div
-                className="relative z-20 shrink-0 bg-[#FF2A4B] pl-5 pr-6 py-1 text-white shadow-lg"
+                className="relative z-20 max-w-[300px] shrink overflow-hidden bg-[#FF2A4B] pl-5 pr-6 py-1 text-white shadow-lg"
                 style={{
                   clipPath:
                     'polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)',
                 }}
               >
-                <span className="block font-headline text-sm font-black uppercase tracking-[0.2em]">
+                <span className="block truncate font-headline text-sm font-black uppercase tracking-[0.2em]">
                   {stageTitle}
                 </span>
               </div>
@@ -487,9 +492,9 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                     'polygon(16px 0, 100% 0, calc(100% - 16px) 100%, 0 100%)',
                 }}
               >
-                <span className="font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                <span className="truncate font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                   {isRush
-                    ? `${rushTarget} POINTS ACTIVATES CHAMPION RUSH`
+                    ? 'CHAMPION RUSH STANDINGS'
                     : `OFFICIAL STANDINGS // ${settings.name}`}
                 </span>
                 <span className="font-black text-[#0A0A0A]">///</span>
@@ -530,31 +535,15 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
               </div>
             </div>
 
-            {/* 12 Sculpted 4-Piece Interlocking Polygon Team Rows */}
-            <div
-              className={`flex flex-col ${
-                isPortrait
-                  ? showWinnerHero
-                    ? 'gap-1'
-                    : 'gap-2'
-                  : 'gap-1.5'
-              }`}
-            >
+            {/* Sculpted 4-Piece Interlocking Polygon Team Rows */}
+            <div className={`flex flex-col ${density.rowGapClass}`}>
               {standings.map((team) => {
                 const isRank1 = team.rank === 1;
                 const isRank2 = team.rank === 2;
                 const isRank3 = team.rank === 3;
                 const isTop3 = team.rank <= 3;
 
-                const rowHeight = isPortrait
-                  ? showWinnerHero
-                    ? 'h-[41px]'
-                    : 'h-[56px]'
-                  : showWinnerHero
-                    ? 'h-[47px]'
-                    : 'h-[50px]';
-
-                // Rank Tag Colors (Podium Gold #1, Silver #2, Coral-Bronze #3, Stark White #4-#12)
+                // Rank Tag Colors (Podium Gold #1, Silver #2, Coral-Bronze #3, Stark White #4+)
                 const rankBadgeBg = isRank1
                   ? 'linear-gradient(135deg, #FEF08A 0%, #FFB800 55%, #FF6B00 100%)'
                   : isRank2
@@ -582,7 +571,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                 return (
                   <div
                     key={team.teamId}
-                    className={`flex w-full items-stretch drop-shadow-[0_6px_14px_rgba(0,0,0,0.8)] ${rowHeight}`}
+                    className={`flex w-full items-stretch drop-shadow-[0_6px_14px_rgba(0,0,0,0.8)] ${density.rowHeightClass}`}
                   >
                     {/* PIECE 1: Left Rank Tag + Dark Obsidian Logo Spearhead */}
                     <div
@@ -616,11 +605,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                         }}
                       >
                         <span
-                          className={`font-headline font-black leading-none text-[#0A0A0A] ${
-                            isPortrait && showWinnerHero
-                              ? 'text-xl'
-                              : 'text-2xl'
-                          }`}
+                          className={`font-headline font-black leading-none text-[#0A0A0A] ${density.rankTextClass}`}
                         >
                           #{team.rank}
                         </span>
@@ -633,10 +618,12 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                             <img
                               src={team.logoUrl}
                               alt={team.teamName}
-                              className="h-7 w-7 object-contain"
+                              className={`object-contain ${density.logoSizeClass}`}
                             />
                           ) : (
-                            <span className="font-headline text-xs font-black uppercase tracking-wider text-[#FFB800]">
+                            <span
+                              className={`font-headline font-black uppercase tracking-wider text-[#FFB800] ${density.tagTextClass}`}
+                            >
                               {team.shortCode ||
                                 generateInitials(team.teamName)}
                             </span>
@@ -647,7 +634,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
 
                     {/* PIECE 2: Center High-Contrast Ivory/Gold Team Name Slash Blade */}
                     <div
-                      className="relative flex flex-1 items-center justify-between pl-7 pr-6 min-w-0"
+                      className="relative flex min-w-0 flex-1 items-center justify-between overflow-hidden pl-7 pr-6"
                       style={{
                         marginLeft: '-10px',
                         background: teamBladeBg,
@@ -679,11 +666,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
 
                       <div className="flex min-w-0 items-center gap-3">
                         <span
-                          className={`truncate font-headline font-black uppercase tracking-wide text-[#0A0A0A] ${
-                            isPortrait && showWinnerHero
-                              ? 'text-xl'
-                              : 'text-2xl'
-                          }`}
+                          className={`truncate font-headline font-black uppercase tracking-wide text-[#0A0A0A] ${density.nameTextClass}`}
                         >
                           {team.teamName}
                         </span>
@@ -693,9 +676,6 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                         <div className="ml-2 shrink-0">
                           <BroadcastRushCrownCircle
                             status={team.rushStatus.status}
-                            activeBg="#0A0A0A"
-                            activeBorder="#0A0A0A"
-                            activeIcon="#FFB800"
                             champBg="#FF2A4B"
                             champBorder="#0A0A0A"
                             champIcon="#FFFFFF"
@@ -723,13 +703,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                     >
                       {/* BOOYAH */}
                       <div className="relative flex h-full items-center justify-center">
-                        <span
-                          className={
-                            isPortrait && showWinnerHero
-                              ? 'text-xl'
-                              : 'text-2xl'
-                          }
-                        >
+                        <span className={density.statTextClass}>
                           X{team.booyahCount}
                         </span>
                         <span
@@ -740,13 +714,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
 
                       {/* ELIMS */}
                       <div className="relative flex h-full items-center justify-center">
-                        <span
-                          className={
-                            isPortrait && showWinnerHero
-                              ? 'text-xl'
-                              : 'text-2xl'
-                          }
-                        >
+                        <span className={density.statTextClass}>
                           {team.killPoints}
                         </span>
                         <span
@@ -757,13 +725,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
 
                       {/* PLACEMENT POINTS */}
                       <div className="flex h-full items-center justify-center">
-                        <span
-                          className={
-                            isPortrait && showWinnerHero
-                              ? 'text-xl'
-                              : 'text-2xl'
-                          }
-                        >
+                        <span className={density.statTextClass}>
                           {team.placementPoints}
                         </span>
                       </div>
@@ -793,11 +755,9 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                       />
 
                       <span
-                        className={`font-black leading-none ${
-                          isPortrait && showWinnerHero
-                            ? 'text-2xl'
-                            : 'text-3xl'
-                        } ${isRank1 ? 'text-white' : 'text-[#FFB800]'}`}
+                        className={`font-black leading-none ${density.totalTextClass} ${
+                          isRank1 ? 'text-white' : 'text-[#FFB800]'
+                        }`}
                       >
                         {team.totalPoints}
                       </span>
@@ -830,7 +790,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                   <BroadcastRushCrownCircle
                     status="CHAMPION"
                     champBg="#FF2A4B"
-                    champBorder="#FFFFFF"
+                    champBorder="#0A0A0A"
                     champIcon="#FFFFFF"
                     size="sm"
                   />
@@ -841,13 +801,10 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                 <div className="flex items-center gap-2">
                   <BroadcastRushCrownCircle
                     status="ACTIVE"
-                    activeBg="#0A0A0A"
-                    activeBorder="#FFB800"
-                    activeIcon="#FFB800"
                     size="sm"
                   />
                   <span className="font-headline text-xs font-black uppercase tracking-[0.16em] text-white/90">
-                    SATISFIED CONDITION ({rushTarget} PTS)
+                    SATISFIED CHAMPION RUSH CONDITION
                   </span>
                 </div>
               </div>
@@ -855,13 +812,13 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
           </div>
 
           <div
-            className="bg-[#FFB800] px-4 py-1 text-[#0A0A0A] shadow-md"
+            className="max-w-[360px] shrink-0 overflow-hidden bg-[#FFB800] px-4 py-1 text-[#0A0A0A] shadow-md"
             style={{
               clipPath:
                 'polygon(8px 0, 100% 0, 100% 100%, 0 100%)',
             }}
           >
-            <span className="block font-headline text-xs font-black uppercase tracking-[0.2em]">
+            <span className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.2em]">
               {settings.name} // {stageTitle}
             </span>
           </div>

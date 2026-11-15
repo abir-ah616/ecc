@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   X,
   UserPlus,
@@ -12,6 +12,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useAuthStore, normalizeEmail } from '../../store/authStore';
+import { isValidEmailAddress } from '../../lib/authValidation';
 import { SUPER_ADMIN_EMAIL } from '../../lib/firebase';
 import type { AllowedUserRecord, UserRole, UserStatus } from '../../types/auth';
 
@@ -48,10 +49,39 @@ export const AdminDashboardModal: React.FC = () => {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const feedbackTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current !== null) {
+        window.clearTimeout(feedbackTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAdminDashboardOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAdminDashboardOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isAdminDashboardOpen, setAdminDashboardOpen]);
 
   const showToast = (type: 'success' | 'error', text: string) => {
+    if (feedbackTimerRef.current !== null) {
+      window.clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
     setFeedback({ type, text });
-    setTimeout(() => setFeedback(null), 3500);
+    if (type === 'success') {
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedback(null);
+        feedbackTimerRef.current = null;
+      }, 4000);
+    }
   };
 
   const filteredUsers = useMemo(() => {
@@ -76,7 +106,7 @@ export const AdminDashboardModal: React.FC = () => {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = normalizeEmail(newEmail);
-    if (!clean || !clean.includes('@')) {
+    if (!isValidEmailAddress(clean)) {
       showToast('error', 'Please enter a valid Google email address.');
       return;
     }
@@ -114,7 +144,7 @@ export const AdminDashboardModal: React.FC = () => {
 
   const handleSaveEdit = async (originalEmail: string) => {
     const targetEmail = normalizeEmail(editEmailInput);
-    if (!targetEmail || !targetEmail.includes('@')) {
+    if (!isValidEmailAddress(targetEmail)) {
       showToast('error', 'Please enter a valid email address.');
       return;
     }
@@ -190,10 +220,15 @@ export const AdminDashboardModal: React.FC = () => {
   const activeUsers = allUsers.filter((u) => u.status === 'active').length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 font-ui">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Admin Access Control"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-3 sm:p-4 backdrop-blur-sm font-ui"
+    >
       <div className="glass-modal relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl text-slate-100">
         {/* Top Modal Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.08] bg-white/[0.03] px-6 py-4">
+        <div className="flex items-center justify-between border-b border-white/[0.08] bg-white/[0.03] px-4 sm:px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-500/35 bg-amber-500/12">
               <Shield className="h-5 w-5 text-amber-400" />
@@ -210,6 +245,7 @@ export const AdminDashboardModal: React.FC = () => {
 
           <button
             type="button"
+            aria-label="Close Admin Access Control"
             onClick={() => setAdminDashboardOpen(false)}
             className="glass-pill flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
@@ -217,8 +253,33 @@ export const AdminDashboardModal: React.FC = () => {
           </button>
         </div>
 
+        {/* Pinned Feedback Banner (Always visible above scroll container) */}
+        {feedback && (
+          <div
+            role="status"
+            className={`mx-4 sm:mx-6 mt-4 flex items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold ${
+              feedback.type === 'success'
+                ? 'border-emerald-500/40 bg-emerald-950/60 text-emerald-200'
+                : 'border-red-500/45 bg-red-950/70 text-red-200'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span className="break-words">{feedback.text}</span>
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss message"
+              onClick={() => setFeedback(null)}
+              className="rounded p-0.5 text-current/70 hover:text-current cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           {/* Summary Counters */}
           <div className="grid grid-cols-3 gap-3">
             <div className="glass-tile rounded-xl px-4 py-3">
@@ -247,20 +308,6 @@ export const AdminDashboardModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Feedback Banner */}
-          {feedback && (
-            <div
-              className={`flex items-center gap-2 rounded border px-4 py-2.5 text-xs font-semibold ${
-                feedback.type === 'success'
-                  ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-200'
-                  : 'border-red-500/40 bg-red-950/40 text-red-200'
-              }`}
-            >
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{feedback.text}</span>
-            </div>
-          )}
-
           {/* Add / Authorize New Email Form */}
           <form
             onSubmit={handleAddUser}
@@ -278,6 +325,10 @@ export const AdminDashboardModal: React.FC = () => {
                 </label>
                 <input
                   type="email"
+                  inputMode="email"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
@@ -292,9 +343,10 @@ export const AdminDashboardModal: React.FC = () => {
                 </label>
                 <input
                   type="text"
+                  maxLength={120}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Tournament Moderator"
+                  placeholder="Moderator name"
                   className="glass-input w-full rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
                 />
               </div>
@@ -395,6 +447,7 @@ export const AdminDashboardModal: React.FC = () => {
                             </label>
                             <input
                               type="text"
+                              maxLength={120}
                               value={editNameInput}
                               onChange={(e) => setEditNameInput(e.target.value)}
                               className="glass-input w-full rounded-lg px-2.5 py-1.5 text-xs text-white"

@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@source "../../src/components/result";
+
+@import "@fontsource/bebas-neue";
+@import "@fontsource/oswald/400.css";
+@import "@fontsource/oswald/500.css";
+@import "@fontsource/oswald/600.css";
+@import "@fontsource/oswald/700.css";
+@import "@fontsource/barlow-condensed/400.css";
+@import "@fontsource/barlow-condensed/500.css";
+@import "@fontsource/barlow-condensed/600.css";
+@import "@fontsource/barlow-condensed/700.css";
+@import "@fontsource/barlow-condensed/700-italic.css";
+@import "@fontsource/barlow-condensed/800.css";
+@import "@fontsource/barlow-condensed/800-italic.css";
+@import "@fontsource/barlow-condensed/900.css";
+@import "@fontsource/barlow-condensed/900-italic.css";
+
+:root {
+  --font-display: 'Bebas Neue', 'Oswald', sans-serif;
+  --font-headline: 'Barlow Condensed', 'Oswald', 'Bebas Neue', sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.05em;
+}
+
+.font-headline {
+  font-family: 'Barlow Condensed', 'Oswald', 'Bebas Neue', sans-serif;
+  letter-spacing: 0.03em;
+}
+
+.font-oswald {
+  font-family: 'Oswald', 'Barlow Condensed', 'Bebas Neue', sans-serif;
+}
+
+.font-numbers {
+  font-family: 'Oswald', 'Barlow Condensed', monospace, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.clip-row-bar {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 12px) 100%, 0 100%);
+}
+
+.clip-badge-slant {
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.clip-tag-slant {
+  clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%);
+}
+
+.clip-corner-cut {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+}

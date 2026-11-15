@@ -13,14 +13,20 @@ import {
 } from './TournamentFormSections';
 
 export const CreateTournamentView: React.FC = () => {
-  const { createTournament, setCurrentTab, defaultPointSystem } =
+  const { createTournament, setCurrentTab, defaultPointSystem, pendingTemplate } =
     useTournamentStore();
 
-  const [selectedMode, setSelectedMode] = useState<TournamentMode | null>(null);
+  const [selectedMode, setSelectedMode] = useState<TournamentMode | null>(
+    () => pendingTemplate?.mode ?? null
+  );
 
   // Event info
-  const [name, setName] = useState('Free Fire Championship');
-  const [roundOrDay, setRoundOrDay] = useState('Grand Finals - Day 1');
+  const [name, setName] = useState(
+    () => pendingTemplate?.defaultEventName ?? 'Free Fire Championship'
+  );
+  const [roundOrDay, setRoundOrDay] = useState(
+    () => pendingTemplate?.roundOrDay ?? 'Grand Finals - Day 1'
+  );
   const [hostName, setHostName] = useState('');
   const [sponsorName, setSponsorName] = useState('');
   const [customLogoUrl, setCustomLogoUrl] = useState<string | undefined>(
@@ -28,13 +34,21 @@ export const CreateTournamentView: React.FC = () => {
   );
 
   // Format config
-  const [totalMatchesPlanned, setTotalMatchesPlanned] = useState(6);
-  const [targetPoints, setTargetPoints] = useState(80);
-  const [maxMatches, setMaxMatches] = useState(8);
+  const [totalMatchesPlanned, setTotalMatchesPlanned] = useState(
+    () => pendingTemplate?.totalMatchesPlanned ?? 6
+  );
+  const [targetPoints, setTargetPoints] = useState(
+    () => pendingTemplate?.targetPoints ?? 80
+  );
+  const [maxMatches, setMaxMatches] = useState(
+    () => pendingTemplate?.maxMatches ?? 8
+  );
 
   // Roster
-  const [teams, setTeams] = useState<RosterDraftItem[]>(
-    Array.from({ length: 12 }, (_, i) => ({ name: `Squad ${i + 1}` }))
+  const [teams, setTeams] = useState<RosterDraftItem[]>(() =>
+    Array.from({ length: pendingTemplate?.squadCount ?? 12 }, (_, i) => ({
+      name: `Squad ${i + 1}`,
+    }))
   );
 
   const handleSetCount = (count: number) => {

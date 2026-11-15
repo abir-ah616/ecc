@@ -6,12 +6,13 @@ import type {
   TournamentSettings,
   ThemePreset,
 } from '../../types/tournament';
+import { resolveThemePreset } from '../../lib/theme';
 import { ThemeYellowFFMAI } from './themes/ThemeYellowFFMAI';
-import { ThemeCrimsonBlade } from './themes/ThemeCrimsonBlade';
+import { ThemeScarletStrike } from './themes/ThemeScarletStrike';
+import { ThemeApexVolt } from './themes/ThemeApexVolt';
+import { ThemeWhiteoutPro } from './themes/ThemeWhiteoutPro';
 import { ThemeArcticCyan } from './themes/ThemeArcticCyan';
 import { ThemeCyberRose } from './themes/ThemeCyberRose';
-import { ThemeEmeraldStreet } from './themes/ThemeEmeraldStreet';
-import { ThemeVioletPrism } from './themes/ThemeVioletPrism';
 import { ThemeImperialGold } from './themes/ThemeImperialGold';
 
 interface ResultGraphicProps {
@@ -41,7 +42,7 @@ export const ResultGraphic: React.FC<ResultGraphicProps> = ({
   const width = isPortrait ? 1080 : 1920;
   const height = isPortrait ? 1350 : 1080;
 
-  const themeName: ThemePreset = settings.theme || 'v2';
+  const themeName: ThemePreset = resolveThemePreset(settings.theme);
 
   const isFinalResult =
     Boolean(isTournamentEnded || settings.isManuallyEnded) &&
@@ -78,16 +79,16 @@ export const ResultGraphic: React.FC<ResultGraphicProps> = ({
     switch (themeName) {
       case 'v2':
         return <ThemeYellowFFMAI {...themeProps} />;
-      case 'crimson':
-        return <ThemeCrimsonBlade {...themeProps} />;
+      case 'scarlet':
+        return <ThemeScarletStrike {...themeProps} />;
+      case 'volt':
+        return <ThemeApexVolt {...themeProps} />;
+      case 'whiteout':
+        return <ThemeWhiteoutPro {...themeProps} />;
       case 'blue':
         return <ThemeArcticCyan {...themeProps} />;
       case 'gold':
         return <ThemeCyberRose {...themeProps} />;
-      case 'emerald':
-        return <ThemeEmeraldStreet {...themeProps} />;
-      case 'violet':
-        return <ThemeVioletPrism {...themeProps} />;
       case 'eclipse':
         return <ThemeImperialGold {...themeProps} />;
       default:

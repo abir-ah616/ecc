@@ -6,6 +6,7 @@ import {
   BroadcastWinnerMonolith,
 } from './BroadcastVectors';
 import { generateInitials } from '../../../store/tournamentStore';
+import { getTableDensity } from './themeHelpers';
 
 export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
   settings,
@@ -16,9 +17,13 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
   matchHeaderSubtitle,
 }) => {
   const isRush = settings.mode === 'CHAMPION_RUSH';
-  const rushTarget = settings.championRush?.targetPoints ?? 80;
   const tournamentLogo = settings.customLogoUrl;
   const showWinnerHero = isFinalResult && !!championTeam;
+  const density = getTableDensity(
+    standings.length,
+    isPortrait,
+    showWinnerHero
+  );
 
   const mainHeadline = settings.roundOrDay
     ? `${settings.roundOrDay} STANDINGS`
@@ -150,13 +155,13 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
           {/* Left: Giant Pitch-Black Italic Headline + Skewed Black Sub-Banner */}
           <div className="flex min-w-0 flex-1 flex-col items-start">
             {/* Top Organizer & Stage Kicker Plate (Strictly Single-Line No-Wrap for PNG Export) */}
-            <div className="mb-2 flex w-full flex-nowrap items-center gap-2.5 whitespace-nowrap">
+            <div className="mb-2 flex w-full max-w-full flex-nowrap items-center gap-2.5 overflow-hidden whitespace-nowrap">
               <div
-                className="shrink-0 bg-[#0A0A0A] px-3.5 py-0.5 text-white shadow-md"
+                className="max-w-[340px] shrink-0 overflow-hidden bg-[#0A0A0A] px-3.5 py-0.5 text-white shadow-md"
                 style={{ transform: 'skewX(-14deg)' }}
               >
                 <span
-                  className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.22em] text-[#FBBF24]"
+                  className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.22em] text-[#FBBF24]"
                   style={{ transform: 'skewX(14deg)' }}
                 >
                   {settings.name}
@@ -165,11 +170,11 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
 
               {settings.hostName && (
                 <div
-                  className="shrink-0 border border-black/80 bg-white/95 px-3 py-0.5 text-[#0A0A0A] shadow-sm"
+                  className="max-w-[290px] shrink-0 overflow-hidden border border-black/80 bg-white/95 px-3 py-0.5 text-[#0A0A0A] shadow-sm"
                   style={{ transform: 'skewX(-14deg)' }}
                 >
                   <span
-                    className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
+                    className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
                     style={{ transform: 'skewX(14deg)' }}
                   >
                     ORGANIZER: {settings.hostName}
@@ -179,11 +184,11 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
 
               {settings.sponsorName && (
                 <div
-                  className="shrink-0 border border-black/80 bg-[#EA580C] px-3 py-0.5 text-white shadow-sm"
+                  className="max-w-[260px] shrink-0 overflow-hidden border border-black/80 bg-[#EA580C] px-3 py-0.5 text-white shadow-sm"
                   style={{ transform: 'skewX(-14deg)' }}
                 >
                   <span
-                    className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
+                    className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
                     style={{ transform: 'skewX(14deg)' }}
                   >
                     SPONSOR: {settings.sponsorName}
@@ -194,7 +199,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
 
             {/* Massive Pitch-Black Italic Display Headline */}
             <h1
-              className={`whitespace-nowrap font-headline font-black italic uppercase leading-[0.92] tracking-tight text-[#0A0A0A] drop-shadow-[0_2px_0_rgba(255,255,255,0.35)] ${
+              className={`max-w-full truncate whitespace-nowrap font-headline font-black italic uppercase leading-[0.92] tracking-tight text-[#0A0A0A] drop-shadow-[0_2px_0_rgba(255,255,255,0.35)] ${
                 isPortrait ? 'text-[64px]' : 'text-[80px]'
               }`}
             >
@@ -309,7 +314,9 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                     style={{ transform: 'skewX(12deg)' }}
                   >
                     {isRush
-                      ? `${rushTarget} POINTS ACTIVATES CHAMPION RUSH`
+                      ? isPortrait
+                        ? 'CHAMPION RUSH STANDINGS'
+                        : `CHAMPION RUSH STANDINGS // ${settings.name}`
                       : isPortrait
                         ? 'OFFICIAL TOURNAMENT STANDINGS'
                         : `OFFICIAL STANDINGS // ${settings.name}`}
@@ -341,40 +348,21 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
               </div>
             </div>
 
-            {/* 12 Skewed Parallelogram Team Rows */}
-            <div
-              className={`flex flex-col ${
-                isPortrait
-                  ? showWinnerHero
-                    ? 'gap-1'
-                    : 'gap-2'
-                  : 'gap-1.5'
-              }`}
-            >
+            {/* Skewed Parallelogram Team Rows */}
+            <div className={`flex flex-col ${density.rowGapClass}`}>
               {standings.map((team) => {
                 const isTop1 = team.rank === 1;
                 const isTop3 = team.rank <= 3;
-                const rowHeight = isPortrait
-                  ? showWinnerHero
-                    ? 'h-[42px]'
-                    : 'h-[58px]'
-                  : showWinnerHero
-                    ? 'h-[48px]'
-                    : 'h-[52px]';
 
                 return (
                   <div
                     key={team.teamId}
-                    className={`flex w-full items-center pr-2 ${rowHeight}`}
+                    className={`flex w-full items-center pr-2 ${density.rowHeightClass}`}
                   >
                     {/* Left Floating Rank Number */}
                     <div className="flex w-11 shrink-0 items-center justify-center pr-2">
                       <span
-                        className={`font-headline font-black italic leading-none ${
-                          isPortrait && showWinnerHero
-                            ? 'text-2xl'
-                            : 'text-3xl'
-                        } ${
+                        className={`font-headline font-black italic leading-none ${density.rankTextClass} ${
                           isTop1
                             ? 'text-[#FBBF24] drop-shadow-[0_0_10px_rgba(251,191,36,0.6)]'
                             : isTop3
@@ -400,7 +388,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                         <div className="flex w-14 shrink-0 items-center justify-center border-r-2 border-[#0A0A0A] bg-[#111111]">
                           <div
                             style={{ transform: 'skewX(12deg)' }}
-                            className="flex h-8 w-8 items-center justify-center"
+                            className={`flex items-center justify-center ${density.logoSizeClass}`}
                           >
                             {team.logoUrl ? (
                               <img
@@ -409,7 +397,9 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                                 className="h-full w-full object-contain"
                               />
                             ) : (
-                              <span className="font-headline text-sm font-black uppercase tracking-wider text-[#FBBF24]">
+                              <span
+                                className={`font-headline font-black uppercase tracking-wider text-[#FBBF24] ${density.tagTextClass}`}
+                              >
                                 {team.shortCode ||
                                   generateInitials(team.teamName)}
                               </span>
@@ -420,7 +410,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
 
                       {/* 2. Solid Warm Cream-Gold Team Name Plate with STARK BLACK TEXT */}
                       <div
-                        className="flex flex-1 items-center justify-between px-5"
+                        className="flex min-w-0 flex-1 items-center justify-between overflow-hidden px-5"
                         style={{
                           background: isTop1
                             ? 'linear-gradient(90deg, #FDE047 0%, #FEF08A 100%)'
@@ -434,11 +424,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                           className="flex min-w-0 items-center gap-3"
                         >
                           <span
-                            className={`truncate font-headline font-black uppercase tracking-wide text-[#0A0A0A] ${
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }`}
+                            className={`truncate font-headline font-black uppercase tracking-wide text-[#0A0A0A] ${density.nameTextClass}`}
                           >
                             {team.teamName}
                           </span>
@@ -452,9 +438,6 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                           >
                             <BroadcastRushCrownCircle
                               status={team.rushStatus.status}
-                              activeBg="#0A0A0A"
-                              activeBorder="#0A0A0A"
-                              activeIcon="#FFFFFF"
                               champBg="#F59E0B"
                               champBorder="#0A0A0A"
                               champIcon="#0A0A0A"
@@ -485,11 +468,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.booyahCount}
                           </span>
@@ -500,11 +479,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.killPoints}
                           </span>
@@ -515,11 +490,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.placementPoints}
                           </span>
@@ -530,11 +501,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                         <div className="flex h-full items-center justify-center bg-black/10">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={`font-black ${
-                              isPortrait && showWinnerHero
-                                ? 'text-2xl'
-                                : 'text-3xl'
-                            }`}
+                            className={`font-black ${density.totalTextClass}`}
                           >
                             {team.totalPoints}
                           </span>
@@ -561,7 +528,13 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                   style={{ transform: 'skewX(12deg)' }}
                   className="flex items-center gap-2.5"
                 >
-                  <BroadcastRushCrownCircle status="CHAMPION" size="sm" />
+                  <BroadcastRushCrownCircle
+                    status="CHAMPION"
+                    champBg="#F59E0B"
+                    champBorder="#0A0A0A"
+                    champIcon="#0A0A0A"
+                    size="sm"
+                  />
                   <span className="font-headline text-xs font-black uppercase tracking-[0.16em] text-[#FDE68A]">
                     WON BY CHAMPION RUSH
                   </span>

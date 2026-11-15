@@ -13,25 +13,11 @@ import {
 import { useTournamentStore } from '../../store/tournamentStore';
 import { calculateSingleMatchStandings } from '../../lib/scoring';
 import { ResultGraphic } from './ResultGraphic';
+import { GRAPHIC_THEMES, resolveThemePreset } from '../../lib/theme';
 import type {
   AspectRatioMode,
   StandingsViewMode,
-  ThemePreset,
 } from '../../types/tournament';
-
-const GRAPHIC_THEMES: {
-  id: ThemePreset;
-  label: string;
-  swatchColor: string;
-}[] = [
-  { id: 'v2', label: 'FF Yellow', swatchColor: '#F59E0B' },
-  { id: 'blue', label: 'Arctic Cyan', swatchColor: '#06B6D4' },
-  { id: 'gold', label: 'Cyber Rose', swatchColor: '#FF2A6D' },
-  { id: 'eclipse', label: 'Imperial Gold', swatchColor: '#EAB308' },
-  { id: 'crimson', label: 'Crimson Blade', swatchColor: '#E02A36' },
-  { id: 'emerald', label: 'Emerald Street', swatchColor: '#10B981' },
-  { id: 'violet', label: 'Violet Prism', swatchColor: '#8B5CF6' },
-];
 
 export const ResultView: React.FC = () => {
   const {
@@ -370,7 +356,7 @@ export const ResultView: React.FC = () => {
           </span>
           <div className="flex flex-wrap items-center gap-2">
             {GRAPHIC_THEMES.map((theme) => {
-              const isSelected = settings.theme === theme.id;
+              const isSelected = resolveThemePreset(settings.theme) === theme.id;
               return (
                 <button
                   key={theme.id}
@@ -383,8 +369,10 @@ export const ResultView: React.FC = () => {
                   }`}
                 >
                   <span
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: theme.swatchColor }}
+                    className="h-2.5 w-2.5 rounded-full shrink-0 border border-white/20"
+                    style={{
+                      background: `linear-gradient(135deg, ${theme.swatchColor} 0%, ${theme.swatchSecondary} 100%)`,
+                    }}
                   />
                   <span>{theme.label}</span>
                 </button>

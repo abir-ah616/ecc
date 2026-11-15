@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "497488916740",
+    "project_id": "esp-calc-oppy-2026",
+    "storage_bucket": "esp-calc-oppy-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:497488916740:android:22cdd9735ff26d8fdae051",
+        "android_client_info": {
+          "package_name": "com.esports.espcalc.esp_calc_mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "497488916740-qbg8a3hus71uubu11cdnut42kdoo4u34.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.esports.espcalc.esp_calc_mobile",
+            "certificate_hash": "5195fd01c2b0fcb895ca758623b40d6841e90477"
+          }
+        },
+        {
+          "client_id": "497488916740-q0p8od2b9jb8os4oo5ttelfcqmdlhgls.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZxTdy9wtRhmT_4AjdSPGkQx081C96QVE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "497488916740-q0p8od2b9jb8os4oo5ttelfcqmdlhgls.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

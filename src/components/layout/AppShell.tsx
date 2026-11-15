@@ -4,7 +4,6 @@ import {
   PlusCircle,
   SlidersHorizontal,
   History,
-  Trophy,
   Users,
   Database,
   Shield,
@@ -22,6 +21,7 @@ import {
 import { useTournamentStore } from '../../store/tournamentStore';
 import { useAuthStore } from '../../store/authStore';
 import { Footer } from './Footer';
+import { EspCalcLogoMark, OrganizerAvatar } from '../ui/BrandLogo';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -157,21 +157,19 @@ export const AppShell: React.FC<AppShellProps> = ({
   const renderSidebarContent = () => (
     <div className="flex h-full flex-col justify-between">
       <div className="space-y-6 overflow-y-auto px-3 py-4">
-        {/* Brand Logo (Clean Frosted Icon Tile, Zero Glow) */}
+        {/* Brand Logo Matching Mobile Broadcast Crest */}
         <button
           type="button"
           onClick={() => navigate('home')}
-          className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-white/[0.05] transition-colors"
+          className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-white/[0.04] transition-colors cursor-pointer"
         >
-          <div className="glass-tile flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-amber-400">
-            <Trophy className="h-4.5 w-4.5" />
-          </div>
+          <EspCalcLogoMark size={38} className="shrink-0" />
           <div className="min-w-0">
-            <div className="text-sm font-bold tracking-wide text-slate-100">
+            <div className="text-sm font-extrabold tracking-wide text-slate-100 leading-none">
               ESP CALC
             </div>
-            <div className="text-[11px] text-slate-400 truncate">
-              Standings Studio
+            <div className="mt-1 text-[9.5px] font-semibold tracking-[0.22em] text-slate-400 truncate">
+              BROADCAST STUDIO
             </div>
           </div>
         </button>
@@ -398,20 +396,28 @@ export const AppShell: React.FC<AppShellProps> = ({
         )}
 
         {firebaseUser && (
-          <div className="glass-tile flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 mt-1">
-            <div className="min-w-0">
-              <div className="truncate text-xs font-medium text-slate-200">
-                {firebaseUser.displayName || 'Authorized User'}
-              </div>
-              <div className="truncate text-[11px] text-slate-400">
-                {firebaseUser.email}
+          <div className="glass-tile flex items-center justify-between gap-2.5 rounded-xl px-2.5 py-2 mt-1">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <OrganizerAvatar
+                name={firebaseUser.displayName}
+                email={firebaseUser.email}
+                photoUrl={firebaseUser.photoURL}
+                size={32}
+              />
+              <div className="min-w-0">
+                <div className="truncate text-xs font-semibold text-slate-200">
+                  {firebaseUser.displayName || 'Authorized User'}
+                </div>
+                <div className="truncate text-[11px] text-slate-400">
+                  {firebaseUser.email}
+                </div>
               </div>
             </div>
             <button
               type="button"
               onClick={logout}
               title="Sign out"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 transition-colors"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 transition-colors cursor-pointer"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -422,17 +428,16 @@ export const AppShell: React.FC<AppShellProps> = ({
   );
 
   return (
-    <div className="glass-canvas relative min-h-screen text-slate-100 flex font-ui selection:bg-amber-500/30 selection:text-amber-100">
-      {/* Static Lightweight Architectural Glass Depth Shapes (Zero Gradients, Zero Animation) */}
-      <svg
+    <div className="studio-canvas relative min-h-screen text-slate-100 flex font-ui selection:bg-amber-500/30 selection:text-amber-100">
+      {/* Lightweight Static Atmospheric Rim Tint (Zero SVG Filters, Zero Blur) */}
+      <div
         aria-hidden="true"
-        viewBox="0 0 1440 900"
-        preserveAspectRatio="xMidYMid slice"
-        className="pointer-events-none fixed inset-0 z-0 h-full w-full"
-      >
-        <circle cx="960" cy="180" r="240" fill="#F59E0B" fillOpacity="0.05" />
-        <circle cx="520" cy="700" r="260" fill="#38BDF8" fillOpacity="0.045" />
-      </svg>
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{
+          background:
+            'radial-gradient(ellipse 60% 40% at 88% 0%, rgba(245, 158, 11, 0.065), transparent 72%)',
+        }}
+      />
 
       {/* Desktop Left Frosted Glass Navigation Rail */}
       <aside className="glass-chrome relative z-20 hidden md:flex md:w-64 shrink-0 flex-col border-r border-white/[0.08] sticky top-0 h-screen">
@@ -542,18 +547,18 @@ export const AppShell: React.FC<AppShellProps> = ({
         </main>
       </div>
 
-      {/* Mobile Bottom Frosted Glass Navigation Bar */}
+      {/* Mobile Bottom Broadcast Navigation Bar */}
       <nav
         aria-label="Mobile navigation"
-        className="glass-chrome fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.08] px-2 py-1.5 md:hidden select-none"
+        className="glass-chrome fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.09] px-2.5 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] md:hidden select-none"
       >
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-4 gap-1.5">
           <button
             type="button"
             onClick={() => navigate('home')}
-            className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-[11px] font-medium border transition-colors ${
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
               currentTab === 'home'
-                ? 'glass-accent text-amber-300'
+                ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -565,9 +570,9 @@ export const AppShell: React.FC<AppShellProps> = ({
             <button
               type="button"
               onClick={() => navigate(preferredMatch.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-[11px] font-medium border transition-colors ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
                 matches.some((m) => m.id === currentTab)
-                  ? 'glass-accent text-amber-300'
+                  ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -578,9 +583,9 @@ export const AppShell: React.FC<AppShellProps> = ({
             <button
               type="button"
               onClick={() => navigate('create')}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-[11px] font-medium border transition-colors ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
                 currentTab === 'create'
-                  ? 'glass-accent text-amber-300'
+                  ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -593,9 +598,9 @@ export const AppShell: React.FC<AppShellProps> = ({
             <button
               type="button"
               onClick={() => navigate('results')}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-[11px] font-medium border transition-colors ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
                 currentTab === 'results'
-                  ? 'glass-accent text-amber-300'
+                  ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -606,9 +611,9 @@ export const AppShell: React.FC<AppShellProps> = ({
             <button
               type="button"
               onClick={() => navigate('rules')}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-[11px] font-medium border transition-colors ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
                 currentTab === 'rules' || currentTab === 'setup'
-                  ? 'glass-accent text-amber-300'
+                  ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -620,9 +625,9 @@ export const AppShell: React.FC<AppShellProps> = ({
           <button
             type="button"
             onClick={() => navigate('history')}
-            className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-[11px] font-medium border transition-colors ${
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
               currentTab === 'history'
-                ? 'glass-accent text-amber-300'
+                ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >

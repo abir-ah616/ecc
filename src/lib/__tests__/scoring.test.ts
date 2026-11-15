@@ -52,7 +52,7 @@ describe('Scoring Engine - Unit Tests', () => {
           maxMatches: 5,
           allowSameMatchBooyahActivation: false,
         },
-        theme: 'crimson',
+        theme: 'scarlet',
       };
 
       // Match 1: Team A gets 1st place (12 pts) + 10 kills = 22 pts
@@ -92,7 +92,7 @@ describe('Scoring Engine - Unit Tests', () => {
           maxMatches: 5,
           allowSameMatchBooyahActivation: false,
         },
-        theme: 'crimson',
+        theme: 'scarlet',
       };
 
       const match1: Match = {
@@ -140,7 +140,7 @@ describe('Scoring Engine - Unit Tests', () => {
         maxMatches: 5,
         allowSameMatchBooyahActivation: false,
       },
-      theme: 'crimson',
+      theme: 'scarlet',
     };
 
     it('breaks ties using booyah count first when total points are equal', () => {
@@ -242,7 +242,7 @@ describe('Scoring Engine - Unit Tests', () => {
         maxMatches: 5,
         allowSameMatchBooyahActivation: false, // Default: must be active *prior*
       },
-      theme: 'crimson',
+      theme: 'scarlet',
     };
 
     it('does NOT crown champion if team crosses target in the same match where it gets Booyah (default toggle OFF)', () => {

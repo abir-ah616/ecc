@@ -1,0 +1,1177 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../models/tournament_models.dart';
+import '../../state/tournament_state.dart';
+import '../../theme/app_theme.dart';
+import '../widgets/app_components.dart';
+
+class _DraftSquad {
+  String id;
+  TextEditingController controller;
+  String? logoUrl;
+
+  _DraftSquad({
+    required this.id,
+    required String name,
+    this.logoUrl,
+  }) : controller = TextEditingController(text: name);
+
+  void dispose() => controller.dispose();
+}
+
+class TournamentLayoutPreset {
+  final String title;
+  final String subtitle;
+  final TournamentMode mode;
+  final String roundOrDay;
+  final int squadCount;
+  final int matchesPlanned;
+  final int rushTargetPoints;
+
+  const TournamentLayoutPreset({
+    required this.title,
+    required this.subtitle,
+    required this.mode,
+    required this.roundOrDay,
+    required this.squadCount,
+    required this.matchesPlanned,
+    this.rushTargetPoints = 80,
+  });
+}
+
+const List<TournamentLayoutPreset> kTournamentTemplates = [
+  TournamentLayoutPreset(
+    title: 'Classic Scrim (5 Matches)',
+    subtitle: '12 squads · 5 matches · Standard Finals layout',
+    mode: TournamentMode.scrim,
+    roundOrDay: 'GRAND FINALS',
+    squadCount: 12,
+    matchesPlanned: 5,
+  ),
+  TournamentLayoutPreset(
+    title: 'Champion Rush 50',
+    subtitle: '12 squads · 50 pts target · Up to 8 matches',
+    mode: TournamentMode.championRush,
+    roundOrDay: 'CHAMPION RUSH',
+    squadCount: 12,
+    matchesPlanned: 8,
+    rushTargetPoints: 50,
+  ),
+  TournamentLayoutPreset(
+    title: 'Champion Rush 80 Pro',
+    subtitle: '12 squads · 80 pts target · Up to 8 matches',
+    mode: TournamentMode.championRush,
+    roundOrDay: 'PRO FINALS',
+    squadCount: 12,
+    matchesPlanned: 8,
+    rushTargetPoints: 80,
+  ),
+  TournamentLayoutPreset(
+    title: 'Fast Lobby Qualifier',
+    subtitle: '12 squads · 3 quick qualifier matches',
+    mode: TournamentMode.scrim,
+    roundOrDay: 'GROUP STAGE',
+    squadCount: 12,
+    matchesPlanned: 3,
+  ),
+];
+
+class CreateTournamentScreen extends StatefulWidget {
+  final TournamentStore store;
+  final TournamentRecord? editingTournament;
+  final TournamentLayoutPreset? initialPreset;
+  final VoidCallback onSaved;
+  final VoidCallback? onCancel;
+
+  const CreateTournamentScreen({
+    super.key,
+    required this.store,
+    this.editingTournament,
+    this.initialPreset,
+    required this.onSaved,
+    this.onCancel,
+  });
+
+  @override
+  State<CreateTournamentScreen> createState() => _CreateTournamentScreenState();
+}
+
+class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
+  int _step = 0; // 0 = Format & Rules, 1 = Squads & Branding
+  late TournamentMode _mode;
+  late TextEditingController _nameCtrl;
+  late TextEditingController _roundCtrl;
+  late TextEditingController _hostCtrl;
+  late TextEditingController _sponsorCtrl;
+  late TextEditingController _targetPointsCtrl;
+  late TextEditingController _maxMatchesCtrl;
+  late TextEditingController _scrimMatchesCtrl;
+  late bool _allowSameMatchActivation;
+  late bool _showLogos;
+  String? _customLogoUrl;
+  late List<_DraftSquad> _squads;
+
+  final ImagePicker _picker = ImagePicker();
+
+  bool get _isEditing => widget.editingTournament != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final edit = widget.editingTournament;
+    if (edit != null) {
+      final s = edit.settings;
+      _mode = s.mode;
+      _nameCtrl = TextEditingController(text: s.name);
+      _roundCtrl = TextEditingController(text: s.roundOrDay);
+      _hostCtrl = TextEditingController(text: s.hostName ?? '');
+      _sponsorCtrl = TextEditingController(text: s.sponsorName ?? '');
+      _targetPointsCtrl = TextEditingController(
+        text: s.championRush.targetPoints.toString(),
+      );
+      _maxMatchesCtrl = TextEditingController(
+        text: s.championRush.maxMatches.toString(),
+      );
+      _scrimMatchesCtrl = TextEditingController(
+        text: s.totalMatchesPlanned.toString(),
+      );
+      _allowSameMatchActivation = s.championRush.allowSameMatchBooyahActivation;
+      _showLogos = s.showLogos;
+      _customLogoUrl = s.customLogoUrl;
+      _squads = edit.teams
+          .map(
+            (t) => _DraftSquad(id: t.id, name: t.name, logoUrl: t.logoUrl),
+          )
+          .toList();
+    } else {
+      final preset = widget.initialPreset;
+      _mode = preset?.mode ?? TournamentMode.scrim;
+      _nameCtrl = TextEditingController();
+      _roundCtrl = TextEditingController(text: preset?.roundOrDay ?? 'GRAND FINALS');
+      _hostCtrl = TextEditingController();
+      _sponsorCtrl = TextEditingController();
+      _targetPointsCtrl = TextEditingController(
+        text: (preset?.rushTargetPoints ?? 80).toString(),
+      );
+      _maxMatchesCtrl = TextEditingController(
+        text: (preset?.matchesPlanned ?? 8).toString(),
+      );
+      _scrimMatchesCtrl = TextEditingController(
+        text: (preset?.matchesPlanned ?? 5).toString(),
+      );
+      _allowSameMatchActivation = false;
+      _showLogos = true;
+      _customLogoUrl = null;
+      final count = preset?.squadCount ?? 12;
+      _squads = [
+        for (int i = 1; i <= count; i++)
+          _DraftSquad(id: 'new_$i', name: 'Team $i'),
+      ];
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _roundCtrl.dispose();
+    _hostCtrl.dispose();
+    _sponsorCtrl.dispose();
+    _targetPointsCtrl.dispose();
+    _maxMatchesCtrl.dispose();
+    _scrimMatchesCtrl.dispose();
+    for (final s in _squads) {
+      s.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<String?> _pickImageAsDataUrl() async {
+    try {
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 320,
+        maxHeight: 320,
+        imageQuality: 85,
+      );
+      if (file == null) return null;
+      final bytes = await file.readAsBytes();
+      final lower = file.name.toLowerCase();
+      final mime = lower.endsWith('.png') ? 'image/png' : 'image/jpeg';
+      return 'data:$mime;base64,${base64Encode(bytes)}';
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not read image from gallery.')),
+        );
+      }
+      return null;
+    }
+  }
+
+  void _setTeamCount(int target) {
+    final clamped = target.clamp(2, 20);
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_squads.length < clamped) {
+        for (int i = _squads.length + 1; i <= clamped; i++) {
+          _squads.add(
+            _DraftSquad(
+              id: 'new_${DateTime.now().microsecondsSinceEpoch}_$i',
+              name: 'Team $i',
+            ),
+          );
+        }
+      } else if (_squads.length > clamped) {
+        final removed = _squads.sublist(clamped);
+        for (final s in removed) {
+          s.dispose();
+        }
+        _squads = _squads.sublist(0, clamped);
+      }
+    });
+  }
+
+  Future<void> _openPasteRosterSheet() async {
+    final pasteCtrl = TextEditingController();
+    final result = await showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            0,
+            20,
+            MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SheetHeader(
+                title: 'Paste Squad Roster',
+                subtitle: 'One squad per line or comma-separated (max 20)',
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: pasteCtrl,
+                maxLines: 7,
+                autofocus: true,
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'EVOS DIVINE\nTEAM VAMPIRES\nBURIRAM UNITED\n...',
+                ),
+              ),
+              const SizedBox(height: 16),
+              PrimaryPillButton(
+                label: 'Apply Roster',
+                icon: Icons.playlist_add_check_rounded,
+                expand: true,
+                onPressed: () {
+                  final parsed = pasteCtrl.text
+                      .split(RegExp(r'[\r\n,;]+'))
+                      .map((e) => e.trim())
+                      .where((e) => e.isNotEmpty)
+                      .take(20)
+                      .toList();
+                  Navigator.pop(ctx, parsed);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    pasteCtrl.dispose();
+    if (result != null && result.isNotEmpty && mounted) {
+      HapticFeedback.mediumImpact();
+      setState(() {
+        for (final s in _squads) {
+          s.dispose();
+        }
+        _squads = [
+          for (int i = 0; i < result.length; i++)
+            _DraftSquad(
+              id: 'pasted_${DateTime.now().microsecondsSinceEpoch}_$i',
+              name: result[i],
+            ),
+        ];
+      });
+    }
+  }
+
+  void _submit() {
+    final targetPts =
+        (int.tryParse(_targetPointsCtrl.text.trim()) ?? 80).clamp(1, 999);
+    final maxMatches =
+        (int.tryParse(_maxMatchesCtrl.text.trim()) ?? 8).clamp(1, 50);
+    final scrimMatches =
+        (int.tryParse(_scrimMatchesCtrl.text.trim()) ?? 5).clamp(1, 50);
+
+    final rushConfig = ChampionRushConfig(
+      targetPoints: targetPts,
+      maxMatches: maxMatches,
+      allowSameMatchBooyahActivation: _allowSameMatchActivation,
+    );
+
+    if (_isEditing) {
+      final edit = widget.editingTournament!;
+      final nextTeams = [
+        for (int i = 0; i < _squads.length; i++)
+          Team(
+            id: _squads[i].id,
+            name: _squads[i].controller.text.trim().isEmpty
+                ? 'Team ${i + 1}'
+                : _squads[i].controller.text.trim(),
+            logoUrl: _squads[i].logoUrl,
+          ),
+      ];
+      widget.store.updateTournament(
+        edit.id,
+        name: _nameCtrl.text.trim().isEmpty ? edit.name : _nameCtrl.text.trim(),
+        mode: _mode,
+        roundOrDay: _roundCtrl.text.trim().isEmpty
+            ? 'FINALS'
+            : _roundCtrl.text.trim(),
+        hostName: _hostCtrl.text.trim(),
+        sponsorName: _sponsorCtrl.text.trim(),
+        showLogos: _showLogos,
+        customLogoUrl: _customLogoUrl,
+        clearCustomLogo: _customLogoUrl == null,
+        totalMatchesPlanned: scrimMatches,
+        championRush: rushConfig,
+        teams: nextTeams,
+      );
+    } else {
+      widget.store.createTournament(
+        name: _nameCtrl.text.trim(),
+        mode: _mode,
+        roundOrDay: _roundCtrl.text.trim(),
+        hostName: _hostCtrl.text.trim(),
+        sponsorName: _sponsorCtrl.text.trim(),
+        showLogos: _showLogos,
+        customLogoUrl: _customLogoUrl,
+        squadInputs: _squads
+            .map(
+              (s) => (
+                name: s.controller.text.trim(),
+                logoUrl: s.logoUrl,
+              ),
+            )
+            .toList(),
+        totalMatchesPlanned: scrimMatches,
+        championRush: rushConfig,
+      );
+    }
+
+    HapticFeedback.heavyImpact();
+    widget.onSaved();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentTargetPts = int.tryParse(_targetPointsCtrl.text.trim());
+    final currentMaxMatches = int.tryParse(_maxMatchesCtrl.text.trim());
+    final currentScrimMatches = int.tryParse(_scrimMatchesCtrl.text.trim());
+
+    return Column(
+      children: [
+        // Top Header + Progress Stepper
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (_step == 1 || widget.onCancel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: IconButton(
+                        onPressed: () {
+                          if (_step == 1) {
+                            setState(() => _step = 0);
+                          } else {
+                            widget.onCancel?.call();
+                          }
+                        },
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppColors.surfaceElevated,
+                          side: const BorderSide(color: AppColors.borderSubtle),
+                        ),
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          size: 18,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isEditing ? 'Edit Tournament' : 'New Tournament',
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        Text(
+                          _step == 0
+                              ? 'Step 1 of 2 · Format & Rules'
+                              : 'Step 2 of 2 · Squads & Branding',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _step == 1
+                            ? AppColors.accent
+                            : AppColors.borderSubtle,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: _step == 0
+                ? _buildStepOne(
+                    currentTargetPts,
+                    currentMaxMatches,
+                    currentScrimMatches,
+                  )
+                : _buildStepTwo(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepOne(
+    int? currentTargetPts,
+    int? currentMaxMatches,
+    int? currentScrimMatches,
+  ) {
+    return ListView(
+      key: const ValueKey('step1'),
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 120),
+      children: [
+        TactileCard(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tournament Identity',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nameCtrl,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Event Name',
+                  hintText: 'e.g. FFWS REGIONAL FINALS',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _roundCtrl,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Round or Day Subtitle',
+                  hintText: 'e.g. GRAND FINALS · DAY 1',
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'FORMAT',
+            style: TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ),
+
+        Row(
+          children: [
+            Expanded(
+              child: _FormatCard(
+                title: 'Scrim Series',
+                subtitle: 'Fixed match count · highest points wins',
+                icon: Icons.scoreboard_rounded,
+                selected: _mode == TournamentMode.scrim,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _mode = TournamentMode.scrim);
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _FormatCard(
+                title: 'Champion Rush',
+                subtitle: 'Hit target pts + Booyah to crown Champion',
+                icon: Icons.local_fire_department_rounded,
+                selected: _mode == TournamentMode.championRush,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _mode = TournamentMode.championRush);
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        if (_mode == TournamentMode.scrim)
+          TactileCard(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Planned Matches',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Pick a match count or type any custom number.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [3, 4, 5, 6, 8, 10].map((val) {
+                    return _QuickValueChip(
+                      label: '$val Matches',
+                      selected: currentScrimMatches == val,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _scrimMatchesCtrl.text = '$val');
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _scrimMatchesCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  onChanged: (_) => setState(() {}),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Custom Total Matches',
+                    suffixText: 'matches',
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          TactileCard(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Champion Rush Parameters',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'TARGET POINT THRESHOLD',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [50, 75, 80, 100, 120].map((val) {
+                    return _QuickValueChip(
+                      label: '$val pts',
+                      selected: currentTargetPts == val,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _targetPointsCtrl.text = '$val');
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _targetPointsCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  onChanged: (_) => setState(() {}),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Target Points',
+                    hintText: 'Enter any target point threshold',
+                    suffixText: 'pts',
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'MAX MATCHES CEILING',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [5, 6, 7, 8, 10].map((val) {
+                    return _QuickValueChip(
+                      label: '$val',
+                      selected: currentMaxMatches == val,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _maxMatchesCtrl.text = '$val');
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _maxMatchesCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  onChanged: (_) => setState(() {}),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Custom Max Matches Ceiling',
+                    suffixText: 'matches',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.inputFill,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.borderSubtle),
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Same-Match Booyah Activation',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Crown winner on the exact match they hit target + #1',
+                              style: TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch.adaptive(
+                        value: _allowSameMatchActivation,
+                        activeThumbColor: AppColors.accent,
+                        onChanged: (v) {
+                          HapticFeedback.selectionClick();
+                          setState(() => _allowSameMatchActivation = v);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        const SizedBox(height: 20),
+        PrimaryPillButton(
+          label: 'Continue to Squads',
+          icon: Icons.arrow_forward_rounded,
+          expand: true,
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            setState(() => _step = 1);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepTwo() {
+    return ListView(
+      key: const ValueKey('step2'),
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 120),
+      children: [
+        TactileCard(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Poster Credits & Emblem',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _hostCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Host / Org',
+                        hintText: 'Optional',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _sponsorCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Sponsor',
+                        hintText: 'Optional',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () async {
+                      final img = await _pickImageAsDataUrl();
+                      if (img != null && mounted) {
+                        setState(() => _customLogoUrl = img);
+                      }
+                    },
+                    child: SquadBadge(
+                      teamName: _nameCtrl.text.trim().isEmpty
+                          ? 'FF'
+                          : _nameCtrl.text.trim(),
+                      logoUrl: _customLogoUrl,
+                      size: 46,
+                      highlight: true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Tournament Emblem',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          _customLogoUrl == null
+                              ? 'Tap emblem to upload custom badge'
+                              : 'Custom badge ready for posters',
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_customLogoUrl != null)
+                    IconButton(
+                      onPressed: () => setState(() => _customLogoUrl = null),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Show Team Logos on Standings Poster',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: _showLogos,
+                    activeThumbColor: AppColors.accent,
+                    onChanged: (v) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _showLogos = v);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Squad Count & Paste Bar
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'SQUADS (${_squads.length})',
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ),
+            SecondaryPillButton(
+              label: 'Paste List',
+              icon: Icons.content_paste_rounded,
+              onPressed: _openPasteRosterSheet,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [4, 6, 8, 12, 16, 18, 20].map((cnt) {
+            return _QuickValueChip(
+              label: '$cnt Squads',
+              selected: _squads.length == cnt,
+              onTap: () => _setTeamCount(cnt),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+
+        ...List.generate(_squads.length, (i) {
+          final squad = _squads[i];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 24,
+                    child: Text(
+                      '#${i + 1}',
+                      style: kTabularNumbers.copyWith(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () async {
+                      final img = await _pickImageAsDataUrl();
+                      if (img != null && mounted) {
+                        setState(() => squad.logoUrl = img);
+                      }
+                    },
+                    child: SquadBadge(
+                      teamName: squad.controller.text.trim().isEmpty
+                          ? 'T${i + 1}'
+                          : squad.controller.text.trim(),
+                      logoUrl: squad.logoUrl,
+                      size: 38,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: squad.controller,
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Team ${i + 1}',
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 8,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (squad.logoUrl != null)
+                    IconButton(
+                      onPressed: () => setState(() => squad.logoUrl = null),
+                      icon: const Icon(
+                        Icons.hide_image_outlined,
+                        size: 18,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  if (_squads.length > 2)
+                    IconButton(
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          final removed = _squads.removeAt(i);
+                          removed.dispose();
+                        });
+                      },
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }),
+
+        if (_squads.length < 20)
+          SecondaryPillButton(
+            label: 'Add Squad Slot',
+            icon: Icons.add_rounded,
+            expand: true,
+            onPressed: () => _setTeamCount(_squads.length + 1),
+          ),
+
+        const SizedBox(height: 20),
+        PrimaryPillButton(
+          label: _isEditing ? 'Save Changes' : 'Launch Tournament',
+          icon: _isEditing
+              ? Icons.check_rounded
+              : Icons.rocket_launch_rounded,
+          expand: true,
+          onPressed: _submit,
+        ),
+      ],
+    );
+  }
+}
+
+class _FormatCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FormatCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TactileCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(15),
+      backgroundColor:
+          selected ? AppColors.accentSurface : AppColors.surface,
+      borderColor: selected ? AppColors.accentBorder : AppColors.borderSubtle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: selected ? AppColors.accentBright : AppColors.textSecondary,
+              ),
+              const Spacer(),
+              if (selected)
+                const Icon(
+                  Icons.check_circle_rounded,
+                  size: 17,
+                  color: AppColors.accentBright,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickValueChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _QuickValueChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent : AppColors.inputFill,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? AppColors.accent : AppColors.borderStrong,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.inkOnAccent : AppColors.textPrimary,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -6,6 +6,7 @@ import {
   BroadcastWinnerMonolith,
 } from './BroadcastVectors';
 import { generateInitials } from '../../../store/tournamentStore';
+import { getTableDensity } from './themeHelpers';
 
 export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
   settings,
@@ -16,9 +17,13 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
   matchHeaderSubtitle,
 }) => {
   const isRush = settings.mode === 'CHAMPION_RUSH';
-  const rushTarget = settings.championRush?.targetPoints ?? 80;
   const tournamentLogo = settings.customLogoUrl;
   const showWinnerHero = isFinalResult && !!championTeam;
+  const density = getTableDensity(
+    standings.length,
+    isPortrait,
+    showWinnerHero
+  );
 
   const mainHeadline = settings.roundOrDay
     ? `${settings.roundOrDay} STANDINGS`
@@ -173,13 +178,13 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
           {/* Left: Skewed Kicker Badges + Giant Stark White Italic Headline + Skewed Sub-Banner */}
           <div className="flex min-w-0 flex-1 flex-col items-start">
             {/* Top Organizer & Stage Kicker Plate (Strictly Single-Line No-Wrap for PNG Export) */}
-            <div className="mb-2 flex w-full flex-nowrap items-center gap-2.5 whitespace-nowrap">
+            <div className="mb-2 flex w-full max-w-full flex-nowrap items-center gap-2.5 overflow-hidden whitespace-nowrap">
               <div
-                className="shrink-0 border border-[#0A0408] bg-[#0A0408] px-3.5 py-0.5 text-white shadow-md"
+                className="max-w-[340px] shrink-0 overflow-hidden border border-[#0A0408] bg-[#0A0408] px-3.5 py-0.5 text-white shadow-md"
                 style={{ transform: 'skewX(-14deg)' }}
               >
                 <span
-                  className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.22em] text-[#FDA4AF]"
+                  className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.22em] text-[#FDA4AF]"
                   style={{ transform: 'skewX(14deg)' }}
                 >
                   {settings.name}
@@ -188,11 +193,11 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
 
               {settings.hostName && (
                 <div
-                  className="shrink-0 border border-[#0A0408] bg-white px-3 py-0.5 text-[#0A0408] shadow-sm"
+                  className="max-w-[290px] shrink-0 overflow-hidden border border-[#0A0408] bg-white px-3 py-0.5 text-[#0A0408] shadow-sm"
                   style={{ transform: 'skewX(-14deg)' }}
                 >
                   <span
-                    className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
+                    className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
                     style={{ transform: 'skewX(14deg)' }}
                   >
                     ORGANIZER: {settings.hostName}
@@ -202,11 +207,11 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
 
               {settings.sponsorName && (
                 <div
-                  className="shrink-0 border border-white/80 bg-[#881337] px-3 py-0.5 text-white shadow-sm"
+                  className="max-w-[260px] shrink-0 overflow-hidden border border-white/80 bg-[#881337] px-3 py-0.5 text-white shadow-sm"
                   style={{ transform: 'skewX(-14deg)' }}
                 >
                   <span
-                    className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
+                    className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
                     style={{ transform: 'skewX(14deg)' }}
                   >
                     SPONSOR: {settings.sponsorName}
@@ -217,7 +222,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
 
             {/* Massive Stark White Italic Display Headline with Hard Obsidian Shadow */}
             <h1
-              className={`whitespace-nowrap font-headline font-black italic uppercase leading-[0.92] tracking-tight text-white drop-shadow-[0_4px_0_#0A0408] ${
+              className={`max-w-full truncate whitespace-nowrap font-headline font-black italic uppercase leading-[0.92] tracking-tight text-white drop-shadow-[0_4px_0_#0A0408] ${
                 isPortrait ? 'text-[64px]' : 'text-[80px]'
               }`}
             >
@@ -338,7 +343,9 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                     style={{ transform: 'skewX(12deg)' }}
                   >
                     {isRush
-                      ? `${rushTarget} POINTS ACTIVATES CHAMPION RUSH`
+                      ? isPortrait
+                        ? 'CHAMPION RUSH STANDINGS'
+                        : `CHAMPION RUSH STANDINGS // ${settings.name}`
                       : isPortrait
                         ? 'OFFICIAL TOURNAMENT STANDINGS'
                         : `OFFICIAL STANDINGS // ${settings.name}`}
@@ -370,31 +377,16 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
               </div>
             </div>
 
-            {/* 12 Skewed Parallelogram Team Rows */}
-            <div
-              className={`flex flex-col ${
-                isPortrait
-                  ? showWinnerHero
-                    ? 'gap-1'
-                    : 'gap-2'
-                  : 'gap-1.5'
-              }`}
-            >
+            {/* Skewed Parallelogram Team Rows */}
+            <div className={`flex flex-col ${density.rowGapClass}`}>
               {standings.map((team) => {
                 const isTop1 = team.rank === 1;
                 const isTop3 = team.rank <= 3;
-                const rowHeight = isPortrait
-                  ? showWinnerHero
-                    ? 'h-[42px]'
-                    : 'h-[58px]'
-                  : showWinnerHero
-                    ? 'h-[48px]'
-                    : 'h-[52px]';
 
                 return (
                   <div
                     key={team.teamId}
-                    className={`flex w-full items-stretch gap-2 pr-2 ${rowHeight}`}
+                    className={`flex w-full items-stretch gap-2 pr-2 ${density.rowHeightClass}`}
                   >
                     {/* Detached Skewed Rank Badge */}
                     <div
@@ -409,11 +401,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                     >
                       <span
                         style={{ transform: 'skewX(12deg)' }}
-                        className={`font-headline font-black italic leading-none ${
-                          isPortrait && showWinnerHero
-                            ? 'text-xl'
-                            : 'text-2xl'
-                        }`}
+                        className={`font-headline font-black italic leading-none ${density.rankTextClass}`}
                       >
                         #{team.rank}
                       </span>
@@ -433,7 +421,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                         <div className="flex w-14 shrink-0 items-center justify-center border-r-2 border-[#0A0408] bg-[#14070E]">
                           <div
                             style={{ transform: 'skewX(12deg)' }}
-                            className="flex h-8 w-8 items-center justify-center"
+                            className={`flex items-center justify-center ${density.logoSizeClass}`}
                           >
                             {team.logoUrl ? (
                               <img
@@ -442,7 +430,9 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                                 className="h-full w-full object-contain"
                               />
                             ) : (
-                              <span className="font-headline text-sm font-black uppercase tracking-wider text-[#FF2A6D]">
+                              <span
+                                className={`font-headline font-black uppercase tracking-wider text-[#FF2A6D] ${density.tagTextClass}`}
+                              >
                                 {team.shortCode ||
                                   generateInitials(team.teamName)}
                               </span>
@@ -453,7 +443,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
 
                       {/* 2. Solid Platinum-Blush Team Name Plate with STARK PITCH-BLACK TEXT */}
                       <div
-                        className="flex flex-1 items-center justify-between px-5"
+                        className="flex min-w-0 flex-1 items-center justify-between overflow-hidden px-5"
                         style={{
                           background: isTop1
                             ? 'linear-gradient(90deg, #FDA4AF 0%, #FFE4E6 100%)'
@@ -467,11 +457,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                           className="flex min-w-0 items-center gap-3"
                         >
                           <span
-                            className={`truncate font-headline font-black uppercase tracking-wide text-[#0A0408] ${
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }`}
+                            className={`truncate font-headline font-black uppercase tracking-wide text-[#0A0408] ${density.nameTextClass}`}
                           >
                             {team.teamName}
                           </span>
@@ -485,9 +471,6 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                           >
                             <BroadcastRushCrownCircle
                               status={team.rushStatus.status}
-                              activeBg="#0A0408"
-                              activeBorder="#0A0408"
-                              activeIcon="#FF2A6D"
                               champBg="#FF1E56"
                               champBorder="#0A0408"
                               champIcon="#FFFFFF"
@@ -520,11 +503,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.booyahCount}
                           </span>
@@ -539,11 +518,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.killPoints}
                           </span>
@@ -558,11 +533,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.placementPoints}
                           </span>
@@ -578,11 +549,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                         >
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={`font-black ${
-                              isPortrait && showWinnerHero
-                                ? 'text-2xl'
-                                : 'text-3xl'
-                            }`}
+                            className={`font-black ${density.totalTextClass}`}
                           >
                             {team.totalPoints}
                           </span>
@@ -612,7 +579,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                   <BroadcastRushCrownCircle
                     status="CHAMPION"
                     champBg="#FF1E56"
-                    champBorder="#FFFFFF"
+                    champBorder="#0A0408"
                     champIcon="#FFFFFF"
                     size="sm"
                   />
@@ -633,9 +600,6 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
                 >
                   <BroadcastRushCrownCircle
                     status="ACTIVE"
-                    activeBg="#0A0408"
-                    activeBorder="#FF2A6D"
-                    activeIcon="#FF2A6D"
                     size="sm"
                   />
                   <span className="font-headline text-xs font-black uppercase tracking-[0.16em] text-white/90">

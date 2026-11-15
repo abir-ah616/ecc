@@ -6,6 +6,7 @@ import {
   BroadcastWinnerMonolith,
 } from './BroadcastVectors';
 import { generateInitials } from '../../../store/tournamentStore';
+import { getTableDensity } from './themeHelpers';
 
 export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
   settings,
@@ -16,9 +17,13 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
   matchHeaderSubtitle,
 }) => {
   const isRush = settings.mode === 'CHAMPION_RUSH';
-  const rushTarget = settings.championRush?.targetPoints ?? 80;
   const tournamentLogo = settings.customLogoUrl;
   const showWinnerHero = isFinalResult && !!championTeam;
+  const density = getTableDensity(
+    standings.length,
+    isPortrait,
+    showWinnerHero
+  );
 
   const mainHeadline = settings.roundOrDay
     ? `${settings.roundOrDay} STANDINGS`
@@ -131,7 +136,40 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
         />
       </svg>
 
-      {/* 2. MAIN STAGE CANVAS */}
+      {/* 2. LEFT VERTICAL BROADCAST SPINE TICKER (Glacial White & Abyssal Navy) */}
+      <aside className="relative z-30 flex h-full w-[42px] shrink-0 flex-col items-center justify-between border-r-2 border-[#040A14] bg-[#F0F9FF] py-6 text-[#040A14] shadow-[6px_0_24px_rgba(0,0,0,0.65)]">
+        {/* Top Square Register Mark */}
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="h-3 w-3 bg-[#040A14]" />
+          <div className="h-1.5 w-3 bg-[#0284C7]" />
+        </div>
+
+        {/* Vertical Rotated Tournament & Organizer Spine Text */}
+        <div className="flex max-h-full flex-1 items-center justify-center overflow-hidden py-4">
+          <div
+            className="max-h-full truncate whitespace-nowrap font-headline text-[15px] font-black uppercase tracking-[0.28em] text-[#040A14]"
+            style={{
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+            }}
+          >
+            {settings.name}
+            {settings.hostName ? ` // ORG: ${settings.hostName}` : ''}
+            {' // '}
+            {matchHeaderSubtitle}
+          </div>
+        </div>
+
+        {/* Bottom-Left Diagonal Slash Ribbon */}
+        <div className="relative flex w-full flex-col items-center pt-4">
+          <div
+            className="h-12 w-full bg-[#040A14]"
+            style={{ clipPath: 'polygon(0 28%, 100% 0, 100% 100%, 0 100%)' }}
+          />
+        </div>
+      </aside>
+
+      {/* 3. MAIN STAGE CANVAS */}
       <div
         className={`relative z-20 flex min-w-0 flex-1 flex-col justify-between overflow-hidden ${
           isPortrait ? 'px-7 pt-7 pb-6' : 'px-12 pt-7 pb-6'
@@ -142,13 +180,13 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
           {/* Left: Skewed Kicker Badges + Giant Pitch-Navy Italic Headline + Sub-Banners */}
           <div className="flex min-w-0 flex-1 flex-col items-start">
             {/* Top Organizer & Stage Kicker Plate (Strictly Single-Line No-Wrap for PNG Export) */}
-            <div className="mb-2 flex w-full flex-nowrap items-center gap-2.5 whitespace-nowrap">
+            <div className="mb-2 flex w-full max-w-full flex-nowrap items-center gap-2.5 overflow-hidden whitespace-nowrap">
               <div
-                className="shrink-0 border border-[#040A14] bg-[#040A14] px-3.5 py-0.5 text-white shadow-md"
+                className="max-w-[340px] shrink-0 overflow-hidden border border-[#040A14] bg-[#040A14] px-3.5 py-0.5 text-white shadow-md"
                 style={{ transform: 'skewX(-14deg)' }}
               >
                 <span
-                  className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.22em] text-[#00F0FF]"
+                  className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.22em] text-[#00F0FF]"
                   style={{ transform: 'skewX(14deg)' }}
                 >
                   {settings.name}
@@ -157,11 +195,11 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
 
               {settings.hostName && (
                 <div
-                  className="shrink-0 border border-[#040A14] bg-white px-3 py-0.5 text-[#040A14] shadow-sm"
+                  className="max-w-[290px] shrink-0 overflow-hidden border border-[#040A14] bg-white px-3 py-0.5 text-[#040A14] shadow-sm"
                   style={{ transform: 'skewX(-14deg)' }}
                 >
                   <span
-                    className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
+                    className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
                     style={{ transform: 'skewX(14deg)' }}
                   >
                     ORGANIZER: {settings.hostName}
@@ -171,11 +209,11 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
 
               {settings.sponsorName && (
                 <div
-                  className="shrink-0 border border-[#040A14] bg-[#0369A1] px-3 py-0.5 text-white shadow-sm"
+                  className="max-w-[260px] shrink-0 overflow-hidden border border-[#040A14] bg-[#0369A1] px-3 py-0.5 text-white shadow-sm"
                   style={{ transform: 'skewX(-14deg)' }}
                 >
                   <span
-                    className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
+                    className="block truncate whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.18em]"
                     style={{ transform: 'skewX(14deg)' }}
                   >
                     SPONSOR: {settings.sponsorName}
@@ -186,7 +224,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
 
             {/* Massive Pitch-Navy Italic Display Headline */}
             <h1
-              className={`whitespace-nowrap font-headline font-black italic uppercase leading-[0.92] tracking-tight text-[#040A14] drop-shadow-[0_2px_0_rgba(255,255,255,0.45)] ${
+              className={`max-w-full truncate whitespace-nowrap font-headline font-black italic uppercase leading-[0.92] tracking-tight text-[#040A14] drop-shadow-[0_2px_0_rgba(255,255,255,0.45)] ${
                 isPortrait ? 'text-[64px]' : 'text-[80px]'
               }`}
             >
@@ -194,7 +232,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
             </h1>
 
             {/* Solid Pitch-Navy Skewed Parallelogram Banner + Ice-White Subtitle Plate */}
-            <div className="mt-2 flex flex-nowrap items-center gap-3 whitespace-nowrap">
+            <div className="mt-2 flex max-w-full flex-nowrap items-center gap-3 whitespace-nowrap">
               <div
                 className="shrink-0 border-l-4 border-[#FFFFFF] bg-[#040A14] px-7 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.55)]"
                 style={{ transform: 'skewX(-14deg)' }}
@@ -210,11 +248,11 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
               </div>
 
               <div
-                className="shrink-0 border-2 border-[#040A14] bg-[#FFFFFF] px-4 py-1.5 shadow-[4px_4px_0_#040A14]"
+                className="max-w-[400px] shrink overflow-hidden border-2 border-[#040A14] bg-[#FFFFFF] px-4 py-1.5 shadow-[4px_4px_0_#040A14]"
                 style={{ transform: 'skewX(-14deg)' }}
               >
                 <span
-                  className="block whitespace-nowrap font-headline text-sm font-black uppercase tracking-[0.18em] text-[#040A14]"
+                  className="block truncate whitespace-nowrap font-headline text-sm font-black uppercase tracking-[0.18em] text-[#040A14]"
                   style={{ transform: 'skewX(14deg)' }}
                 >
                   {matchHeaderSubtitle}
@@ -308,7 +346,9 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                     style={{ transform: 'skewX(12deg)' }}
                   >
                     {isRush
-                      ? `${rushTarget} POINTS ACTIVATES CHAMPION RUSH`
+                      ? isPortrait
+                        ? 'CHAMPION RUSH STANDINGS'
+                        : `CHAMPION RUSH STANDINGS // ${settings.name}`
                       : isPortrait
                         ? 'OFFICIAL TOURNAMENT STANDINGS'
                         : `OFFICIAL STANDINGS // ${settings.name}`}
@@ -340,31 +380,16 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
               </div>
             </div>
 
-            {/* 12 Skewed Parallelogram Team Rows */}
-            <div
-              className={`flex flex-col ${
-                isPortrait
-                  ? showWinnerHero
-                    ? 'gap-1'
-                    : 'gap-2'
-                  : 'gap-1.5'
-              }`}
-            >
+            {/* Skewed Parallelogram Team Rows */}
+            <div className={`flex flex-col ${density.rowGapClass}`}>
               {standings.map((team) => {
                 const isTop1 = team.rank === 1;
                 const isTop3 = team.rank <= 3;
-                const rowHeight = isPortrait
-                  ? showWinnerHero
-                    ? 'h-[42px]'
-                    : 'h-[58px]'
-                  : showWinnerHero
-                    ? 'h-[48px]'
-                    : 'h-[52px]';
 
                 return (
                   <div
                     key={team.teamId}
-                    className={`flex w-full items-stretch gap-2 pr-2 ${rowHeight}`}
+                    className={`flex w-full items-stretch gap-2 pr-2 ${density.rowHeightClass}`}
                   >
                     {/* Detached Skewed Rank Badge */}
                     <div
@@ -379,11 +404,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                     >
                       <span
                         style={{ transform: 'skewX(12deg)' }}
-                        className={`font-headline font-black italic leading-none ${
-                          isPortrait && showWinnerHero
-                            ? 'text-xl'
-                            : 'text-2xl'
-                        }`}
+                        className={`font-headline font-black italic leading-none ${density.rankTextClass}`}
                       >
                         #{team.rank}
                       </span>
@@ -403,7 +424,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                         <div className="flex w-14 shrink-0 items-center justify-center border-r-2 border-[#040A14] bg-[#07111E]">
                           <div
                             style={{ transform: 'skewX(12deg)' }}
-                            className="flex h-8 w-8 items-center justify-center"
+                            className={`flex items-center justify-center ${density.logoSizeClass}`}
                           >
                             {team.logoUrl ? (
                               <img
@@ -412,7 +433,9 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                                 className="h-full w-full object-contain"
                               />
                             ) : (
-                              <span className="font-headline text-sm font-black uppercase tracking-wider text-[#00F0FF]">
+                              <span
+                                className={`font-headline font-black uppercase tracking-wider text-[#00F0FF] ${density.tagTextClass}`}
+                              >
                                 {team.shortCode ||
                                   generateInitials(team.teamName)}
                               </span>
@@ -423,7 +446,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
 
                       {/* 2. Solid Glacial Ice-White Team Name Plate with STARK PITCH-NAVY TEXT */}
                       <div
-                        className="flex flex-1 items-center justify-between px-5"
+                        className="flex min-w-0 flex-1 items-center justify-between overflow-hidden px-5"
                         style={{
                           background: isTop1
                             ? 'linear-gradient(90deg, #67E8F9 0%, #CFFAFE 100%)'
@@ -437,11 +460,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                           className="flex min-w-0 items-center gap-3"
                         >
                           <span
-                            className={`truncate font-headline font-black uppercase tracking-wide text-[#040A14] ${
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }`}
+                            className={`truncate font-headline font-black uppercase tracking-wide text-[#040A14] ${density.nameTextClass}`}
                           >
                             {team.teamName}
                           </span>
@@ -455,9 +474,6 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                           >
                             <BroadcastRushCrownCircle
                               status={team.rushStatus.status}
-                              activeBg="#040A14"
-                              activeBorder="#040A14"
-                              activeIcon="#00F0FF"
                               champBg="#00F0FF"
                               champBorder="#040A14"
                               champIcon="#040A14"
@@ -488,11 +504,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.booyahCount}
                           </span>
@@ -503,11 +515,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.killPoints}
                           </span>
@@ -518,11 +526,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                         <div className="relative flex h-full items-center justify-center">
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={
-                              isPortrait && showWinnerHero
-                                ? 'text-xl'
-                                : 'text-2xl'
-                            }
+                            className={density.statTextClass}
                           >
                             {team.placementPoints}
                           </span>
@@ -538,11 +542,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                         >
                           <span
                             style={{ transform: 'skewX(12deg)' }}
-                            className={`font-black ${
-                              isPortrait && showWinnerHero
-                                ? 'text-2xl'
-                                : 'text-3xl'
-                            }`}
+                            className={`font-black ${density.totalTextClass}`}
                           >
                             {team.totalPoints}
                           </span>
@@ -593,9 +593,6 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                 >
                   <BroadcastRushCrownCircle
                     status="ACTIVE"
-                    activeBg="#040A14"
-                    activeBorder="#00F0FF"
-                    activeIcon="#00F0FF"
                     size="sm"
                   />
                   <span className="font-headline text-xs font-black uppercase tracking-[0.16em] text-white/90">
@@ -629,38 +626,6 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
             </span>
           </div>
         </footer>
-      </div>
-
-      {/* 3. RIGHT VERTICAL BROADCAST SPINE TICKER (Glacial White & Abyssal Navy) */}
-      <div className="relative z-30 flex h-full w-[42px] shrink-0 flex-col items-center justify-between border-l-2 border-[#040A14] bg-[#F0F9FF] py-6 text-[#040A14] shadow-[-6px_0_24px_rgba(0,0,0,0.65)]">
-        {/* Top Square Register Mark */}
-        <div className="flex flex-col items-center gap-1.5">
-          <div className="h-3 w-3 bg-[#040A14]" />
-          <div className="h-1.5 w-3 bg-[#0284C7]" />
-        </div>
-
-        {/* Vertical Rotated Tournament & Organizer Spine Text */}
-        <div className="flex flex-1 items-center justify-center overflow-hidden py-4">
-          <div
-            className="whitespace-nowrap font-headline text-[15px] font-black uppercase tracking-[0.28em] text-[#040A14]"
-            style={{
-              writingMode: 'vertical-rl',
-            }}
-          >
-            {settings.name}
-            {settings.hostName ? ` // ORG: ${settings.hostName}` : ''}
-            {' // '}
-            {matchHeaderSubtitle}
-          </div>
-        </div>
-
-        {/* Bottom-Right Diagonal Slash Ribbon */}
-        <div className="relative flex w-full flex-col items-center pt-4">
-          <div
-            className="h-12 w-full bg-[#040A14]"
-            style={{ clipPath: 'polygon(0 0, 100% 28%, 100% 100%, 0 100%)' }}
-          />
-        </div>
       </div>
     </div>
   );

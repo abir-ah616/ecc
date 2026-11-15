@@ -10,6 +10,7 @@ import type {
   TournamentSettings,
   ChampionRushConfig,
 } from '../types/tournament';
+import type { TournamentLayoutPreset } from '../lib/templates';
 import {
   calculateTournamentStandings,
   DEFAULT_PLACEMENT_POINTS,
@@ -103,7 +104,10 @@ export interface TournamentStoreState {
   getStandings: () => StandingsResult;
 
   // Navigation
+  pendingTemplate: TournamentLayoutPreset | null;
   setCurrentTab: (tab: string) => void;
+  openCreateWithTemplate: (preset?: TournamentLayoutPreset) => void;
+  clearPendingTemplate: () => void;
 
   // Tournament Management
   createTournament: (data: {
@@ -200,6 +204,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
       activeTournamentId: null,
       defaultPointSystem: { ...DEFAULT_POINT_SYSTEM },
       currentTab: 'home',
+      pendingTemplate: null,
 
       teams: [],
       matches: [],
@@ -222,7 +227,19 @@ export const useTournamentStore = create<TournamentStoreState>()(
         return calculateTournamentStandings(active.teams, active.matches, active.settings);
       },
 
-      setCurrentTab: (tab: string) => set({ currentTab: tab }),
+      setCurrentTab: (tab: string) =>
+        set((state) => ({
+          currentTab: tab,
+          pendingTemplate: tab === 'create' ? state.pendingTemplate : null,
+        })),
+
+      openCreateWithTemplate: (preset) =>
+        set({
+          pendingTemplate: preset ?? null,
+          currentTab: 'create',
+        }),
+
+      clearPendingTemplate: () => set({ pendingTemplate: null }),
 
       createTournament: (data) => {
         const now = new Date();

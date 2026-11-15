@@ -1,6 +1,13 @@
 export type TournamentMode = 'SCRIM' | 'CHAMPION_RUSH';
 
-export type ThemePreset = 'v2' | 'crimson' | 'blue' | 'gold' | 'emerald' | 'violet' | 'eclipse';
+export type ThemePreset =
+  | 'v2'
+  | 'scarlet'
+  | 'volt'
+  | 'whiteout'
+  | 'blue'
+  | 'gold'
+  | 'eclipse';
 
 export type StandingsViewMode = 'OVERALL' | 'SINGLE_MATCH';
 

@@ -37,26 +37,33 @@ export const BroadcastRushCrownCircle: React.FC<{
   champBg?: string;
   champBorder?: string;
   champIcon?: string;
+  inactiveBg?: string;
+  inactiveBorder?: string;
+  shape?: 'circle' | 'box';
   size?: 'sm' | 'md' | 'lg';
 }> = ({
   status,
-  activeBg = '#0A0A0A',
-  activeBorder = '#FFFFFF',
-  activeIcon = '#FFFFFF',
+  activeBg = '#27272A',
+  activeBorder = '#52525B',
+  activeIcon = '#A1A1AA',
   champBg = '#F59E0B',
   champBorder = '#0A0A0A',
   champIcon = '#0A0A0A',
+  inactiveBg = 'rgba(255, 255, 255, 0.06)',
+  inactiveBorder = 'rgba(148, 163, 184, 0.38)',
+  shape = 'circle',
   size = 'md',
 }) => {
   const dim =
     size === 'sm' ? 'h-6 w-6' : size === 'lg' ? 'h-8 w-8' : 'h-7 w-7';
   const svgDim =
     size === 'sm' ? 'h-3.5 w-3.5' : size === 'lg' ? 'h-4.5 w-4.5' : 'h-4 w-4';
+  const radiusClass = shape === 'box' ? 'rounded-[5px]' : 'rounded-full';
 
   if (status === 'CHAMPION') {
     return (
       <div
-        className={`flex ${dim} shrink-0 items-center justify-center rounded-full border-2 shadow-md`}
+        className={`flex ${dim} shrink-0 items-center justify-center ${radiusClass} border-2 shadow-md`}
         style={{
           background: champBg,
           borderColor: champBorder,
@@ -73,7 +80,7 @@ export const BroadcastRushCrownCircle: React.FC<{
   if (status === 'ACTIVE') {
     return (
       <div
-        className={`flex ${dim} shrink-0 items-center justify-center rounded-full border-2 shadow-md`}
+        className={`flex ${dim} shrink-0 items-center justify-center ${radiusClass} border-2 shadow-sm`}
         style={{
           background: activeBg,
           borderColor: activeBorder,
@@ -89,10 +96,13 @@ export const BroadcastRushCrownCircle: React.FC<{
 
   return (
     <div
-      className={`flex ${dim} shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/40`}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
-    </div>
+      className={`flex ${dim} shrink-0 items-center justify-center rounded-[5px] border-2`}
+      style={{
+        background: inactiveBg,
+        borderColor: inactiveBorder,
+      }}
+      title="Champion Rush Not Activated"
+    />
   );
 };
 
@@ -247,7 +257,7 @@ export const BroadcastWinnerMonolith: React.FC<{
 
       {/* 2. DETACHED SKEWED WINNER TEAM NAME BLADE (Reference Image 1) */}
       <div
-        className={`relative z-20 ${
+        className={`relative z-20 overflow-hidden ${
           compact ? 'mt-3 w-[360px] py-2' : 'mt-4 w-[440px] py-3'
         } px-6 shadow-[0_14px_35px_rgba(0,0,0,0.8)]`}
         style={{
@@ -257,12 +267,18 @@ export const BroadcastWinnerMonolith: React.FC<{
         }}
       >
         <div
-          className="text-center"
+          className="w-full min-w-0 overflow-hidden text-center"
           style={{ transform: 'skewX(10deg)' }}
         >
           <div
             className={`font-headline font-black uppercase tracking-wider truncate leading-none ${
-              compact ? 'text-3xl' : 'text-4xl'
+              championTeam.teamName.length > 16
+                ? compact
+                  ? 'text-2xl'
+                  : 'text-3xl'
+                : compact
+                  ? 'text-3xl'
+                  : 'text-4xl'
             }`}
             style={{ color: palette.bladeText }}
           >
@@ -273,7 +289,7 @@ export const BroadcastWinnerMonolith: React.FC<{
 
       {/* 3. VICTORY SUMMARY TELEMETRY LINE (Reference Image 1) */}
       <div
-        className={`mt-2.5 whitespace-nowrap font-headline font-black uppercase tracking-[0.12em] text-center ${
+        className={`mt-2.5 max-w-full truncate whitespace-nowrap font-headline font-black uppercase tracking-[0.12em] text-center ${
           compact ? 'text-sm' : 'text-base'
         }`}
         style={{
@@ -309,3 +325,109 @@ export const BroadcastWinnerMonolith: React.FC<{
     </div>
   );
 };
+
+export const BroadcastTrophyIcon: React.FC<{
+  className?: string;
+  color?: string;
+}> = ({ className = 'w-4 h-4', color = '#FFFFFF' }) => (
+  <svg viewBox="0 0 24 24" fill="none" className={className}>
+    <path
+      d="M7 4H17V9.5C17 12.26 14.76 14.5 12 14.5C9.24 14.5 7 12.26 7 9.5V4Z"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M7 6H4.5C3.67 6 3 6.67 3 7.5V8.5C3 10.16 4.34 11.5 6 11.5H7"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+    <path
+      d="M17 6H19.5C20.33 6 21 6.67 21 7.5V8.5C21 10.16 19.66 11.5 18 11.5H17"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+    <path
+      d="M12 14.5V19M8.5 19.5H15.5"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+export const BroadcastCircleCheckIcon: React.FC<{
+  className?: string;
+  color?: string;
+}> = ({ className = 'w-4 h-4', color = '#FFFFFF' }) => (
+  <svg viewBox="0 0 24 24" fill="none" className={className}>
+    <circle cx="12" cy="12" r="9.5" stroke={color} strokeWidth="2" />
+    <path
+      d="M8 12.2L10.8 15L16.2 9.2"
+      stroke={color}
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const BroadcastShieldCheckIcon: React.FC<{
+  className?: string;
+  color?: string;
+}> = ({ className = 'w-4 h-4', color = '#DC142C' }) => (
+  <svg viewBox="0 0 24 24" fill="none" className={className}>
+    <path
+      d="M12 2.8L19.5 5.8V11.8C19.5 16.5 16.2 19.9 12 21.5C7.8 19.9 4.5 16.5 4.5 11.8V5.8L12 2.8Z"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8.5 12.2L11 14.6L15.8 9.6"
+      stroke={color}
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const BroadcastCrosshairIcon: React.FC<{
+  className?: string;
+  color?: string;
+}> = ({ className = 'w-3.5 h-3.5', color = '#FFFFFF' }) => (
+  <svg viewBox="0 0 24 24" fill="none" className={className}>
+    <circle cx="12" cy="12" r="6.5" stroke={color} strokeWidth="2" />
+    <circle cx="12" cy="12" r="2" fill={color} />
+    <path
+      d="M12 2.5V6M12 18V21.5M2.5 12H6M18 12H21.5"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+export const BroadcastLayersIcon: React.FC<{
+  className?: string;
+  color?: string;
+}> = ({ className = 'w-3.5 h-3.5', color = '#FFFFFF' }) => (
+  <svg viewBox="0 0 24 24" fill="none" className={className}>
+    <path
+      d="M12 3.5L21 8L12 12.5L3 8L12 3.5Z"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M3.5 12.5L12 17L20.5 12.5M3.5 16.5L12 21L20.5 16.5"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);

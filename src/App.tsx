@@ -65,15 +65,17 @@ export function App() {
   }
 
   return (
-    <AppShell
-      onOpenJson={() => setIsJsonOpen(true)}
-      onOpenReset={() => setIsResetOpen(true)}
-    >
-      {activeContent}
+    <>
+      <AppShell
+        onOpenJson={() => setIsJsonOpen(true)}
+        onOpenReset={() => setIsResetOpen(true)}
+      >
+        {activeContent}
+      </AppShell>
       <ResetModal isOpen={isResetOpen} onClose={() => setIsResetOpen(false)} />
       <JsonModal isOpen={isJsonOpen} onClose={() => setIsJsonOpen(false)} />
       <AdminDashboardModal />
-    </AppShell>
+    </>
   );
 }
 

@@ -16,7 +16,15 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { auth, db, googleProvider, SUPER_ADMIN_EMAIL } from '../lib/firebase';
+import {
+  buildAllowedUserRecord,
+  isValidEmailAddress,
+  normalizeEmail,
+  sanitizeDisplayName,
+} from '../lib/authValidation';
 import type { AllowedUserRecord, UserRole, UserStatus } from '../types/auth';
+
+export { normalizeEmail };
 
 interface AuthState {
   firebaseUser: User | null;
@@ -58,8 +66,19 @@ let userDocUnsub: Unsubscribe | null = null;
 let allUsersUnsub: Unsubscribe | null = null;
 let authInitialized = false;
 
-export const normalizeEmail = (email: string): string =>
-  email.trim().toLowerCase();
+const formatAllowedUserError = (err: unknown, currentEmail: string): Error => {
+  const code =
+    typeof err === 'object' && err !== null && 'code' in err
+      ? String((err as { code?: unknown }).code)
+      : '';
+  if (code === 'permission-denied') {
+    return new Error(
+      `Permission denied by Firestore rules. Verify ${currentEmail || 'this account'} has active admin access in allowed_users.`
+    );
+  }
+  if (err instanceof Error) return err;
+  return new Error('Failed to save allowed user.');
+};
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   firebaseUser: null,
@@ -124,56 +143,66 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   addAllowedUser: async ({ email, displayName, role, status = 'active', notes = '' }) => {
-    const cleanEmail = normalizeEmail(email);
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      throw new Error('Please enter a valid email address.');
+    const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
+    if (!currentUserEmail) {
+      throw new Error('You must be signed in as an admin to authorize users.');
     }
 
-    const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
-    const now = Date.now();
+    const cleanEmail = normalizeEmail(email);
+    if (!isValidEmailAddress(cleanEmail)) {
+      throw new Error('Please enter a valid Google email address.');
+    }
+
     const userRef = doc(db, 'allowed_users', cleanEmail);
-    const existing = await getDoc(userRef);
-
-    const record: AllowedUserRecord = {
-      email: cleanEmail,
-      displayName:
-        displayName.trim() || cleanEmail.split('@')[0].toUpperCase(),
-      role: cleanEmail === SUPER_ADMIN_EMAIL ? 'admin' : role,
-      status: cleanEmail === SUPER_ADMIN_EMAIL ? 'active' : status,
-      notes: notes.trim(),
-      addedBy: existing.exists()
-        ? (existing.data().addedBy as string) || currentUserEmail
-        : currentUserEmail,
-      createdAt: existing.exists()
-        ? (existing.data().createdAt as number) || now
-        : now,
-      updatedAt: now,
-    };
-
-    await setDoc(userRef, record, { merge: true });
+    try {
+      const existing = await getDoc(userRef);
+      const record = buildAllowedUserRecord({
+        email: cleanEmail,
+        displayName,
+        role,
+        status,
+        notes,
+        currentUserEmail,
+        existingData: existing.exists()
+          ? (existing.data() as Partial<AllowedUserRecord>)
+          : null,
+      });
+      await setDoc(userRef, record, { merge: true });
+    } catch (err) {
+      throw formatAllowedUserError(err, currentUserEmail);
+    }
   },
 
   updateAllowedUser: async (email, { displayName, role, status, notes = '' }) => {
+    const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
     const cleanEmail = normalizeEmail(email);
     const isSuper = cleanEmail === SUPER_ADMIN_EMAIL;
     const userRef = doc(db, 'allowed_users', cleanEmail);
 
-    await updateDoc(userRef, {
-      displayName:
-        displayName.trim() || cleanEmail.split('@')[0].toUpperCase(),
-      role: isSuper ? 'admin' : role,
-      status: isSuper ? 'active' : status,
-      notes: notes.trim(),
-      updatedAt: Date.now(),
-    });
+    try {
+      await updateDoc(userRef, {
+        displayName: sanitizeDisplayName(displayName, cleanEmail),
+        role: isSuper ? 'admin' : role,
+        status: isSuper ? 'active' : status,
+        notes: notes.trim().slice(0, 1000),
+        updatedAt: Date.now(),
+      });
+    } catch (err) {
+      throw formatAllowedUserError(err, currentUserEmail);
+    }
   },
 
   deleteAllowedUser: async (email) => {
+    const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
     const cleanEmail = normalizeEmail(email);
     if (cleanEmail === SUPER_ADMIN_EMAIL) {
       throw new Error('Cannot delete the primary Super Admin account.');
     }
-    await deleteDoc(doc(db, 'allowed_users', cleanEmail));
+    try {
+      await deleteDoc(doc(db, 'allowed_users', cleanEmail));
+    } catch (err) {
+      throw formatAllowedUserError(err, currentUserEmail);
+    }
   },
 }));
 
