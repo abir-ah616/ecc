@@ -1,6 +1,28 @@
-enum UserRole { admin, user }
+enum UserRole { admin, user, temp }
 
 enum UserStatus { active, disabled }
+
+UserRole userRoleFromString(String? raw) {
+  switch (raw) {
+    case 'admin':
+      return UserRole.admin;
+    case 'temp':
+      return UserRole.temp;
+    default:
+      return UserRole.user;
+  }
+}
+
+String userRoleToString(UserRole role) {
+  switch (role) {
+    case UserRole.admin:
+      return 'admin';
+    case UserRole.temp:
+      return 'temp';
+    case UserRole.user:
+      return 'user';
+  }
+}
 
 class AllowedUserRecord {
   final String email;
@@ -33,9 +55,7 @@ class AllowedUserRecord {
       AllowedUserRecord(
         email: ((data['email'] as String?) ?? '').trim().toLowerCase(),
         displayName: (data['displayName'] as String?) ?? '',
-        role: (data['role'] as String?) == 'admin'
-            ? UserRole.admin
-            : UserRole.user,
+        role: userRoleFromString(data['role'] as String?),
         status: (data['status'] as String?) == 'disabled'
             ? UserStatus.disabled
             : UserStatus.active,
@@ -51,7 +71,7 @@ class AllowedUserRecord {
   Map<String, dynamic> toMap() => {
         'email': email,
         'displayName': displayName,
-        'role': role == UserRole.admin ? 'admin' : 'user',
+        'role': userRoleToString(role),
         'status': status == UserStatus.disabled ? 'disabled' : 'active',
         'notes': notes,
         if (addedBy != null) 'addedBy': addedBy,

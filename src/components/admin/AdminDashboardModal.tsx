@@ -22,10 +22,14 @@ export const AdminDashboardModal: React.FC = () => {
     isAdminDashboardOpen,
     setAdminDashboardOpen,
     allUsers,
+    allowTempLogin,
+    setAllowTempLogin,
+    promoteTempToUser,
     addAllowedUser,
     updateAllowedUser,
     deleteAllowedUser,
   } = useAuthStore();
+  const [togglingTemp, setTogglingTemp] = useState(false);
 
   // Add User Form State
   const [newEmail, setNewEmail] = useState('');
@@ -44,7 +48,9 @@ export const AdminDashboardModal: React.FC = () => {
 
   // Filter & Feedback State
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'ALL' | 'ADMIN' | 'USER' | 'DISABLED'>('ALL');
+  const [roleFilter, setRoleFilter] = useState<
+    'ALL' | 'ADMIN' | 'USER' | 'DISABLED' | 'TEMP'
+  >('ALL');
   const [feedback, setFeedback] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -97,6 +103,7 @@ export const AdminDashboardModal: React.FC = () => {
       if (roleFilter === 'ADMIN') return u.role === 'admin';
       if (roleFilter === 'USER') return u.role === 'user' && u.status === 'active';
       if (roleFilter === 'DISABLED') return u.status === 'disabled';
+      if (roleFilter === 'TEMP') return u.role === 'temp';
       return true;
     });
   }, [allUsers, searchQuery, roleFilter]);
@@ -213,11 +220,42 @@ export const AdminDashboardModal: React.FC = () => {
     }
   };
 
+  const handleToggleTempLogin = async () => {
+    if (togglingTemp) return;
+    setTogglingTemp(true);
+    try {
+      const nextValue = !allowTempLogin;
+      await setAllowTempLogin(nextValue);
+      showToast(
+        'success',
+        nextValue
+          ? 'Allow Temp Login turned ON across Web & Android.'
+          : 'Allow Temp Login turned OFF. Existing & new temp logins blocked.'
+      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to toggle Temp Login.';
+      showToast('error', msg);
+    } finally {
+      setTogglingTemp(false);
+    }
+  };
+
+  const handlePromoteTemp = async (u: AllowedUserRecord) => {
+    try {
+      await promoteTempToUser(u);
+      showToast('success', `Upgraded ${u.email} from TEMP to USER.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Promotion failed.';
+      showToast('error', msg);
+    }
+  };
+
   const totalAllowed = allUsers.length;
   const activeAdmins = allUsers.filter(
     (u) => u.role === 'admin' && u.status === 'active'
   ).length;
-  const activeUsers = allUsers.filter((u) => u.status === 'active').length;
+  const tempUsersCount = allUsers.filter((u) => u.role === 'temp').length;
 
   return (
     <div
@@ -280,11 +318,59 @@ export const AdminDashboardModal: React.FC = () => {
 
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          {/* Allow Temp Login Master Switch (Synced Web & Android) */}
+          <div
+            className={`rounded-xl border px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+              allowTempLogin
+                ? 'border-sky-400/40 bg-sky-500/10'
+                : 'glass-tile'
+            }`}
+          >
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-white">
+                  Allow Temp Login
+                </span>
+                <span
+                  className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                    allowTempLogin
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-400/35'
+                      : 'bg-white/[0.06] text-slate-400 border border-white/[0.1]'
+                  }`}
+                >
+                  {allowTempLogin ? 'ON · GLOBAL SYNC' : 'OFF'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                {allowTempLogin
+                  ? 'Anyone signing in with Google gets Temp access. Turn off anytime to block all Temp users.'
+                  : 'Only authorized Admins and Users can sign in. All Temp accounts are blocked.'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleTempLogin}
+              disabled={togglingTemp}
+              className={`shrink-0 rounded-xl px-4 py-2 text-xs font-extrabold uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer ${
+                allowTempLogin
+                  ? 'bg-sky-400 text-zinc-950 hover:bg-sky-300'
+                  : 'bg-amber-500 text-zinc-950 hover:bg-amber-400'
+              }`}
+            >
+              {togglingTemp
+                ? 'Updating...'
+                : allowTempLogin
+                  ? 'Turn Off Temp Login'
+                  : 'Turn On Temp Login'}
+            </button>
+          </div>
+
           {/* Summary Counters */}
           <div className="grid grid-cols-3 gap-3">
             <div className="glass-tile rounded-xl px-4 py-3">
               <span className="text-[11px] font-medium text-slate-400">
-                Total Allowed Emails
+                Total Accounts
               </span>
               <div className="mt-1 text-2xl font-bold text-white tabular-nums">
                 {totalAllowed}
@@ -299,11 +385,11 @@ export const AdminDashboardModal: React.FC = () => {
               </div>
             </div>
             <div className="glass-tile rounded-xl px-4 py-3">
-              <span className="text-[11px] font-medium text-emerald-400">
-                Active Accounts
+              <span className="text-[11px] font-medium text-sky-400">
+                Temp Users
               </span>
-              <div className="mt-1 text-2xl font-bold text-emerald-300 tabular-nums">
-                {activeUsers}
+              <div className="mt-1 text-2xl font-bold text-sky-300 tabular-nums">
+                {tempUsersCount}
               </div>
             </div>
           </div>
@@ -362,6 +448,7 @@ export const AdminDashboardModal: React.FC = () => {
                 >
                   <option value="user" className="bg-[#121622] text-white">User</option>
                   <option value="admin" className="bg-[#121622] text-white">Admin</option>
+                  <option value="temp" className="bg-[#121622] text-white">Temp User</option>
                 </select>
               </div>
 
@@ -378,28 +465,30 @@ export const AdminDashboardModal: React.FC = () => {
             </div>
           </form>
 
-          {/* Search & Filter Bar */}
+          {/* Search & Filter Bar (Compact search bar to fit TEMP beside DISABLED) */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1">
+            <div className="relative w-full sm:w-56 lg:w-64 shrink-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by email, name, or note..."
+                placeholder="Search email or name..."
                 className="glass-input w-full rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-white/25 focus:outline-none"
               />
             </div>
 
-            <div className="glass-input flex items-center gap-1 rounded-lg p-1 text-xs">
-              {(['ALL', 'ADMIN', 'USER', 'DISABLED'] as const).map((tab) => (
+            <div className="glass-input flex flex-wrap items-center gap-1 rounded-lg p-1 text-xs">
+              {(['ALL', 'ADMIN', 'USER', 'DISABLED', 'TEMP'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setRoleFilter(tab)}
                   className={`rounded-md px-2.5 py-1 font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
                     roleFilter === tab
-                      ? 'bg-white/[0.14] text-white'
+                      ? tab === 'TEMP'
+                        ? 'bg-sky-500/25 text-sky-200 border border-sky-400/40'
+                        : 'bg-white/[0.14] text-white'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -468,6 +557,7 @@ export const AdminDashboardModal: React.FC = () => {
                             >
                               <option value="user" className="bg-[#121622] text-white">User</option>
                               <option value="admin" className="bg-[#121622] text-white">Admin</option>
+                              <option value="temp" className="bg-[#121622] text-white">Temp User</option>
                             </select>
                           </div>
 
@@ -523,7 +613,9 @@ export const AdminDashboardModal: React.FC = () => {
                               ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
                               : u.role === 'admin'
                                 ? 'border-amber-500/40 bg-amber-500/12 text-amber-300'
-                                : 'border-white/[0.12] bg-white/[0.06] text-slate-300'
+                                : u.role === 'temp'
+                                  ? 'border-sky-400/35 bg-sky-500/12 text-sky-300'
+                                  : 'border-white/[0.12] bg-white/[0.06] text-slate-300'
                           }`}
                         >
                           {u.displayName.slice(0, 2).toUpperCase()}
@@ -541,7 +633,9 @@ export const AdminDashboardModal: React.FC = () => {
                                   ? 'bg-amber-500 text-zinc-950'
                                   : u.role === 'admin'
                                     ? 'border border-amber-500/40 bg-amber-500/10 text-amber-300'
-                                    : 'border border-white/[0.12] bg-white/[0.06] text-slate-300'
+                                    : u.role === 'temp'
+                                      ? 'border border-sky-400/35 bg-sky-500/12 text-sky-300'
+                                      : 'border border-white/[0.12] bg-white/[0.06] text-slate-300'
                               }`}
                             >
                               {isSuper ? 'SUPER ADMIN' : u.role.toUpperCase()}
@@ -565,7 +659,18 @@ export const AdminDashboardModal: React.FC = () => {
                       </div>
 
                       {/* Row Actions */}
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {u.role === 'temp' && (
+                          <button
+                            type="button"
+                            onClick={() => handlePromoteTemp(u)}
+                            className="flex items-center gap-1 rounded-lg border border-emerald-400/35 bg-emerald-500/15 px-2.5 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/25 transition-colors cursor-pointer"
+                            title="Convert temporary user into permanent User"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            <span>Make User</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => startEditing(u)}

@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:esp_calc_mobile/main.dart';
 import 'package:esp_calc_mobile/models/tournament_models.dart';
+import 'package:esp_calc_mobile/services/poster_server.dart';
 import 'package:esp_calc_mobile/state/auth_state.dart';
 import 'package:esp_calc_mobile/state/tournament_state.dart';
 import 'package:esp_calc_mobile/theme/app_theme.dart';
@@ -35,6 +37,27 @@ class _FakeOrganizerAuthStore extends AuthStore {
 
   @override
   bool get isAdmin => false;
+
+  @override
+  Future<void> initialize() async {}
+}
+
+class _FakeTamperedAuthStore extends AuthStore {
+  @override
+  bool get isLoading => false;
+
+  @override
+  bool get isFirebaseReady => true;
+
+  @override
+  bool get isAllowed => true;
+
+  @override
+  bool get integrityTrusted => false;
+
+  @override
+  String? get integrityError =>
+      'Security verification failed (signature-mismatch).';
 
   @override
   Future<void> initialize() async {}
@@ -251,5 +274,75 @@ void main() {
     final completeRect = tester.getRect(find.text('Complete Match 1'));
     final dockRect = tester.getRect(find.byIcon(Icons.home_rounded));
     expect(completeRect.bottom, lessThan(dockRect.top));
+  });
+
+  testWidgets('blocks app access when integrityTrusted is false',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final store = TournamentStore();
+    await store.hydrate();
+    final auth = _FakeTamperedAuthStore();
+
+    await tester.pumpWidget(
+      EspCalcApp(
+        authStoreOverride: auth,
+        tournamentStoreOverride: store,
+        skipAutoInit: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Security Check Failed'), findsOneWidget);
+    expect(find.text('Create Tournament'), findsNothing);
+    expect(find.text('Continue with Google'), findsNothing);
+  });
+
+  test('sanitizes unsafe URLs in importJson and rejects non-local poster URIs',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = TournamentStore();
+    await store.hydrate();
+
+    final ok = store.importJson(jsonEncode({
+      'activeTournamentId': 't1',
+      'tournaments': [
+        {
+          'id': 't1',
+          'name': 'Cup',
+          'settings': {
+            'mode': 'SCRIM',
+            'name': 'Cup',
+            'roundOrDay': 'FINALS',
+            'hostLogoUrl': 'javascript:alert(1)',
+            'sponsorLogoUrl': 'https://cdn.example.com/s.png',
+            'customLogoUrl': 'data:image/svg+xml;base64,PHN2Zz4=',
+            'totalMatchesPlanned': 5,
+            'teamCount': 1,
+          },
+          'teams': [
+            {
+              'id': 'tm1',
+              'name': 'Squad 1',
+              'logoUrl': 'data:text/html,<script>1</script>',
+            },
+          ],
+          'matches': [],
+          'isEnded': false,
+        },
+      ],
+    }));
+
+    expect(ok, isTrue);
+    final active = store.activeTournament!;
+    expect(active.settings.hostLogoUrl, isNull);
+    expect(active.settings.customLogoUrl, isNull);
+    expect(active.settings.sponsorLogoUrl, 'https://cdn.example.com/s.png');
+    expect(active.teams.first.logoUrl, isNull);
+
+    expect(
+      LocalPosterAssetServer.instance
+          .isAllowedPosterUri(Uri.parse('https://evil.example.com/index.html')),
+      isFalse,
+    );
   });
 }

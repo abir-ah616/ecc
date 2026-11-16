@@ -11,6 +11,101 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!authStore.integrityTrusted) {
+      return Scaffold(
+        backgroundColor: AppColors.canvas,
+        body: Stack(
+          children: [
+            const _ArenaScreenBackdrop(opacity: 0.35),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10131B),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: AppColors.borderStrong),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: AppColors.crimsonSurface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: AppColors.crimson.withValues(alpha: 0.45),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.gpp_bad_outlined,
+                                color: AppColors.crimson,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Security Check Failed',
+                                    style: TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Untrusted or modified build detected',
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          authStore.integrityError ??
+                              'This installation could not pass application integrity verification.',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            height: 1.45,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          child: PrimaryPillButton(
+                            label: 'Re-Verify Build',
+                            icon: Icons.verified_user_outlined,
+                            onPressed: authStore.initialize,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final user = authStore.firebaseUser;
 
     // State 1: Signed into Google, but not allowlisted / disabled

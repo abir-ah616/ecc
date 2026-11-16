@@ -101,13 +101,13 @@ export const OrganizerAvatar: React.FC<OrganizerAvatarProps> = ({
       style={{ width: size, height: size }}
     >
       <div
-        className="h-full w-full overflow-hidden rounded-full bg-[#161923] border-[1.75px] border-purple-400/80 shadow-[0_0_14px_rgba(168,85,247,0.3)] flex items-center justify-center"
+        className="aspect-square h-full w-full overflow-hidden rounded-full bg-[#161923] border-[1.75px] border-purple-400/80 shadow-[0_0_14px_rgba(168,85,247,0.3)] flex items-center justify-center"
       >
         {photoUrl ? (
           <img
             src={photoUrl}
             alt={name || 'Organizer'}
-            className="h-full w-full object-cover"
+            className="h-full w-full rounded-full object-cover object-center"
             decoding="async"
             referrerPolicy="no-referrer"
           />

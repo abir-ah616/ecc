@@ -10,6 +10,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   onSnapshot,
   setDoc,
   updateDoc,
@@ -30,6 +31,7 @@ interface AuthState {
   firebaseUser: User | null;
   allowedRecord: AllowedUserRecord | null;
   allUsers: AllowedUserRecord[];
+  allowTempLogin: boolean;
   isLoading: boolean;
   isAllowed: boolean;
   isAdmin: boolean;
@@ -40,6 +42,9 @@ interface AuthState {
   clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+
+  setAllowTempLogin: (enabled: boolean) => Promise<void>;
+  promoteTempToUser: (u: AllowedUserRecord) => Promise<void>;
 
   addAllowedUser: (input: {
     email: string;
@@ -64,6 +69,8 @@ interface AuthState {
 
 let userDocUnsub: Unsubscribe | null = null;
 let allUsersUnsub: Unsubscribe | null = null;
+let authSettingsUnsub: Unsubscribe | null = null;
+let visibilityCleanup: (() => void) | null = null;
 let authInitialized = false;
 
 const formatAllowedUserError = (err: unknown, currentEmail: string): Error => {
@@ -73,17 +80,24 @@ const formatAllowedUserError = (err: unknown, currentEmail: string): Error => {
       : '';
   if (code === 'permission-denied') {
     return new Error(
-      `Permission denied by Firestore rules. Verify ${currentEmail || 'this account'} has active admin access in allowed_users.`
+      `Permission denied by Firestore rules. Verify ${currentEmail || 'this account'} has active admin access.`
     );
   }
   if (err instanceof Error) return err;
   return new Error('Failed to save allowed user.');
 };
 
+const ROLE_ORDER: Record<UserRole, number> = {
+  admin: 0,
+  user: 1,
+  temp: 2,
+};
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   firebaseUser: null,
   allowedRecord: null,
   allUsers: [],
+  allowTempLogin: false,
   isLoading: true,
   isAllowed: false,
   isAdmin: false,
@@ -121,6 +135,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    if (visibilityCleanup) {
+      visibilityCleanup();
+      visibilityCleanup = null;
+    }
     if (userDocUnsub) {
       userDocUnsub();
       userDocUnsub = null;
@@ -128,6 +146,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (allUsersUnsub) {
       allUsersUnsub();
       allUsersUnsub = null;
+    }
+    if (authSettingsUnsub) {
+      authSettingsUnsub();
+      authSettingsUnsub = null;
     }
     await signOut(auth);
     set({
@@ -142,9 +164,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
+  setAllowTempLogin: async (enabled) => {
+    const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
+    if (!currentUserEmail || !get().isAdmin) {
+      throw new Error('Admin authentication required.');
+    }
+    try {
+      await setDoc(
+        doc(db, 'app_settings', 'auth'),
+        {
+          allowTempLogin: enabled,
+          updatedAt: Date.now(),
+          updatedBy: currentUserEmail,
+        },
+        { merge: true }
+      );
+      set({ allowTempLogin: enabled });
+    } catch (err) {
+      throw formatAllowedUserError(err, currentUserEmail);
+    }
+  },
+
+  promoteTempToUser: async (u) => {
+    await get().updateAllowedUser(u.email, {
+      displayName: u.displayName,
+      role: 'user',
+      status: 'active',
+      notes: u.notes || '',
+    });
+  },
+
   addAllowedUser: async ({ email, displayName, role, status = 'active', notes = '' }) => {
     const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
-    if (!currentUserEmail) {
+    if (!currentUserEmail || !get().isAdmin) {
       throw new Error('You must be signed in as an admin to authorize users.');
     }
 
@@ -175,6 +227,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   updateAllowedUser: async (email, { displayName, role, status, notes = '' }) => {
     const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
+    if (!currentUserEmail || !get().isAdmin) {
+      throw new Error('You must be signed in as an admin to update users.');
+    }
     const cleanEmail = normalizeEmail(email);
     const isSuper = cleanEmail === SUPER_ADMIN_EMAIL;
     const userRef = doc(db, 'allowed_users', cleanEmail);
@@ -194,6 +249,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   deleteAllowedUser: async (email) => {
     const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
+    if (!currentUserEmail || !get().isAdmin) {
+      throw new Error('You must be signed in as an admin to remove users.');
+    }
     const cleanEmail = normalizeEmail(email);
     if (cleanEmail === SUPER_ADMIN_EMAIL) {
       throw new Error('Cannot delete the primary Super Admin account.');
@@ -223,7 +281,8 @@ const startAllUsersSubscription = () => {
       list.sort((a, b) => {
         if (a.email === SUPER_ADMIN_EMAIL) return -1;
         if (b.email === SUPER_ADMIN_EMAIL) return 1;
-        if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
+        const roleDiff = (ROLE_ORDER[a.role] ?? 1) - (ROLE_ORDER[b.role] ?? 1);
+        if (roleDiff !== 0) return roleDiff;
         return (b.createdAt || 0) - (a.createdAt || 0);
       });
       useAuthStore.setState({ allUsers: list });
@@ -239,6 +298,10 @@ export const initAuthListener = () => {
   authInitialized = true;
 
   onAuthStateChanged(auth, async (user) => {
+    if (visibilityCleanup) {
+      visibilityCleanup();
+      visibilityCleanup = null;
+    }
     if (userDocUnsub) {
       userDocUnsub();
       userDocUnsub = null;
@@ -246,6 +309,10 @@ export const initAuthListener = () => {
     if (allUsersUnsub) {
       allUsersUnsub();
       allUsersUnsub = null;
+    }
+    if (authSettingsUnsub) {
+      authSettingsUnsub();
+      authSettingsUnsub = null;
     }
 
     if (!user || !user.email) {
@@ -260,11 +327,199 @@ export const initAuthListener = () => {
       return;
     }
 
+    if (!user.emailVerified) {
+      useAuthStore.setState({
+        firebaseUser: user,
+        allowedRecord: null,
+        allUsers: [],
+        isAllowed: false,
+        isAdmin: false,
+        authError: 'A verified Google account email is required to access this workspace.',
+        isLoading: false,
+      });
+      return;
+    }
+
     const emailLower = normalizeEmail(user.email);
     const isSuperAdmin = emailLower === SUPER_ADMIN_EMAIL;
     const userDocRef = doc(db, 'allowed_users', emailLower);
+    const settingsRef = doc(db, 'app_settings', 'auth');
 
-    // If Super Admin logs in, ensure their record exists in Firestore
+    let latestRecord: AllowedUserRecord | null = null;
+    let latestRecordLoaded = false;
+    let latestAllowTemp = false;
+    let settingsLoaded = false;
+    let serverVerified = false;
+    let attemptedTempSelfRegister = false;
+    let lastServerCheckAt = 0;
+
+    const evaluateSession = async () => {
+      if (!serverVerified || !latestRecordLoaded || !settingsLoaded) return;
+
+      if (latestRecord) {
+        const isActive = latestRecord.status === 'active';
+        const isTemp = latestRecord.role === 'temp';
+        const allowed =
+          isSuperAdmin || (isActive && (!isTemp || latestAllowTemp));
+        const admin =
+          isSuperAdmin || (isActive && latestRecord.role === 'admin');
+
+        useAuthStore.setState({
+          firebaseUser: user,
+          allowedRecord: latestRecord,
+          allowTempLogin: latestAllowTemp,
+          isAllowed: allowed,
+          isAdmin: admin,
+          authError:
+            isTemp && isActive && !latestAllowTemp
+              ? 'Temporary login is currently disabled. Ask an administrator to re-enable Temp Login or upgrade your account to a permanent User.'
+              : null,
+          isLoading: false,
+        });
+
+        if (allowed && (!latestRecord.uid || latestRecord.uid !== user.uid)) {
+          try {
+            await updateDoc(userDocRef, {
+              lastLoginAt: Date.now(),
+              updatedAt: Date.now(),
+              uid: user.uid,
+              photoURL: user.photoURL || latestRecord.photoURL || '',
+              displayName: sanitizeDisplayName(
+                latestRecord.displayName || user.displayName || '',
+                emailLower
+              ),
+            });
+          } catch {
+            // Ignore metadata update error if rules restrict
+          }
+        }
+
+        if (admin) {
+          startAllUsersSubscription();
+        } else if (allUsersUnsub) {
+          allUsersUnsub();
+          allUsersUnsub = null;
+        }
+        return;
+      }
+
+      if (isSuperAdmin) {
+        const fallbackRecord: AllowedUserRecord = {
+          email: emailLower,
+          displayName: user.displayName || 'MR. OPPY (SUPER ADMIN)',
+          role: 'admin',
+          status: 'active',
+          notes: 'Primary System Administrator',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        useAuthStore.setState({
+          firebaseUser: user,
+          allowedRecord: fallbackRecord,
+          allowTempLogin: latestAllowTemp,
+          isAllowed: true,
+          isAdmin: true,
+          isLoading: false,
+        });
+        startAllUsersSubscription();
+        return;
+      }
+
+      // Auto-onboard un-allowlisted user as a temporary user when allowTempLogin is enabled
+      if (latestAllowTemp && !attemptedTempSelfRegister) {
+        attemptedTempSelfRegister = true;
+        try {
+          const now = Date.now();
+          await setDoc(userDocRef, {
+            email: emailLower,
+            displayName: sanitizeDisplayName(user.displayName || '', emailLower),
+            role: 'temp',
+            status: 'active',
+            notes: 'Temporary login session',
+            addedBy: 'temp-login',
+            createdAt: now,
+            updatedAt: now,
+            lastLoginAt: now,
+            photoURL: user.photoURL || '',
+            uid: user.uid,
+          });
+          return;
+        } catch (err) {
+          console.warn('Temp user onboarding error:', err);
+        }
+      }
+
+      useAuthStore.setState({
+        firebaseUser: user,
+        allowedRecord: null,
+        allowTempLogin: latestAllowTemp,
+        isAllowed: false,
+        isAdmin: false,
+        isLoading: false,
+      });
+    };
+
+    const verifySessionWithServer = async (forceTokenRefresh: boolean) => {
+      const now = Date.now();
+      if (!forceTokenRefresh && now - lastServerCheckAt < 25_000) return;
+      lastServerCheckAt = now;
+
+      try {
+        await user.getIdToken(forceTokenRefresh);
+        const [settingsSnap, userSnap] = await Promise.all([
+          getDocFromServer(settingsRef),
+          getDocFromServer(userDocRef),
+        ]);
+        latestAllowTemp = settingsSnap.exists()
+          ? Boolean(settingsSnap.data()?.allowTempLogin)
+          : false;
+        latestRecord = userSnap.exists()
+          ? (userSnap.data() as AllowedUserRecord)
+          : null;
+        settingsLoaded = true;
+        latestRecordLoaded = true;
+        serverVerified = true;
+        useAuthStore.setState({ allowTempLogin: latestAllowTemp });
+        await evaluateSession();
+      } catch (err: unknown) {
+        const code =
+          typeof err === 'object' && err !== null && 'code' in err
+            ? String((err as { code?: unknown }).code)
+            : '';
+        if (
+          code === 'auth/user-disabled' ||
+          code === 'auth/user-token-expired' ||
+          code === 'auth/user-not-found' ||
+          code === 'auth/invalid-user-token'
+        ) {
+          await signOut(auth).catch(() => {});
+          useAuthStore.setState({
+            firebaseUser: null,
+            allowedRecord: null,
+            allUsers: [],
+            isAllowed: false,
+            isAdmin: false,
+            authError: 'Your session has been revoked or disabled.',
+            isLoading: false,
+          });
+          return;
+        }
+        if (!serverVerified) {
+          useAuthStore.setState({
+            firebaseUser: user,
+            allowedRecord: null,
+            allowTempLogin: false,
+            isAllowed: false,
+            isAdmin: false,
+            authError:
+              'Online server verification is required to sign in. Check your connection and retry.',
+            isLoading: false,
+          });
+        }
+      }
+    };
+
+    // Bootstrap Super Admin record
     if (isSuperAdmin) {
       try {
         const now = Date.now();
@@ -290,81 +545,47 @@ export const initAuthListener = () => {
       }
     }
 
+    // Perform initial server-authoritative token + Firestore verification before unlocking
+    await verifySessionWithServer(true);
+
+    // Listen in real time to shared Temp Login setting (ignoring pure disk cache until server confirms)
+    authSettingsUnsub = onSnapshot(
+      settingsRef,
+      { includeMetadataChanges: true },
+      (snap) => {
+        if (!serverVerified && snap.metadata.fromCache) return;
+        if (!snap.metadata.fromCache) serverVerified = true;
+        latestAllowTemp = snap.exists()
+          ? Boolean(snap.data()?.allowTempLogin)
+          : false;
+        settingsLoaded = true;
+        useAuthStore.setState({ allowTempLogin: latestAllowTemp });
+        void evaluateSession();
+      },
+      () => {
+        latestAllowTemp = false;
+        settingsLoaded = true;
+        void evaluateSession();
+      }
+    );
+
     // Subscribe to the user's own allowlist document in real time
     userDocUnsub = onSnapshot(
       userDocRef,
-      async (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data() as AllowedUserRecord;
-          const active = isSuperAdmin || data.status === 'active';
-          const admin =
-            isSuperAdmin || (active && data.role === 'admin');
-
-          useAuthStore.setState({
-            firebaseUser: user,
-            allowedRecord: data,
-            isAllowed: active,
-            isAdmin: admin,
-            isLoading: false,
-          });
-
-          // Update lastLoginAt / uid / photoURL once per session if active
-          if (active && (!data.uid || data.uid !== user.uid)) {
-            try {
-              await updateDoc(userDocRef, {
-                lastLoginAt: Date.now(),
-                updatedAt: Date.now(),
-                uid: user.uid,
-                photoURL: user.photoURL || data.photoURL || '',
-                displayName:
-                  data.displayName ||
-                  user.displayName ||
-                  emailLower.split('@')[0].toUpperCase(),
-              });
-            } catch {
-              // Ignore metadata update error if rules restrict
-            }
-          }
-
-          if (admin) {
-            startAllUsersSubscription();
-          } else if (allUsersUnsub) {
-            allUsersUnsub();
-            allUsersUnsub = null;
-          }
-        } else if (isSuperAdmin) {
-          // Fallback if Firestore doc hasn't synced yet for super admin
-          const fallbackRecord: AllowedUserRecord = {
-            email: emailLower,
-            displayName: user.displayName || 'MR. OPPY (SUPER ADMIN)',
-            role: 'admin',
-            status: 'active',
-            notes: 'Primary System Administrator',
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          };
-          useAuthStore.setState({
-            firebaseUser: user,
-            allowedRecord: fallbackRecord,
-            isAllowed: true,
-            isAdmin: true,
-            isLoading: false,
-          });
-          startAllUsersSubscription();
-        } else {
-          // User is signed in with Google, but NOT in /allowed_users
-          useAuthStore.setState({
-            firebaseUser: user,
-            allowedRecord: null,
-            isAllowed: false,
-            isAdmin: false,
-            isLoading: false,
-          });
-        }
+      { includeMetadataChanges: true },
+      (docSnap) => {
+        if (!serverVerified && docSnap.metadata.fromCache) return;
+        if (!docSnap.metadata.fromCache) serverVerified = true;
+        latestRecord = docSnap.exists()
+          ? (docSnap.data() as AllowedUserRecord)
+          : null;
+        latestRecordLoaded = true;
+        void evaluateSession();
       },
       (err) => {
         console.error('Allowlist check error:', err);
-        if (isSuperAdmin) {
+        latestRecordLoaded = true;
+        if (isSuperAdmin && serverVerified) {
           useAuthStore.setState({
             firebaseUser: user,
             isAllowed: true,
@@ -373,19 +594,21 @@ export const initAuthListener = () => {
           });
           startAllUsersSubscription();
         } else {
-          useAuthStore.setState({
-            firebaseUser: user,
-            allowedRecord: null,
-            isAllowed: false,
-            isAdmin: false,
-            isLoading: false,
-          });
+          void evaluateSession();
         }
       }
     );
+
+    if (typeof document !== 'undefined') {
+      const onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          void verifySessionWithServer(false);
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      visibilityCleanup = () => {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      };
+    }
   });
 };
-
-if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).__useAuthStore = useAuthStore;
-}

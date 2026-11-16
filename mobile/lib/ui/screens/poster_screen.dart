@@ -94,6 +94,14 @@ class _PosterScreenState extends State<PosterScreen> {
       )
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            if (uri != null &&
+                LocalPosterAssetServer.instance.isAllowedPosterUri(uri)) {
+              return NavigationDecision.navigate;
+            }
+            return NavigationDecision.prevent;
+          },
           onPageFinished: (_) {
             if (mounted) {
               setState(() => _bridgeReady = true);
@@ -102,6 +110,11 @@ class _PosterScreenState extends State<PosterScreen> {
           },
         ),
       );
+
+    final platformCtrl = ctrl.platform;
+    if (platformCtrl is AndroidWebViewController) {
+      await platformCtrl.setAllowFileAccess(false);
+    }
 
     if (!mounted) return;
     setState(() => _webController = ctrl);

@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'user' | 'temp';
 export type UserStatus = 'active' | 'disabled';
 
 export interface AllowedUserRecord {
@@ -13,4 +13,10 @@ export interface AllowedUserRecord {
   lastLoginAt?: number;
   photoURL?: string;
   uid?: string;
+}
+
+export interface AuthAppSettings {
+  allowTempLogin: boolean;
+  updatedAt: number;
+  updatedBy?: string;
 }

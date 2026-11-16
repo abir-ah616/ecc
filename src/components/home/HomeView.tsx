@@ -220,7 +220,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
               email={firebaseUser?.email}
               photoUrl={firebaseUser?.photoURL}
               size={34}
-              showCrown={isAdmin || Boolean(firebaseUser)}
+              showCrown={false}
             />
           </button>
         </div>

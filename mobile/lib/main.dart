@@ -47,13 +47,14 @@ class EspCalcApp extends StatefulWidget {
   State<EspCalcApp> createState() => _EspCalcAppState();
 }
 
-class _EspCalcAppState extends State<EspCalcApp> {
+class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
   late final AuthStore _authStore;
   late final TournamentStore _tournamentStore;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _authStore = widget.authStoreOverride ?? AuthStore();
     _tournamentStore = widget.tournamentStoreOverride ?? TournamentStore();
     if (!widget.skipAutoInit) {
@@ -63,7 +64,15 @@ class _EspCalcAppState extends State<EspCalcApp> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !widget.skipAutoInit) {
+      _authStore.onAppResumed();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (widget.authStoreOverride == null) _authStore.dispose();
     if (widget.tournamentStoreOverride == null) _tournamentStore.dispose();
     super.dispose();
@@ -81,7 +90,9 @@ class _EspCalcAppState extends State<EspCalcApp> {
           final Widget child;
           if (_authStore.isLoading || !_tournamentStore.isHydrated) {
             child = const _BootScreen(key: ValueKey('boot'));
-          } else if (_authStore.firebaseUser == null || !_authStore.isAllowed) {
+          } else if (!_authStore.integrityTrusted ||
+              _authStore.firebaseUser == null ||
+              !_authStore.isAllowed) {
             child = LoginScreen(
               key: const ValueKey('login'),
               authStore: _authStore,

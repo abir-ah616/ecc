@@ -563,16 +563,70 @@ class TournamentStore extends ChangeNotifier {
     });
   }
 
+  String? _sanitizeImageUrl(String? raw) {
+    if (raw == null) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty || trimmed.length > 2000000) return null;
+    if (trimmed.startsWith('/assets/')) return trimmed;
+    final dataImg = RegExp(
+      r'^data:image/(png|jpeg|jpg|webp|gif|bmp);base64,[a-zA-Z0-9+/=\s]+$',
+      caseSensitive: false,
+    );
+    if (dataImg.hasMatch(trimmed)) return trimmed;
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) {
+      return trimmed;
+    }
+    return null;
+  }
+
   bool importJson(String rawJson) {
     try {
+      if (rawJson.length > 15000000) return false;
       final parsed = jsonDecode(rawJson);
       if (parsed is! Map<String, dynamic>) return false;
       final rawList = parsed['tournaments'];
-      if (rawList is! List) return false;
+      if (rawList is! List || rawList.length > 100) return false;
 
       final imported = rawList
-          .map((e) => TournamentRecord.fromJson(e as Map<String, dynamic>))
-          .toList();
+          .take(100)
+          .whereType<Map<String, dynamic>>()
+          .map((rawItem) {
+        final t = TournamentRecord.fromJson(rawItem);
+        final s = t.settings;
+        final cleanSettings = TournamentSettings(
+          mode: s.mode,
+          name: s.name,
+          roundOrDay: s.roundOrDay,
+          hostName: s.hostName,
+          hostLogoUrl: _sanitizeImageUrl(s.hostLogoUrl),
+          sponsorName: s.sponsorName,
+          sponsorLogoUrl: _sanitizeImageUrl(s.sponsorLogoUrl),
+          showLogos: s.showLogos,
+          totalMatchesPlanned: s.totalMatchesPlanned,
+          teamCount: s.teamCount,
+          pointSystem: s.pointSystem,
+          tieBreakOrder: s.tieBreakOrder,
+          championRush: s.championRush,
+          theme: s.theme,
+          customLogoUrl: _sanitizeImageUrl(s.customLogoUrl),
+          isManuallyEnded: s.isManuallyEnded,
+        );
+        final cleanTeams = t.teams.take(64).map((tm) {
+          final safeLogo = _sanitizeImageUrl(tm.logoUrl);
+          return Team(
+            id: tm.id,
+            name: tm.name,
+            logoUrl: safeLogo,
+            shortCode: tm.shortCode,
+          );
+        }).toList();
+        return t.copyWith(
+          settings: cleanSettings,
+          teams: cleanTeams,
+          matches: t.matches.take(64).toList(),
+        );
+      }).toList();
       final nextActive = (parsed['activeTournamentId'] as String?) ??
           (imported.isNotEmpty ? imported.first.id : null);
       final nextPointSys = parsed['defaultPointSystem'] is Map<String, dynamic>

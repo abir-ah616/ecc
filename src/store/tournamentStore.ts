@@ -16,6 +16,7 @@ import {
   DEFAULT_PLACEMENT_POINTS,
   DEFAULT_TIE_BREAK_ORDER,
 } from '../lib/scoring';
+import { sanitizeImportedTournamentPayload } from '../lib/authValidation';
 
 export const DEFAULT_POINT_SYSTEM: PointSystemConfig = {
   placementPoints: [...DEFAULT_PLACEMENT_POINTS],
@@ -920,14 +921,26 @@ export const useTournamentStore = create<TournamentStoreState>()(
 
       importJson: (json: string): boolean => {
         try {
-          const parsed = JSON.parse(json);
-          if (Array.isArray(parsed.tournaments)) {
-            const nextActiveId = parsed.activeTournamentId || parsed.tournaments[0]?.id || null;
-            const resolved = resolveActive(parsed.tournaments, nextActiveId);
+          if (typeof json !== 'string' || json.length > 15_000_000) return false;
+          const rawParsed = JSON.parse(json);
+          const parsed = sanitizeImportedTournamentPayload(rawParsed);
+          if (parsed && Array.isArray(parsed.tournaments)) {
+            const tournaments = parsed.tournaments as TournamentRecord[];
+            const nextActiveId =
+              (typeof parsed.activeTournamentId === 'string' && parsed.activeTournamentId) ||
+              tournaments[0]?.id ||
+              null;
+            const resolved = resolveActive(tournaments, nextActiveId);
+            const importedPointSys =
+              parsed.defaultPointSystem !== null &&
+              typeof parsed.defaultPointSystem === 'object' &&
+              Array.isArray((parsed.defaultPointSystem as PointSystemConfig).placementPoints)
+                ? (parsed.defaultPointSystem as PointSystemConfig)
+                : { ...DEFAULT_POINT_SYSTEM };
             set({
-              tournaments: parsed.tournaments,
+              tournaments,
               activeTournamentId: nextActiveId,
-              defaultPointSystem: parsed.defaultPointSystem || { ...DEFAULT_POINT_SYSTEM },
+              defaultPointSystem: importedPointSys,
               teams: resolved.teams,
               matches: resolved.matches,
               settings: resolved.settings,

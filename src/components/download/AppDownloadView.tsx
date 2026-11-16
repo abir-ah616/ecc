@@ -11,8 +11,9 @@ import {
 import { useTournamentStore } from '../../store/tournamentStore';
 import { EspCalcLogoMark } from '../ui/BrandLogo';
 
-const APK_URL = '/esp-calc.apk';
+const APK_URL = '/esp-calc.apk?v=20261116';
 const APK_FILENAME = 'ESP-CALC-v1.0.0.apk';
+const APK_SIZE_LABEL = '53.3 MB';
 
 interface AppScreenshot {
   src: string;
@@ -108,7 +109,7 @@ export const AppDownloadView: React.FC = () => {
 
           <div>
             <div className="font-bold text-white text-sm tabular-nums">
-              56.4 MB
+              {APK_SIZE_LABEL}
             </div>
             <div className="text-slate-400 mt-0.5">APK Size</div>
           </div>
@@ -229,7 +230,7 @@ export const AppDownloadView: React.FC = () => {
           </div>
           <div>
             <dt className="text-slate-500">Size</dt>
-            <dd className="mt-0.5 font-semibold text-white">56.4 MB</dd>
+            <dd className="mt-0.5 font-semibold text-white">{APK_SIZE_LABEL}</dd>
           </div>
           <div>
             <dt className="text-slate-500">Developer</dt>

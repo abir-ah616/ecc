@@ -11,15 +11,22 @@ rules_version = '2';
 // Fields:
 //   - email: string (required, immutable, matches emailId, valid email, <= 254 chars)
 //   - displayName: string (required, 1..120 chars) - user display name
-//   - role: string (required, enum: ['admin', 'user']) - access control role
+//   - role: string (required, enum: ['admin', 'user', 'temp']) - access control role
 //   - status: string (required, enum: ['active', 'disabled']) - account status
-//   - createdAt: number (required, >= 0) - creation timestamp (ms)
-//   - updatedAt: number (required, >= 0) - last update timestamp (ms)
-//   - notes: string (optional, 0..1000 chars) - admin notes
-//   - addedBy: string (optional, 0..254 chars) - creator identifier/email
-//   - lastLoginAt: number (optional, >= 0) - last login timestamp (ms)
+//   - createdAt: number (required, 0 <= ts <= request.time + 24h; immutable & within +/- 24h of request.time on temp self-onboarding) - creation timestamp (ms)
+//   - updatedAt: number (required, 0 <= ts <= request.time + 24h; within +/- 24h of request.time on self-onboarding/self-update) - last update timestamp (ms)
+//   - notes: string (optional, 0..1000 chars, immutable on self-update) - admin notes
+//   - addedBy: string (optional, 0..254 chars; must equal 'temp-login' on temp self-onboarding, immutable on self-update) - creator identifier/email
+//   - lastLoginAt: number (optional, 0 <= ts <= request.time + 24h) - last login timestamp (ms)
 //   - photoURL: string (optional, 0..2048 chars) - user avatar URL
-//   - uid: string (optional, 0..128 chars) - Firebase Auth UID
+//   - uid: string (optional, 0..128 chars; must match request.auth.uid if present on self-onboarding/self-update) - Firebase Auth UID
+//
+// Collection: app_settings
+// Document ID: auth (global authentication configuration document)
+// Fields:
+//   - allowTempLogin: bool (required) - enables/disables temporary user self-onboarding
+//   - updatedAt: number (required, 0 <= ts <= request.time + 24h) - last update timestamp (ms)
+//   - updatedBy: string (optional, 0..254 chars) - admin identifier/email who last updated settings
 //
 // ===============================================================
 
@@ -30,9 +37,11 @@ service cloud.firestore {
     // Helper Functions
     // ===============================================================
 
-    // Check if the user is authenticated and has a non-null email token
+    // Check if the user is authenticated with a verified, non-null email token
     function isAuthenticated() {
-      return request.auth != null && request.auth.token.email != null;
+      return request.auth != null &&
+        request.auth.token.email != null &&
+        request.auth.token.email_verified == true;
     }
 
     // Normalized lowercase email of the authenticated caller
@@ -63,7 +72,13 @@ service cloud.firestore {
       return isSuperAdmin() || isDbAdmin();
     }
 
-    // Verify UID hasn't been tampered with on self-update
+    // Check if temporary self-onboarding is enabled in app_settings/auth
+    function isTempLoginEnabled() {
+      return exists(/databases/$(database)/documents/app_settings/auth) &&
+        get(/databases/$(database)/documents/app_settings/auth).data.allowTempLogin == true;
+    }
+
+    // Verify UID hasn't been tampered with on self-onboarding or self-update
     function uidUnchanged() {
       return !('uid' in request.resource.data) ||
         request.resource.data.uid == request.auth.uid;
@@ -77,6 +92,11 @@ service cloud.firestore {
     // Validate that the document contains only the allowed fields
     function hasOnlyAllowedFields(fields) {
       return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate that specified fields have not been added, removed, or modified on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
     }
 
     // Validate string length
@@ -102,9 +122,38 @@ service cloud.firestore {
         email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
 
+    // Validate epoch millisecond timestamp is non-negative and not absurdly future-skewed
+    function isValidEpochMs(ms) {
+      return ms is number &&
+        ms >= 0 &&
+        ms <= request.time.toMillis() + 86400000;
+    }
+
+    // Validate epoch millisecond timestamp is within +/- 24 hours of server request time
+    function isNearRequestTime(ms) {
+      return ms is number &&
+        ms >= request.time.toMillis() - 86400000 &&
+        ms <= request.time.toMillis() + 86400000;
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
+
+    function isValidAuthSettings(data) {
+      return hasOnlyAllowedFields([
+          'allowTempLogin',
+          'updatedAt',
+          'updatedBy'
+        ]) &&
+        hasRequiredFields([
+          'allowTempLogin',
+          'updatedAt'
+        ]) &&
+        data.allowTempLogin is bool &&
+        isValidEpochMs(data.updatedAt) &&
+        isValidOptionalString('updatedBy', 0, 254);
+    }
 
     function isValidAllowedUser(data, emailId) {
       return hasOnlyAllowedFields([
@@ -132,22 +181,38 @@ service cloud.firestore {
         data.email == emailId &&
         isValidEmail(data.email) &&
         validStringLength('displayName', 1, 120) &&
-        data.role in ['admin', 'user'] &&
+        data.role in ['admin', 'user', 'temp'] &&
         data.status in ['active', 'disabled'] &&
         // Root super-admin must always remain an active admin
         (emailId != 'johncenahzoppy@gmail.com' || (data.role == 'admin' && data.status == 'active')) &&
-        data.createdAt is number &&
-        data.createdAt >= 0 &&
-        data.updatedAt is number &&
-        data.updatedAt >= 0 &&
+        isValidEpochMs(data.createdAt) &&
+        isValidEpochMs(data.updatedAt) &&
         isValidOptionalString('notes', 0, 1000) &&
         isValidOptionalString('addedBy', 0, 254) &&
-        (!('lastLoginAt' in data) || (data.lastLoginAt is number && data.lastLoginAt >= 0)) &&
+        (!('lastLoginAt' in data) || isValidEpochMs(data.lastLoginAt)) &&
         isValidOptionalString('photoURL', 0, 2048) &&
         isValidOptionalString('uid', 0, 128);
     }
 
-    // Active allowed users may only update their own login metadata without altering role, status, or email
+    // Valid temporary user self-onboarding creation when enabled by admin
+    function isValidTempSelfOnboarding(emailId) {
+      return isTempLoginEnabled() &&
+        isOwner(emailId) &&
+        emailId != 'johncenahzoppy@gmail.com' &&
+        isValidAllowedUser(request.resource.data, emailId) &&
+        request.resource.data.role == 'temp' &&
+        request.resource.data.status == 'active' &&
+        'addedBy' in request.resource.data &&
+        request.resource.data.addedBy == 'temp-login' &&
+        isNearRequestTime(request.resource.data.createdAt) &&
+        isNearRequestTime(request.resource.data.updatedAt) &&
+        request.resource.data.updatedAt >= request.resource.data.createdAt &&
+        (!('lastLoginAt' in request.resource.data) ||
+          isNearRequestTime(request.resource.data.lastLoginAt)) &&
+        uidUnchanged();
+    }
+
+    // Active allowed users may only update their own login metadata without altering role, status, email, createdAt, addedBy, or notes
     function isValidSelfMetadataUpdate(emailId) {
       return isOwner(emailId) &&
         resource.data.status == 'active' &&
@@ -158,9 +223,22 @@ service cloud.firestore {
           'updatedAt',
           'displayName'
         ]) &&
+        areImmutableFieldsUnchanged([
+          'email',
+          'role',
+          'status',
+          'createdAt',
+          'addedBy',
+          'notes'
+        ]) &&
         request.resource.data.role == resource.data.role &&
         request.resource.data.status == resource.data.status &&
         request.resource.data.email == resource.data.email &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['updatedAt']) ||
+          isNearRequestTime(request.resource.data.updatedAt)) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastLoginAt']) ||
+          isNearRequestTime(request.resource.data.lastLoginAt)) &&
         uidUnchanged();
     }
 
@@ -168,12 +246,23 @@ service cloud.firestore {
     // Collection Rules
     // ===============================================================
 
-    match /allowed_users/{emailId} {
-      allow get: if isAdmin() || isOwner(emailId);
+    match /app_settings/{settingId} {
+      allow get: if (isAuthenticated() && settingId == 'auth') || isAdmin();
       allow list: if isAdmin();
 
-      allow create: if isAdmin() &&
-        isValidAllowedUser(request.resource.data, emailId);
+      allow create, update: if isAdmin() &&
+        settingId == 'auth' &&
+        isValidAuthSettings(request.resource.data);
+
+      allow delete: if false;
+    }
+
+    match /allowed_users/{emailId} {
+      allow get: if isOwner(emailId) || isAdmin();
+      allow list: if isAdmin();
+
+      allow create: if (isAdmin() && isValidAllowedUser(request.resource.data, emailId)) ||
+        isValidTempSelfOnboarding(emailId);
 
       allow update: if isValidAllowedUser(request.resource.data, emailId) &&
         request.resource.data.email == resource.data.email &&

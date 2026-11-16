@@ -770,43 +770,50 @@ class OrganizerAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
         shape: BoxShape.circle,
-        border: showRing
-            ? Border.all(
-                color: const Color(0xFFA855F7).withValues(alpha: 0.75),
-                width: 1.6,
-              )
-            : null,
         boxShadow: showRing
             ? [
                 BoxShadow(
-                  color: const Color(0xFFA855F7).withValues(alpha: 0.32),
-                  blurRadius: 12,
+                  color: const Color(0xFFA855F7).withValues(alpha: 0.28),
+                  blurRadius: 8,
                 ),
               ]
             : null,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        alignment: Alignment.center,
-        fit: StackFit.expand,
-        children: [
-          Center(
-            child: Text(
-              safeInitial,
-              style: TextStyle(
-                color: AppColors.accentBright,
-                fontSize: size * 0.42,
-                fontWeight: FontWeight.w800,
+      foregroundDecoration: showRing
+          ? BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFFA855F7).withValues(alpha: 0.8),
+                width: 1.6,
+              ),
+            )
+          : null,
+      child: ClipOval(
+        child: Stack(
+          alignment: Alignment.center,
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: Text(
+                safeInitial,
+                style: TextStyle(
+                  color: AppColors.accentBright,
+                  fontSize: size * 0.42,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-          ),
-          if (hasUrl)
-            Image.network(
-              photoUrl!.trim(),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            ),
-        ],
+            if (hasUrl)
+              Image.network(
+                photoUrl!.trim(),
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+                cacheWidth: (size * 2.5).round(),
+                gaplessPlayback: true,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+          ],
+        ),
       ),
     );
 

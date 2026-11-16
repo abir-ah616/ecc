@@ -370,7 +370,7 @@ class _HeroBackdropSection extends StatelessWidget {
                       photoUrl: photoUrl,
                       size: 36,
                       showRing: true,
-                      showCrown: true,
+                      showCrown: false,
                     ),
                   ),
                 ],
