@@ -6,7 +6,7 @@ import {
   BroadcastWinnerMonolith,
 } from './BroadcastVectors';
 import { generateInitials } from '../../../store/tournamentStore';
-import { getTableDensity } from './themeHelpers';
+import { getTableDensity, resolveTeamTag } from './themeHelpers';
 
 export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
   settings,
@@ -350,7 +350,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
 
             {/* Skewed Parallelogram Team Rows */}
             <div className={`flex flex-col ${density.rowGapClass}`}>
-              {standings.map((team) => {
+              {standings.map((team, idx) => {
                 const isTop1 = team.rank === 1;
                 const isTop3 = team.rank <= 3;
 
@@ -400,8 +400,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
                               <span
                                 className={`font-headline font-black uppercase tracking-wider text-[#FBBF24] ${density.tagTextClass}`}
                               >
-                                {team.shortCode ||
-                                  generateInitials(team.teamName)}
+                                {resolveTeamTag(team, idx)}
                               </span>
                             )}
                           </div>

@@ -1,23 +1,75 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AppShell } from './components/layout/AppShell';
 import { HomeView } from './components/home/HomeView';
-import { CreateTournamentView } from './components/tournament/CreateTournamentView';
-import { EditTournamentView } from './components/tournament/EditTournamentView';
-import { RulesView } from './components/rules/RulesView';
-import { HistoryView } from './components/history/HistoryView';
-import { MatchView } from './components/calculator/MatchView';
-import { ResultView } from './components/result/ResultView';
-import { ResetModal } from './components/calculator/ResetModal';
-import { JsonModal } from './components/calculator/JsonModal';
 import { LoginView } from './components/auth/LoginView';
-import { AdminDashboardModal } from './components/admin/AdminDashboardModal';
 import { useTournamentStore } from './store/tournamentStore';
 import { useAuthStore, initAuthListener } from './store/authStore';
 
+const CreateTournamentView = lazy(() =>
+  import('./components/tournament/CreateTournamentView').then((m) => ({
+    default: m.CreateTournamentView,
+  }))
+);
+const EditTournamentView = lazy(() =>
+  import('./components/tournament/EditTournamentView').then((m) => ({
+    default: m.EditTournamentView,
+  }))
+);
+const RulesView = lazy(() =>
+  import('./components/rules/RulesView').then((m) => ({
+    default: m.RulesView,
+  }))
+);
+const HistoryView = lazy(() =>
+  import('./components/history/HistoryView').then((m) => ({
+    default: m.HistoryView,
+  }))
+);
+const MatchView = lazy(() =>
+  import('./components/calculator/MatchView').then((m) => ({
+    default: m.MatchView,
+  }))
+);
+const ResultView = lazy(() =>
+  import('./components/result/ResultView').then((m) => ({
+    default: m.ResultView,
+  }))
+);
+const AppDownloadView = lazy(() =>
+  import('./components/download/AppDownloadView').then((m) => ({
+    default: m.AppDownloadView,
+  }))
+);
+const ResetModal = lazy(() =>
+  import('./components/calculator/ResetModal').then((m) => ({
+    default: m.ResetModal,
+  }))
+);
+const JsonModal = lazy(() =>
+  import('./components/calculator/JsonModal').then((m) => ({
+    default: m.JsonModal,
+  }))
+);
+const AdminDashboardModal = lazy(() =>
+  import('./components/admin/AdminDashboardModal').then((m) => ({
+    default: m.AdminDashboardModal,
+  }))
+);
+
+const ViewFallback = () => (
+  <div className="flex min-h-[260px] items-center justify-center">
+    <Loader2 className="h-5 w-5 animate-spin text-amber-400" />
+  </div>
+);
+
 export function App() {
-  const { currentTab, matches } = useTournamentStore();
-  const { firebaseUser, isAllowed, isLoading } = useAuthStore();
+  const currentTab = useTournamentStore((s) => s.currentTab);
+  const matches = useTournamentStore((s) => s.matches);
+  const firebaseUser = useAuthStore((s) => s.firebaseUser);
+  const isAllowed = useAuthStore((s) => s.isAllowed);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const isAdminDashboardOpen = useAuthStore((s) => s.isAdminDashboardOpen);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [isJsonOpen, setIsJsonOpen] = useState(false);
 
@@ -53,6 +105,8 @@ export function App() {
     activeContent = <RulesView />;
   } else if (currentTab === 'history') {
     activeContent = <HistoryView />;
+  } else if (currentTab === 'download') {
+    activeContent = <AppDownloadView />;
   } else if (currentTab === 'results') {
     activeContent = <ResultView />;
   } else {
@@ -70,11 +124,26 @@ export function App() {
         onOpenJson={() => setIsJsonOpen(true)}
         onOpenReset={() => setIsResetOpen(true)}
       >
-        {activeContent}
+        <Suspense fallback={<ViewFallback />}>{activeContent}</Suspense>
       </AppShell>
-      <ResetModal isOpen={isResetOpen} onClose={() => setIsResetOpen(false)} />
-      <JsonModal isOpen={isJsonOpen} onClose={() => setIsJsonOpen(false)} />
-      <AdminDashboardModal />
+      {isResetOpen && (
+        <Suspense fallback={null}>
+          <ResetModal
+            isOpen={isResetOpen}
+            onClose={() => setIsResetOpen(false)}
+          />
+        </Suspense>
+      )}
+      {isJsonOpen && (
+        <Suspense fallback={null}>
+          <JsonModal isOpen={isJsonOpen} onClose={() => setIsJsonOpen(false)} />
+        </Suspense>
+      )}
+      {isAdminDashboardOpen && (
+        <Suspense fallback={null}>
+          <AdminDashboardModal />
+        </Suspense>
+      )}
     </>
   );
 }

@@ -36,11 +36,11 @@ export function buildHeadlineParts(settings: TournamentSettings): SplitHeadline 
     whiteoutBottom = words.slice(mid).join(' ');
   }
 
-  const seasonMatch =
-    `${settings.name} ${rawRound}`.match(/\b(S\d+|SEASON\s*\d+|DAY\s*\d+|D\d+|FF)\b/i);
-  const watermark = seasonMatch
-    ? seasonMatch[0].replace(/SEASON\s*/i, 'S').replace(/DAY\s*/i, 'D').toUpperCase()
-    : 'S2';
+  const dayMatch =
+    `${rawRound} ${settings.name}`.match(/\b(?:DAY\s*(\d+)|D(\d+))\b/i);
+  const watermark = dayMatch
+    ? `D${dayMatch[1] || dayMatch[2]}`
+    : 'D1';
 
   return {
     line1,
@@ -75,11 +75,18 @@ export function buildTableRuleBanner(settings: TournamentSettings): string {
   return `BOOYAH = ${booyahPts} PTS  •  ${killPts} PT PER ELIMINATION`;
 }
 
-/** Generates short team seed tag fallback (e.g. "T1") matching broadcast templates. */
+/** Generates short team seed/initial tag (e.g. "T1", "T10", "S12") matching broadcast templates. */
 export function resolveTeamTag(
   team: TeamCumulativeStanding,
   index: number
 ): string {
+  const parts = (team.teamName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1];
+    if (/^\d+$/.test(last) && parts[0].length > 0) {
+      return `${parts[0][0]}${last}`.slice(0, 4).toUpperCase();
+    }
+  }
   const tag = team.shortCode?.trim().toUpperCase();
   if (tag && tag.length <= 4) return tag;
   return `T${index + 1}`;

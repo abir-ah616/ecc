@@ -587,15 +587,26 @@ export const ThemeScarletStrike: React.FC<GraphicThemeProps> = ({
                       </span>
                     </div>
 
-                    {/* 2. Seed Tag Block */}
-                    <div className="flex w-[52px] shrink-0 items-center justify-center bg-[#0B0D13]">
-                      <span
-                        className={`font-headline font-bold italic leading-none text-slate-300 ${density.tagTextClass}`}
-                        style={{ transform: 'skewX(14deg)' }}
-                      >
-                        {tag}
-                      </span>
-                    </div>
+                    {/* 2. Squad Logo / Initials Badge Block (hidden when Squad Logos Off) */}
+                    {showLogos && (
+                      <div className="flex w-[52px] shrink-0 items-center justify-center bg-[#0B0D13]">
+                        {team.logoUrl ? (
+                          <img
+                            src={team.logoUrl}
+                            alt={team.teamName}
+                            className={`shrink-0 rounded-sm object-contain ${density.logoSizeClass}`}
+                            style={{ transform: 'skewX(14deg)' }}
+                          />
+                        ) : (
+                          <span
+                            className={`font-headline font-bold italic leading-none text-slate-300 ${density.tagTextClass}`}
+                            style={{ transform: 'skewX(14deg)' }}
+                          >
+                            {tag}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* 3. Metallic Silver-White Team Name Plate */}
                     <div
@@ -623,13 +634,6 @@ export const ThemeScarletStrike: React.FC<GraphicThemeProps> = ({
                         className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden"
                         style={{ transform: 'skewX(14deg)' }}
                       >
-                        {showLogos && team.logoUrl && (
-                          <img
-                            src={team.logoUrl}
-                            alt={team.teamName}
-                            className={`shrink-0 rounded-sm object-contain ${density.logoSizeClass}`}
-                          />
-                        )}
                         <span
                           className={`truncate font-headline font-black italic uppercase tracking-[0.02em] text-[#090B10] ${density.nameTextClass}`}
                         >

@@ -547,17 +547,22 @@ export const ThemeWhiteoutPro: React.FC<GraphicThemeProps> = ({
                           <span className="shrink-0 font-headline text-lg font-bold italic text-slate-300">
                             /
                           </span>
-                          <span
-                            className={`shrink-0 font-headline font-bold italic uppercase text-slate-500 ${density.tagTextClass}`}
-                          >
-                            {tag}
-                          </span>
-                          {showLogos && team.logoUrl && (
-                            <img
-                              src={team.logoUrl}
-                              alt={team.teamName}
-                              className={`shrink-0 rounded-sm object-contain ${density.logoSizeClass}`}
-                            />
+                          {showLogos && (
+                            <>
+                              {team.logoUrl ? (
+                                <img
+                                  src={team.logoUrl}
+                                  alt={team.teamName}
+                                  className={`shrink-0 rounded-sm object-contain ${density.logoSizeClass}`}
+                                />
+                              ) : (
+                                <span
+                                  className={`shrink-0 font-headline font-bold italic uppercase text-slate-500 ${density.tagTextClass}`}
+                                >
+                                  {tag}
+                                </span>
+                              )}
+                            </>
                           )}
                           <span
                             className={`truncate font-headline font-black italic uppercase tracking-[0.02em] text-[#111318] ${density.nameTextClass}`}

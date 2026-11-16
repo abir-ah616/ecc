@@ -259,26 +259,30 @@ class _HeroBackdropSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: ClipRect(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Align(
-                  alignment: Alignment.topRight,
-                  child: FractionallySizedBox(
-                    widthFactor: 0.92,
-                    heightFactor: 1.0,
-                    child: Image.asset(
-                      'assets/images/hero_character.jpg',
-                      fit: BoxFit.cover,
-                      alignment: const Alignment(0.35, -0.3),
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    return RepaintBoundary(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRect(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: FractionallySizedBox(
+                      widthFactor: 0.92,
+                      heightFactor: 1.0,
+                      child: Image.asset(
+                        'assets/images/hero_character.jpg',
+                        fit: BoxFit.cover,
+                        alignment: const Alignment(0.35, -0.3),
+                        cacheWidth: 850,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.medium,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
                     ),
                   ),
-                ),
                 // Left obsidian readability scrim & top vignette
                 DecoratedBox(
                   decoration: BoxDecoration(
@@ -295,19 +299,19 @@ class _HeroBackdropSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Bottom melt into canvas
-                DecoratedBox(
+      // Bottom melt into canvas
+                const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        AppColors.canvas.withValues(alpha: 0.55),
+                        Color(0x8C090B0F),
                         Colors.transparent,
-                        AppColors.canvas.withValues(alpha: 0.65),
+                        Color(0xA6090B0F),
                         AppColors.canvas,
                       ],
-                      stops: const [0.0, 0.25, 0.78, 1.0],
+                      stops: [0.0, 0.25, 0.78, 1.0],
                     ),
                   ),
                 ),
@@ -444,6 +448,7 @@ class _HeroBackdropSection extends StatelessWidget {
           ),
         ),
       ],
+    ),
     );
   }
 }
@@ -810,6 +815,9 @@ class _LiveTournamentBannerCard extends StatelessWidget {
                         'assets/images/crystal_trophy.jpg',
                         fit: BoxFit.cover,
                         alignment: Alignment.center,
+                        cacheWidth: 300,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.low,
                         errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                       ),
                       const DecoratedBox(

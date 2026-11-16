@@ -403,9 +403,11 @@ export const ThemeApexVolt: React.FC<GraphicThemeProps> = ({
                     key={team.teamId}
                     className={`flex w-full items-stretch drop-shadow-[0_6px_14px_rgba(0,0,0,0.75)] ${density.rowHeightClass}`}
                   >
-                    {/* Piece 1: Chamfered Rank + Seed Socket */}
+                    {/* Piece 1: Chamfered Rank + Seed/Logo Socket (shrinks cleanly when Squad Logos Off) */}
                     <div
-                      className="relative flex w-[124px] shrink-0 items-stretch overflow-hidden pr-2"
+                      className={`relative flex shrink-0 items-stretch overflow-hidden pr-2 ${
+                        showLogos ? 'w-[124px]' : 'w-[72px]'
+                      }`}
                       style={{
                         background: isRank1
                           ? 'linear-gradient(135deg, #A3FF12 0%, #00EA87 100%)'
@@ -426,7 +428,11 @@ export const ThemeApexVolt: React.FC<GraphicThemeProps> = ({
                               : '#1F3A2E',
                         }}
                       />
-                      <div className="flex w-[48px] shrink-0 items-center justify-center">
+                      <div
+                        className={`flex shrink-0 items-center justify-center ${
+                          showLogos ? 'w-[48px]' : 'flex-1 pr-1'
+                        }`}
+                      >
                         <span
                           className={`font-headline font-black italic leading-none ${density.rankTextClass} ${
                             isRank1
@@ -439,23 +445,25 @@ export const ThemeApexVolt: React.FC<GraphicThemeProps> = ({
                           {team.rank}
                         </span>
                       </div>
-                      <div className="flex flex-1 items-center justify-center pr-1">
-                        {showLogos && team.logoUrl ? (
-                          <img
-                            src={team.logoUrl}
-                            alt={team.teamName}
-                            className={`shrink-0 object-contain ${density.logoSizeClass}`}
-                          />
-                        ) : (
-                          <span
-                            className={`font-headline font-black italic uppercase tracking-wider ${density.tagTextClass} ${
-                              isRank1 ? 'text-[#050A07]' : 'text-emerald-300/80'
-                            }`}
-                          >
-                            {tag}
-                          </span>
-                        )}
-                      </div>
+                      {showLogos && (
+                        <div className="flex flex-1 items-center justify-center pr-1">
+                          {team.logoUrl ? (
+                            <img
+                              src={team.logoUrl}
+                              alt={team.teamName}
+                              className={`shrink-0 object-contain ${density.logoSizeClass}`}
+                            />
+                          ) : (
+                            <span
+                              className={`font-headline font-black italic uppercase tracking-wider ${density.tagTextClass} ${
+                                isRank1 ? 'text-[#050A07]' : 'text-emerald-300/80'
+                              }`}
+                            >
+                              {tag}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Piece 2: Crisp High-Contrast Team Name Blade */}

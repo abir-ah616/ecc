@@ -270,3 +270,26 @@ input[type=number] {
 .clip-corner-cut {
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
 }
+
+/* Custom sleek dark scrollbar for sidebar navigation */
+.studio-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 158, 11, 0.28) transparent;
+}
+
+.studio-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.studio-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.studio-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(245, 158, 11, 0.24);
+  border-radius: 9999px;
+}
+
+.studio-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(245, 158, 11, 0.48);
+}

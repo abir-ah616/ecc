@@ -635,9 +635,10 @@ class _MatchScreenState extends State<MatchScreen> {
                 tournament.settings.pointSystem,
               );
 
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Container(
+              return RepaintBoundary(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 11,
@@ -786,6 +787,7 @@ class _MatchScreenState extends State<MatchScreen> {
                       ),
                     ],
                   ),
+                ),
                 ),
               );
             },

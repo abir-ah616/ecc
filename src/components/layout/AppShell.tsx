@@ -17,11 +17,13 @@ import {
   Image as ImageIcon,
   Gamepad2,
   Flag,
+  Smartphone,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 import { useAuthStore } from '../../store/authStore';
 import { Footer } from './Footer';
 import { EspCalcLogoMark, OrganizerAvatar } from '../ui/BrandLogo';
+import { AppDownloadToast } from '../download/AppDownloadToast';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -85,6 +87,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentTab !== 'home' &&
     currentTab !== 'create' &&
     currentTab !== 'history' &&
+    currentTab !== 'download' &&
     currentTab !== 'rules' &&
     currentTab !== 'setup';
 
@@ -124,6 +127,12 @@ export const AppShell: React.FC<AppShellProps> = ({
         subtitle: `${tournaments.length} saved records`,
       };
     }
+    if (currentTab === 'download') {
+      return {
+        title: 'App Download',
+        subtitle: 'Official ESP CALC Android Broadcast Studio APK',
+      };
+    }
     if (hasActiveTournament) {
       const activeMatch = matches.find((m) => m.id === currentTab);
       if (activeMatch) {
@@ -154,21 +163,28 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   const headerContext = getHeaderContext();
 
+  const navItemClass = (isActive: boolean) =>
+    `group flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-sm font-medium border transition-colors cursor-pointer ${
+      isActive
+        ? 'bg-gradient-to-r from-amber-500/16 via-amber-500/[0.06] to-transparent border-amber-400/35 text-white'
+        : 'border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-100'
+    }`;
+
   const renderSidebarContent = () => (
-    <div className="flex h-full flex-col justify-between">
-      <div className="space-y-6 overflow-y-auto px-3 py-4">
-        {/* Brand Logo Matching Mobile Broadcast Crest */}
+    <div className="flex h-full flex-col justify-between bg-gradient-to-b from-[#0D1018] via-[#0A0C12] to-[#08090D]">
+      <div className="studio-scrollbar space-y-5 overflow-y-auto px-3 py-4">
+        {/* Brand Logo Matching Broadcast Studio Home */}
         <button
           type="button"
           onClick={() => navigate('home')}
-          className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-white/[0.04] transition-colors cursor-pointer"
+          className="flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-[#121620]/70 px-2.5 py-2.5 text-left hover:border-amber-400/30 transition-colors cursor-pointer"
         >
           <EspCalcLogoMark size={38} className="shrink-0" />
           <div className="min-w-0">
             <div className="text-sm font-extrabold tracking-wide text-slate-100 leading-none">
               ESP CALC
             </div>
-            <div className="mt-1 text-[9.5px] font-semibold tracking-[0.22em] text-slate-400 truncate">
+            <div className="mt-1 text-[9.5px] font-semibold tracking-[0.22em] text-amber-400/80 truncate">
               BROADCAST STUDIO
             </div>
           </div>
@@ -176,75 +192,103 @@ export const AppShell: React.FC<AppShellProps> = ({
 
         {/* Global App Navigation */}
         <div className="space-y-1">
-          <div className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <div className="px-2.5 pb-1 text-[10.5px] font-bold uppercase tracking-[0.18em] text-slate-500">
             Workspace
           </div>
 
           <button
             type="button"
             onClick={() => navigate('home')}
-            className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium border transition-colors ${
-              currentTab === 'home'
-                ? 'bg-white/[0.09] border-white/[0.12] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-                : 'border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
-            }`}
+            className={navItemClass(currentTab === 'home')}
           >
-            <LayoutDashboard className="h-4 w-4 shrink-0" />
-            <span>Overview</span>
+            <span className="flex items-center gap-2.5">
+              <LayoutDashboard
+                className={`h-4 w-4 shrink-0 ${
+                  currentTab === 'home' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+                }`}
+              />
+              <span>Overview</span>
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('create')}
-            className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium border transition-colors ${
-              currentTab === 'create'
-                ? 'bg-white/[0.09] border-white/[0.12] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-                : 'border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
-            }`}
+            className={navItemClass(currentTab === 'create')}
           >
-            <PlusCircle className="h-4 w-4 shrink-0" />
-            <span>New Tournament</span>
+            <span className="flex items-center gap-2.5">
+              <PlusCircle
+                className={`h-4 w-4 shrink-0 ${
+                  currentTab === 'create' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+                }`}
+              />
+              <span>New Tournament</span>
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('rules')}
-            className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium border transition-colors ${
+            className={navItemClass(
               currentTab === 'rules' || currentTab === 'setup'
-                ? 'bg-white/[0.09] border-white/[0.12] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-                : 'border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
-            }`}
+            )}
           >
-            <SlidersHorizontal className="h-4 w-4 shrink-0" />
-            <span>Scoring Rules</span>
+            <span className="flex items-center gap-2.5">
+              <SlidersHorizontal
+                className={`h-4 w-4 shrink-0 ${
+                  currentTab === 'rules' || currentTab === 'setup'
+                    ? 'text-amber-400'
+                    : 'text-slate-400 group-hover:text-slate-200'
+                }`}
+              />
+              <span>Scoring Rules</span>
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('history')}
-            className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-sm font-medium border transition-colors ${
-              currentTab === 'history'
-                ? 'bg-white/[0.09] border-white/[0.12] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-                : 'border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
-            }`}
+            className={navItemClass(currentTab === 'history')}
           >
             <span className="flex items-center gap-2.5">
-              <History className="h-4 w-4 shrink-0" />
+              <History
+                className={`h-4 w-4 shrink-0 ${
+                  currentTab === 'history' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+                }`}
+              />
               <span>History</span>
             </span>
             {tournaments.length > 0 && (
-              <span className="rounded-md bg-white/[0.08] border border-white/[0.08] px-1.5 py-0.5 text-[11px] font-semibold text-slate-300 tabular-nums">
+              <span className="rounded-md bg-white/[0.06] border border-white/[0.08] px-1.5 py-0.5 text-[11px] font-semibold text-slate-300 tabular-nums">
                 {tournaments.length}
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('download')}
+            className={navItemClass(currentTab === 'download')}
+          >
+            <span className="flex items-center gap-2.5">
+              <Smartphone
+                className={`h-4 w-4 shrink-0 ${
+                  currentTab === 'download' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+                }`}
+              />
+              <span>App Download</span>
+            </span>
+            <span className="rounded bg-amber-500/10 border border-amber-400/25 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+              APK
+            </span>
           </button>
         </div>
 
         {/* Active Tournament Context */}
         {hasActiveTournament && activeTournament && (
-          <div className="space-y-1.5 border-t border-white/[0.08] pt-4">
+          <div className="space-y-1.5 border-t border-white/[0.07] pt-4">
             <div className="px-2.5 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              <span className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-slate-500">
                 Active Event
               </span>
               <span
@@ -263,8 +307,8 @@ export const AppShell: React.FC<AppShellProps> = ({
               </span>
             </div>
 
-            <div className="glass-tile mx-1 rounded-xl px-3 py-2">
-              <div className="truncate text-xs font-semibold text-slate-100">
+            <div className="mx-1 rounded-xl border border-amber-500/25 bg-[#121620] px-3 py-2.5">
+              <div className="truncate text-xs font-bold text-slate-100">
                 {settings.name}
               </div>
               <div className="mt-0.5 text-[11px] text-slate-400 truncate">
@@ -283,11 +327,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     key={m.id}
                     type="button"
                     onClick={() => navigate(m.id)}
-                    className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-sm font-medium border transition-colors ${
-                      isSelected
-                        ? 'glass-accent text-amber-200'
-                        : 'border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
-                    }`}
+                    className={navItemClass(isSelected)}
                   >
                     <span className="flex items-center gap-2.5">
                       {m.isCompleted ? (
@@ -308,7 +348,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <button
                   type="button"
                   onClick={handleAddMatch}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-semibold text-amber-400 hover:bg-amber-500/10 transition-colors"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-semibold text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
                 >
                   <Plus className="h-4 w-4 shrink-0" />
                   <span>Add Match {matches.length + 1}</span>
@@ -321,27 +361,31 @@ export const AppShell: React.FC<AppShellProps> = ({
               <button
                 type="button"
                 onClick={() => navigate('results')}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium border transition-colors ${
-                  currentTab === 'results'
-                    ? 'glass-accent text-amber-200'
-                    : 'border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
-                }`}
+                className={navItemClass(currentTab === 'results')}
               >
-                <ImageIcon className="h-4 w-4 shrink-0" />
-                <span>Standing Poster</span>
+                <span className="flex items-center gap-2.5">
+                  <ImageIcon
+                    className={`h-4 w-4 shrink-0 ${
+                      currentTab === 'results' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+                    }`}
+                  />
+                  <span>Standing Poster</span>
+                </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => navigate('edit')}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium border transition-colors ${
-                  currentTab === 'edit'
-                    ? 'glass-accent text-amber-200'
-                    : 'border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
-                }`}
+                className={navItemClass(currentTab === 'edit')}
               >
-                <Users className="h-4 w-4 shrink-0" />
-                <span>Squads & Info</span>
+                <span className="flex items-center gap-2.5">
+                  <Users
+                    className={`h-4 w-4 shrink-0 ${
+                      currentTab === 'edit' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+                    }`}
+                  />
+                  <span>Squads & Info</span>
+                </span>
               </button>
             </div>
           </div>
@@ -349,7 +393,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       </div>
 
       {/* Bottom Data & User Utilities */}
-      <div className="border-t border-white/[0.08] p-3 space-y-1.5">
+      <div className="border-t border-white/[0.07] p-3 space-y-1.5">
         <button
           type="button"
           onClick={() => {
@@ -439,8 +483,8 @@ export const AppShell: React.FC<AppShellProps> = ({
         }}
       />
 
-      {/* Desktop Left Frosted Glass Navigation Rail */}
-      <aside className="glass-chrome relative z-20 hidden md:flex md:w-64 shrink-0 flex-col border-r border-white/[0.08] sticky top-0 h-screen">
+      {/* Desktop Left Broadcast Navigation Rail */}
+      <aside className="relative z-20 hidden md:flex md:w-64 shrink-0 flex-col border-r border-amber-500/[0.14] sticky top-0 h-screen">
         {renderSidebarContent()}
       </aside>
 
@@ -636,6 +680,12 @@ export const AppShell: React.FC<AppShellProps> = ({
           </button>
         </div>
       </nav>
+
+      {/* Smooth Floating Android App Download Notification */}
+      <AppDownloadToast
+        currentTab={currentTab}
+        onOpenDownloadPage={() => navigate('download')}
+      />
     </div>
   );
 };

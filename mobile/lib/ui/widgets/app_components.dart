@@ -73,9 +73,7 @@ class _TactileCardState extends State<TactileCard> {
         ? Color.lerp(baseColor, Colors.white, 0.025)!
         : (widget.elevated ? const Color(0xFF181D28) : AppColors.surfaceTop);
 
-    final content = AnimatedContainer(
-      duration: const Duration(milliseconds: 140),
-      curve: Curves.easeOutCubic,
+    final content = Container(
       padding: widget.padding,
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -93,9 +91,9 @@ class _TactileCardState extends State<TactileCard> {
         boxShadow: widget.elevated
             ? const [
                 BoxShadow(
-                  color: Color(0x4A000000),
-                  blurRadius: 24,
-                  offset: Offset(0, 10),
+                  color: Color(0x3D000000),
+                  blurRadius: 14,
+                  offset: Offset(0, 6),
                 ),
               ]
             : null,
@@ -334,6 +332,8 @@ class SquadBadge extends StatelessWidget {
   final double size;
   final bool highlight;
 
+  static final Map<String, Uint8List> _decodedLogoCache = {};
+
   const SquadBadge({
     super.key,
     required this.teamName,
@@ -345,10 +345,17 @@ class SquadBadge extends StatelessWidget {
 
   Uint8List? _decodeDataUrl(String? raw) {
     if (raw == null || !raw.startsWith('data:image')) return null;
+    final cached = _decodedLogoCache[raw];
+    if (cached != null) return cached;
     final comma = raw.indexOf(',');
     if (comma == -1) return null;
     try {
-      return base64Decode(raw.substring(comma + 1));
+      final decoded = base64Decode(raw.substring(comma + 1));
+      if (_decodedLogoCache.length > 120) {
+        _decodedLogoCache.remove(_decodedLogoCache.keys.first);
+      }
+      _decodedLogoCache[raw] = decoded;
+      return decoded;
     } catch (_) {
       return null;
     }
@@ -360,35 +367,47 @@ class SquadBadge extends StatelessWidget {
     final initials = (shortCode != null && shortCode!.trim().isNotEmpty)
         ? shortCode!.trim()
         : generateTeamInitials(teamName);
+    final radius = BorderRadius.circular(size * 0.3);
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: highlight ? AppColors.accentSurface : AppColors.inputFill,
-        borderRadius: BorderRadius.circular(size * 0.3),
+        borderRadius: radius,
+      ),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: radius,
         border: Border.all(
           color: highlight ? AppColors.accentBorder : AppColors.borderStrong,
         ),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: bytes != null
-          ? Padding(
-              padding: const EdgeInsets.all(3),
-              child: Image.memory(bytes, fit: BoxFit.contain),
-            )
-          : Center(
-              child: Text(
-                initials,
-                style: TextStyle(
-                  color: highlight
-                      ? AppColors.accentBright
-                      : AppColors.textPrimary,
-                  fontSize: size * 0.3,
-                  fontWeight: FontWeight.w800,
+      child: ClipRRect(
+        borderRadius: radius,
+        child: bytes != null
+            ? Padding(
+                padding: const EdgeInsets.all(3),
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                  cacheWidth: (size * 2.5).round(),
+                  filterQuality: FilterQuality.medium,
+                ),
+              )
+            : Center(
+                child: Text(
+                  initials,
+                  style: TextStyle(
+                    color: highlight
+                        ? AppColors.accentBright
+                        : AppColors.textPrimary,
+                    fontSize: size * 0.3,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 }

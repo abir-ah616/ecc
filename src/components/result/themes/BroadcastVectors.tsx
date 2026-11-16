@@ -1,6 +1,6 @@
 import React from 'react';
 import type { TeamCumulativeStanding, TournamentSettings } from '../../../types/tournament';
-import { generateInitials } from '../../../store/tournamentStore';
+import { resolveTeamTag } from './themeHelpers';
 
 export const BroadcastCrownSvg: React.FC<{
   className?: string;
@@ -131,8 +131,8 @@ export const BroadcastWinnerMonolith: React.FC<{
   compact?: boolean;
 }> = ({ championTeam, settings, palette, compact = false }) => {
   const isRushChamp = championTeam.rushStatus.status === 'CHAMPION';
-  const initials =
-    championTeam.shortCode || generateInitials(championTeam.teamName);
+  const showLogos = settings.showLogos !== false;
+  const initials = resolveTeamTag(championTeam, 0);
 
   const boxWidth = compact ? 'w-[340px]' : 'w-[420px]';
   const boxHeight = compact ? 'h-[260px]' : 'h-[360px]';
@@ -140,9 +140,9 @@ export const BroadcastWinnerMonolith: React.FC<{
 
   return (
     <div className="relative flex flex-col items-center justify-center select-none w-full">
-      {/* Ambient Radial Spotlight Behind Monolith */}
+      {/* Ambient Radial Spotlight Behind Monolith (smooth gradient, zero Gaussian blur cost) */}
       <div
-        className="absolute inset-0 pointer-events-none blur-3xl opacity-60"
+        className="absolute inset-0 pointer-events-none opacity-65"
         style={{
           background: `radial-gradient(circle at 50% 45%, ${palette.glowColor} 0%, transparent 70%)`,
         }}
@@ -215,36 +215,45 @@ export const BroadcastWinnerMonolith: React.FC<{
 
             {/* Geometric Crown */}
             <BroadcastCrownSvg
-              className={compact ? 'w-14 h-12 mb-1' : 'w-20 h-17 mb-2'}
+              className={
+                !showLogos
+                  ? compact
+                    ? 'w-20 h-16'
+                    : 'w-28 h-24'
+                  : compact
+                    ? 'w-14 h-12 mb-1'
+                    : 'w-20 h-17 mb-2'
+              }
               color={palette.crownColor}
             />
 
-            {/* Team Logo or Bold Condensed Initials */}
-            {championTeam.logoUrl && settings.showLogos !== false ? (
-              <div
-                className={`relative flex items-center justify-center ${
-                  compact ? 'h-24 w-24' : 'h-36 w-36'
-                }`}
-              >
-                <img
-                  src={championTeam.logoUrl}
-                  alt={championTeam.teamName}
-                  className="h-full w-full object-contain drop-shadow-[0_10px_25px_rgba(0,0,0,0.85)]"
-                />
-              </div>
-            ) : (
-              <div
-                className={`font-headline font-black uppercase leading-none tracking-wider ${
-                  compact ? 'text-6xl' : 'text-8xl'
-                }`}
-                style={{
-                  color: palette.initialsColor,
-                  textShadow: `0 6px 24px ${palette.glowColor}`,
-                }}
-              >
-                {initials}
-              </div>
-            )}
+            {/* Team Logo or Bold Condensed Initials (hidden when Squad Logos Off) */}
+            {showLogos &&
+              (championTeam.logoUrl ? (
+                <div
+                  className={`relative flex items-center justify-center ${
+                    compact ? 'h-24 w-24' : 'h-36 w-36'
+                  }`}
+                >
+                  <img
+                    src={championTeam.logoUrl}
+                    alt={championTeam.teamName}
+                    className="h-full w-full object-contain drop-shadow-[0_10px_25px_rgba(0,0,0,0.85)]"
+                  />
+                </div>
+              ) : (
+                <div
+                  className={`font-headline font-black uppercase leading-none tracking-wider ${
+                    compact ? 'text-6xl' : 'text-8xl'
+                  }`}
+                  style={{
+                    color: palette.initialsColor,
+                    textShadow: `0 6px 24px ${palette.glowColor}`,
+                  }}
+                >
+                  {initials}
+                </div>
+              ))}
           </div>
 
           {/* Bottom Subtle Rule inside Monolith */}

@@ -27,7 +27,7 @@ interface ResultGraphicProps {
   isExporting?: boolean;
 }
 
-export const ResultGraphic: React.FC<ResultGraphicProps> = ({
+export const ResultGraphic: React.FC<ResultGraphicProps> = React.memo(({
   settings,
   standings,
   aspectRatio,
@@ -111,4 +111,4 @@ export const ResultGraphic: React.FC<ResultGraphicProps> = ({
       {renderActiveThemeEngine()}
     </div>
   );
-};
+});

@@ -48,6 +48,10 @@ export function generateInitials(name: string): string {
   if (parts.length === 1) {
     return parts[0].slice(0, 3).toUpperCase();
   }
+  const last = parts[parts.length - 1];
+  if (/^\d+$/.test(last) && parts[0].length > 0) {
+    return `${parts[0][0]}${last}`.slice(0, 4).toUpperCase();
+  }
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 

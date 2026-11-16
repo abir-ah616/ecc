@@ -6,7 +6,7 @@ import {
   BroadcastWinnerMonolith,
 } from './BroadcastVectors';
 import { generateInitials } from '../../../store/tournamentStore';
-import { getTableDensity } from './themeHelpers';
+import { getTableDensity, resolveTeamTag } from './themeHelpers';
 
 export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
   settings,
@@ -382,7 +382,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
 
             {/* Skewed Parallelogram Team Rows */}
             <div className={`flex flex-col ${density.rowGapClass}`}>
-              {standings.map((team) => {
+              {standings.map((team, idx) => {
                 const isTop1 = team.rank === 1;
                 const isTop3 = team.rank <= 3;
 
@@ -436,8 +436,7 @@ export const ThemeArcticCyan: React.FC<GraphicThemeProps> = ({
                               <span
                                 className={`font-headline font-black uppercase tracking-wider text-[#00F0FF] ${density.tagTextClass}`}
                               >
-                                {team.shortCode ||
-                                  generateInitials(team.teamName)}
+                                {resolveTeamTag(team, idx)}
                               </span>
                             )}
                           </div>

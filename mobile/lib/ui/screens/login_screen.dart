@@ -189,24 +189,29 @@ class LoginScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: const Color(0xFF0D1017),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: AppColors.accent.withValues(alpha: 0.25),
-                      ),
                       boxShadow: const [
                         BoxShadow(
-                          color: Color(0xB8000000),
-                          blurRadius: 42,
-                          offset: Offset(0, 18),
+                          color: Color(0x88000000),
+                          blurRadius: 24,
+                          offset: Offset(0, 12),
                         ),
                       ],
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Top Atmospheric Studio Showcase (matches Web Left Panel)
-                        _ShowcaseHeroPanel(),
+                    foregroundDecoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: AppColors.accent.withValues(alpha: 0.28),
+                        width: 1.1,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Top Atmospheric Studio Showcase (matches Web Left Panel)
+                          _ShowcaseHeroPanel(),
 
                         // Bottom Sign-In Gate (matches Web Right Panel)
                         Container(
@@ -379,6 +384,7 @@ class LoginScreen extends StatelessWidget {
                         ),
                       ],
                     ),
+                    ),
                   ),
                 ),
               ),
@@ -399,32 +405,37 @@ class _ArenaScreenBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: IgnorePointer(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Opacity(
-              opacity: opacity,
-              child: Image.asset(
-                'assets/images/web_arena_bg.webp',
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    Color(0xFF090B0F),
-                    Color(0xA6090B0F),
-                    Color(0x8C090B0F),
-                  ],
-                  stops: [0.0, 0.55, 1.0],
+        child: RepaintBoundary(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Opacity(
+                opacity: opacity,
+                child: Image.asset(
+                  'assets/images/web_arena_bg.webp',
+                  fit: BoxFit.cover,
+                  cacheWidth: 900,
+                  gaplessPlayback: true,
+                  filterQuality: FilterQuality.low,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
               ),
-            ),
-          ],
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Color(0xFF090B0F),
+                      Color(0xA6090B0F),
+                      Color(0x8C090B0F),
+                    ],
+                    stops: [0.0, 0.55, 1.0],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -434,34 +445,38 @@ class _ArenaScreenBackdrop extends StatelessWidget {
 class _ShowcaseHeroPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 245),
-      decoration: const BoxDecoration(
-        color: Color(0xFF090B0F),
-        border: Border(
-          bottom: BorderSide(color: Color(0x14FFFFFF)),
+    return RepaintBoundary(
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 245),
+        decoration: const BoxDecoration(
+          color: Color(0xFF090B0F),
+          border: Border(
+            bottom: BorderSide(color: Color(0x14FFFFFF)),
+          ),
         ),
-      ),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: FractionallySizedBox(
-                widthFactor: 0.88,
-                heightFactor: 1.0,
-                child: Opacity(
-                  opacity: 0.88,
-                  child: Image.asset(
-                    'assets/images/hero_character.jpg',
-                    fit: BoxFit.cover,
-                    alignment: const Alignment(0.25, -0.35),
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.topRight,
+                child: FractionallySizedBox(
+                  widthFactor: 0.88,
+                  heightFactor: 1.0,
+                  child: Opacity(
+                    opacity: 0.88,
+                    child: Image.asset(
+                      'assets/images/hero_character.jpg',
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0.25, -0.35),
+                      cacheWidth: 850,
+                      gaplessPlayback: true,
+                      filterQuality: FilterQuality.medium,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           // Left readability scrim
           const Positioned.fill(
             child: DecoratedBox(
@@ -582,8 +597,8 @@ class _ShowcaseHeroPanel extends StatelessWidget {
                         height: 1.14,
                         shadows: [
                           Shadow(
-                            color: AppColors.accent.withValues(alpha: 0.35),
-                            blurRadius: 16,
+                            color: AppColors.accent.withValues(alpha: 0.3),
+                            blurRadius: 8,
                           ),
                         ],
                       ),
@@ -607,6 +622,7 @@ class _ShowcaseHeroPanel extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

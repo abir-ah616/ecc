@@ -9,6 +9,8 @@ import {
   RotateCcw,
   Monitor,
   Smartphone,
+  Shield,
+  ShieldOff,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 import { calculateSingleMatchStandings } from '../../lib/scoring';
@@ -268,6 +270,29 @@ export const ResultView: React.FC = () => {
             </div>
 
             {/* Quick Event Actions */}
+            <button
+              type="button"
+              onClick={() =>
+                setSettings({ showLogos: !(settings.showLogos !== false) })
+              }
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                settings.showLogos !== false
+                  ? 'glass-accent text-amber-300'
+                  : 'glass-pill text-slate-300'
+              }`}
+            >
+              {settings.showLogos !== false ? (
+                <Shield className="h-3.5 w-3.5 text-amber-400" />
+              ) : (
+                <ShieldOff className="h-3.5 w-3.5 text-slate-400" />
+              )}
+              <span>
+                {settings.showLogos !== false
+                  ? 'Squad Logos: On'
+                  : 'Squad Logos: Off'}
+              </span>
+            </button>
+
             <button
               type="button"
               onClick={() => setCurrentTab('edit')}

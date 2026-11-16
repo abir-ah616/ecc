@@ -27,6 +27,11 @@ String generateTeamInitials(String name) {
     return parts[0].substring(0, math.min(3, parts[0].length)).toUpperCase();
   }
   final first = parts[0].isNotEmpty ? parts[0][0] : '';
+  final last = parts.last;
+  if (RegExp(r'^\d+$').hasMatch(last) && first.isNotEmpty) {
+    final combined = '$first$last'.toUpperCase();
+    return combined.length > 4 ? combined.substring(0, 4) : combined;
+  }
   final second = parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '';
   return '$first$second'.toUpperCase();
 }

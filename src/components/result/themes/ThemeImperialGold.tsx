@@ -6,7 +6,7 @@ import {
   BroadcastWinnerMonolith,
 } from './BroadcastVectors';
 import { generateInitials } from '../../../store/tournamentStore';
-import { getTableDensity } from './themeHelpers';
+import { getTableDensity, resolveTeamTag } from './themeHelpers';
 
 export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
   settings,
@@ -537,7 +537,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
 
             {/* Sculpted 4-Piece Interlocking Polygon Team Rows */}
             <div className={`flex flex-col ${density.rowGapClass}`}>
-              {standings.map((team) => {
+              {standings.map((team, idx) => {
                 const isRank1 = team.rank === 1;
                 const isRank2 = team.rank === 2;
                 const isRank3 = team.rank === 3;
@@ -624,8 +624,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
                             <span
                               className={`font-headline font-black uppercase tracking-wider text-[#FFB800] ${density.tagTextClass}`}
                             >
-                              {team.shortCode ||
-                                generateInitials(team.teamName)}
+                              {resolveTeamTag(team, idx)}
                             </span>
                           )}
                         </div>

@@ -400,46 +400,54 @@ class _OrganizerShellState extends State<OrganizerShell> {
                   child: IndexedStack(
                     index: _tab.index,
                     children: [
-                      HomeScreen(
-                        store: widget.tournamentStore,
-                        authStore: widget.authStore,
-                        onCreateTournament: () => _openCreate(),
-                        onOpenMatches: () =>
-                            setState(() => _tab = _AppTab.matches),
-                        onOpenMatch: _openMatch,
-                        onOpenPoster: () =>
-                            setState(() => _tab = _AppTab.poster),
-                        onOpenHistory: () =>
-                            setState(() => _tab = _AppTab.history),
-                        onOpenRules: _openRules,
-                        onOpenTemplates: _openTemplatesSheet,
-                        onEditEvent: (rec) => _openCreate(editing: rec),
-                        onOpenJson: _openJsonSheet,
-                        onOpenAccountSheet: _openAccountSheet,
+                      RepaintBoundary(
+                        child: HomeScreen(
+                          store: widget.tournamentStore,
+                          authStore: widget.authStore,
+                          onCreateTournament: () => _openCreate(),
+                          onOpenMatches: () =>
+                              setState(() => _tab = _AppTab.matches),
+                          onOpenMatch: _openMatch,
+                          onOpenPoster: () =>
+                              setState(() => _tab = _AppTab.poster),
+                          onOpenHistory: () =>
+                              setState(() => _tab = _AppTab.history),
+                          onOpenRules: _openRules,
+                          onOpenTemplates: _openTemplatesSheet,
+                          onEditEvent: (rec) => _openCreate(editing: rec),
+                          onOpenJson: _openJsonSheet,
+                          onOpenAccountSheet: _openAccountSheet,
+                        ),
                       ),
-                      MatchScreen(
-                        store: widget.tournamentStore,
-                        preferredMatchId: _focusedMatchId,
-                        matchFocusNonce: _matchFocusNonce,
-                        onOpenPoster: () =>
-                            setState(() => _tab = _AppTab.poster),
-                        onCreateTournament: () => _openCreate(),
-                        onEditEvent: () {
-                          if (active != null) _openCreate(editing: active);
-                        },
+                      RepaintBoundary(
+                        child: MatchScreen(
+                          store: widget.tournamentStore,
+                          preferredMatchId: _focusedMatchId,
+                          matchFocusNonce: _matchFocusNonce,
+                          onOpenPoster: () =>
+                              setState(() => _tab = _AppTab.poster),
+                          onCreateTournament: () => _openCreate(),
+                          onEditEvent: () {
+                            if (active != null) _openCreate(editing: active);
+                          },
+                        ),
                       ),
-                      PosterScreen(
-                        store: widget.tournamentStore,
-                        onCreateTournament: () => _openCreate(),
+                      RepaintBoundary(
+                        child: PosterScreen(
+                          store: widget.tournamentStore,
+                          onCreateTournament: () => _openCreate(),
+                        ),
                       ),
-                      HistoryScreen(
-                        store: widget.tournamentStore,
-                        onOpenMatches: () =>
-                            setState(() => _tab = _AppTab.matches),
-                        onOpenPoster: () =>
-                            setState(() => _tab = _AppTab.poster),
-                        onCreateTournament: () => _openCreate(),
-                        onEditTournament: (rec) => _openCreate(editing: rec),
+                      RepaintBoundary(
+                        child: HistoryScreen(
+                          store: widget.tournamentStore,
+                          onOpenMatches: () =>
+                              setState(() => _tab = _AppTab.matches),
+                          onOpenPoster: () =>
+                              setState(() => _tab = _AppTab.poster),
+                          onCreateTournament: () => _openCreate(),
+                          onEditTournament: (rec) => _openCreate(editing: rec),
+                        ),
                       ),
                     ],
                   ),
