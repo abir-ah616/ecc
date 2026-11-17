@@ -61,7 +61,8 @@ rules_version = '2';
 //   - logoUrl: string | null (optional, <= 900000 chars) - optional logo URL or data URL
 //   - player1: string | null (optional, <= 120 chars) - primary player identifier
 //   - player2: string | null (optional, <= 120 chars) - secondary player identifier
-//   - learnedTokens: list (optional, <= 40 items) - OCR/roster matching tokens
+//   - players: list | null (optional, <= 12 items) - optional list of squad team member IGNs
+//   - learnedTokens: list | null (optional, <= 40 items) - OCR/roster matching tokens
 //   - updatedAt: number (required, 0 <= ts <= request.time + 24h) - last update timestamp (ms)
 //
 // ===============================================================
@@ -375,6 +376,7 @@ service cloud.firestore {
           'logoUrl',
           'player1',
           'player2',
+          'players',
           'learnedTokens',
           'updatedAt'
         ]) &&
@@ -399,7 +401,11 @@ service cloud.firestore {
         (!('player2' in data) ||
           data.player2 == null ||
           (data.player2 is string && data.player2.size() <= 120)) &&
+        (!('players' in data) ||
+          data.players == null ||
+          (data.players is list && data.players.size() <= 12)) &&
         (!('learnedTokens' in data) ||
+          data.learnedTokens == null ||
           (data.learnedTokens is list && data.learnedTokens.size() <= 40)) &&
         isValidEpochMs(data.updatedAt);
     }

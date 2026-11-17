@@ -6,6 +6,7 @@ import '../../models/tournament_models.dart';
 import '../../state/tournament_state.dart';
 import '../../theme/app_theme.dart';
 import '../sheets/scan_screenshot_sheet.dart';
+import '../sheets/squad_players_sheet.dart';
 import '../widgets/app_components.dart';
 
 class MatchScreen extends StatefulWidget {
@@ -36,6 +37,32 @@ class _MatchScreenState extends State<MatchScreen> {
   bool _rapidMode = false; // false = Slots, true = Rapid #1-#N
   String? _selectedMatchId;
 
+  Future<void> _openPlayersSheet(TournamentRecord tournament) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SquadPlayersSheet(
+        teams: tournament.teams,
+        autoResultEnabled: tournament.settings.autoResultFromScreenshot,
+        onSave: (updatedTeams, autoResultEnabled) {
+          widget.store.updateTournament(
+            tournament.id,
+            teams: updatedTeams,
+            autoResultFromScreenshot: autoResultEnabled,
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Saved squad team member IGNs.'),
+              ),
+            );
+          }
+        },
+      ),
+    );
+  }
+
   Future<void> _openScannerSheet(
     TournamentRecord tournament,
     MatchRecord match,
@@ -48,6 +75,13 @@ class _MatchScreenState extends State<MatchScreen> {
         matchNumber: match.matchNumber,
         teams: tournament.teams,
         autoResultEnabled: tournament.settings.autoResultFromScreenshot,
+        onUpdatePlayers: (updatedTeams, autoResultEnabled) {
+          widget.store.updateTournament(
+            tournament.id,
+            teams: updatedTeams,
+            autoResultFromScreenshot: autoResultEnabled,
+          );
+        },
         onApply: (entries, learnedByTeamId) {
           widget.store.applyBatchMatchResults(
             matchId: match.id,
@@ -633,58 +667,115 @@ class _MatchScreenState extends State<MatchScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
-          child: Row(
-            children: [
-              _ScopePill(
-                label: 'Slots',
-                selected: !_rapidMode,
-                onTap: () => setState(() => _rapidMode = false),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minWidth: MediaQuery.of(context).size.width - 40,
               ),
-              const SizedBox(width: 8),
-              _ScopePill(
-                label: 'Rapid #1-${tournament.teams.length}',
-                selected: _rapidMode,
-                onTap: () => setState(() => _rapidMode = true),
-              ),
-              const Spacer(),
-              if (!activeMatch.isCompleted)
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    _openScannerSheet(tournament, activeMatch);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentSurface,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: AppColors.accentBorder),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.document_scanner_rounded,
-                          size: 14,
-                          color: AppColors.accentBright,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ScopePill(
+                        label: 'Slots',
+                        selected: !_rapidMode,
+                        onTap: () => setState(() => _rapidMode = false),
+                      ),
+                      const SizedBox(width: 6),
+                      _ScopePill(
+                        label: 'Rapid #1-${tournament.teams.length}',
+                        selected: _rapidMode,
+                        onTap: () => setState(() => _rapidMode = true),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _openPlayersSheet(tournament);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: AppColors.borderStrong),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.group_outlined,
+                                size: 14,
+                                color: AppColors.accentBright,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Players',
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        SizedBox(width: 5),
-                        Text(
-                          'Scan OCR',
-                          style: TextStyle(
-                            color: AppColors.accentBright,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
+                      ),
+                      if (!activeMatch.isCompleted) ...[
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            _openScannerSheet(tournament, activeMatch);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.accentSurface,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: AppColors.accentBorder),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.document_scanner_rounded,
+                                  size: 14,
+                                  color: AppColors.accentBright,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Scan (Beta)',
+                                  style: TextStyle(
+                                    color: AppColors.accentBright,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
-                    ),
+                    ],
                   ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
 

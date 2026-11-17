@@ -69,6 +69,9 @@ function serializeSquadForCloud(s: SavedSquadRecord): Record<string, unknown> {
     logoUrl: s.logoUrl && s.logoUrl.length <= 880_000 ? s.logoUrl : null,
     player1: s.player1 ? s.player1.slice(0, 120) : null,
     player2: s.player2 ? s.player2.slice(0, 120) : null,
+    players: s.players
+      ? s.players.slice(0, 12).map((p) => String(p).slice(0, 120))
+      : null,
     learnedTokens: s.learnedTokens ? s.learnedTokens.slice(0, 40) : [],
     updatedAt: s.updatedAt || Date.now(),
   });

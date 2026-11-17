@@ -12,8 +12,7 @@ import '../widgets/app_components.dart';
 class _DraftSquad {
   String id;
   TextEditingController controller;
-  TextEditingController player1Ctrl;
-  TextEditingController player2Ctrl;
+  List<TextEditingController> playerCtrls;
   String? logoUrl;
   List<String> learnedTokens;
 
@@ -21,18 +20,44 @@ class _DraftSquad {
     required this.id,
     required String name,
     this.logoUrl,
-    String player1 = '',
-    String player2 = '',
+    List<String> players = const [],
     List<String> learnedTokens = const [],
   })  : controller = TextEditingController(text: name),
-        player1Ctrl = TextEditingController(text: player1),
-        player2Ctrl = TextEditingController(text: player2),
+        playerCtrls = players.isNotEmpty
+            ? players.map((p) => TextEditingController(text: p)).toList()
+            : [TextEditingController()],
         learnedTokens = List<String>.from(learnedTokens);
+
+  bool get hasAnyPlayer => playerCtrls.any((c) => c.text.trim().isNotEmpty);
+
+  void setPlayers(List<String> nextPlayers) {
+    for (final c in playerCtrls) {
+      c.dispose();
+    }
+    playerCtrls = nextPlayers.isNotEmpty
+        ? nextPlayers.map((p) => TextEditingController(text: p)).toList()
+        : [TextEditingController()];
+  }
+
+  void addPlayer() {
+    if (playerCtrls.length >= 5) return;
+    playerCtrls.add(TextEditingController());
+  }
+
+  void removePlayer(int index) {
+    if (playerCtrls.length <= 1) {
+      playerCtrls.first.clear();
+      return;
+    }
+    final removed = playerCtrls.removeAt(index);
+    removed.dispose();
+  }
 
   void dispose() {
     controller.dispose();
-    player1Ctrl.dispose();
-    player2Ctrl.dispose();
+    for (final c in playerCtrls) {
+      c.dispose();
+    }
   }
 }
 
@@ -138,6 +163,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
   late bool _allowSameMatchActivation;
   late bool _showLogos;
   late bool _autoResultFromScreenshot;
+  bool _fillPlayersLater = false;
   late bool _customScrimMatches;
   late bool _customTargetPoints;
   late bool _customMaxMatches;
@@ -179,8 +205,11 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
               id: t.id,
               name: t.name,
               logoUrl: t.logoUrl,
-              player1: t.player1 ?? '',
-              player2: t.player2 ?? '',
+              players: resolveSquadPlayers(
+                players: t.players,
+                player1: t.player1,
+                player2: t.player2,
+              ),
               learnedTokens: t.learnedTokens,
             ),
           )
@@ -247,13 +276,15 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
     if (squad.logoUrl == null && hit.logoUrl != null) {
       squad.logoUrl = hit.logoUrl;
     }
-    if (squad.player1Ctrl.text.trim().isEmpty &&
-        (hit.player1 ?? '').trim().isNotEmpty) {
-      squad.player1Ctrl.text = hit.player1!.trim();
-    }
-    if (squad.player2Ctrl.text.trim().isEmpty &&
-        (hit.player2 ?? '').trim().isNotEmpty) {
-      squad.player2Ctrl.text = hit.player2!.trim();
+    if (!squad.hasAnyPlayer) {
+      final vaultPlayers = resolveSquadPlayers(
+        players: hit.players,
+        player1: hit.player1,
+        player2: hit.player2,
+      );
+      if (vaultPlayers.isNotEmpty) {
+        squad.setPlayers(vaultPlayers);
+      }
     }
     if (hit.learnedTokens.isNotEmpty) {
       squad.learnedTokens = <String>{
@@ -369,10 +400,13 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                               if (emptyIdx != -1) {
                                 _squads[emptyIdx].controller.text = sv.name;
                                 _squads[emptyIdx].logoUrl = sv.logoUrl;
-                                _squads[emptyIdx].player1Ctrl.text =
-                                    sv.player1 ?? '';
-                                _squads[emptyIdx].player2Ctrl.text =
-                                    sv.player2 ?? '';
+                                _squads[emptyIdx].setPlayers(
+                                  resolveSquadPlayers(
+                                    players: sv.players,
+                                    player1: sv.player1,
+                                    player2: sv.player2,
+                                  ),
+                                );
                                 _squads[emptyIdx].learnedTokens =
                                     List<String>.from(sv.learnedTokens);
                                 existingNames.add(sv.name.toLowerCase());
@@ -446,10 +480,13 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                                           _squads[emptyIdx].controller.text =
                                               sv.name;
                                           _squads[emptyIdx].logoUrl = sv.logoUrl;
-                                          _squads[emptyIdx].player1Ctrl.text =
-                                              sv.player1 ?? '';
-                                          _squads[emptyIdx].player2Ctrl.text =
-                                              sv.player2 ?? '';
+                                          _squads[emptyIdx].setPlayers(
+                                            resolveSquadPlayers(
+                                              players: sv.players,
+                                              player1: sv.player1,
+                                              player2: sv.player2,
+                                            ),
+                                          );
                                           _squads[emptyIdx].learnedTokens =
                                               List<String>.from(
                                             sv.learnedTokens,
@@ -460,8 +497,11 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                                               id: 'vault_${DateTime.now().microsecondsSinceEpoch}',
                                               name: sv.name,
                                               logoUrl: sv.logoUrl,
-                                              player1: sv.player1 ?? '',
-                                              player2: sv.player2 ?? '',
+                                              players: resolveSquadPlayers(
+                                                players: sv.players,
+                                                player1: sv.player1,
+                                                player2: sv.player2,
+                                              ),
                                               learnedTokens: sv.learnedTokens,
                                             ),
                                           );
@@ -636,8 +676,13 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                 id: 'pasted_${DateTime.now().microsecondsSinceEpoch}_$i',
                 name: result[i],
                 logoUrl: hit?.logoUrl,
-                player1: hit?.player1 ?? '',
-                player2: hit?.player2 ?? '',
+                players: hit == null
+                    ? const []
+                    : resolveSquadPlayers(
+                        players: hit.players,
+                        player1: hit.player1,
+                        player2: hit.player2,
+                      ),
                 learnedTokens: hit?.learnedTokens ?? const [],
               );
             }(),
@@ -649,25 +694,6 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
   }
 
   void _submit() {
-    if (_autoResultFromScreenshot) {
-      for (int i = 0; i < _squads.length; i++) {
-        if (_squads[i].player1Ctrl.text.trim().isEmpty) {
-          final sqLabel = _squads[i].controller.text.trim().isEmpty
-              ? 'Squad #${i + 1}'
-              : _squads[i].controller.text.trim();
-          setState(() => _step = 1);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Enter Player 1 IGN for $sqLabel (or turn off Auto Result from Screenshot).',
-              ),
-            ),
-          );
-          return;
-        }
-      }
-    }
-
     final targetPts =
         (int.tryParse(_targetPointsCtrl.text.trim()) ?? 80).clamp(1, 999);
     final maxMatches =
@@ -688,15 +714,17 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
           final cleanName = sq.controller.text.trim().isEmpty
               ? 'Team ${i + 1}'
               : sq.controller.text.trim();
-          final p1 = sq.player1Ctrl.text.trim();
-          final p2 = sq.player2Ctrl.text.trim();
+          final pf = buildSquadPlayerFields(
+            sq.playerCtrls.map((c) => c.text).toList(),
+          );
           return Team(
             id: sq.id,
             name: cleanName,
             logoUrl: sq.logoUrl,
             shortCode: generateTeamInitials(cleanName),
-            player1: p1.isEmpty ? null : p1,
-            player2: p2.isEmpty ? null : p2,
+            player1: pf.player1,
+            player2: pf.player2,
+            players: pf.players,
             learnedTokens: sq.learnedTokens,
           );
         }(),
@@ -1347,17 +1375,30 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Auto Result from Screenshot',
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'Auto Result from Screenshot',
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 6),
+                            StatusPill(
+                              label: 'BETA',
+                              backgroundColor: AppColors.accentSurface,
+                              borderColor: AppColors.accentBorder,
+                              textColor: AppColors.accentBright,
+                            ),
+                          ],
                         ),
                         SizedBox(height: 2),
                         Text(
-                          '100% Free Offline OCR · Requires Player 1 IGN per squad (plain letters work with stylish symbols)',
+                          '100% Free Offline OCR · Can also be turned on later, and squad member IGNs can be added or edited anytime.',
                           style: TextStyle(
                             color: AppColors.textMuted,
                             fontSize: 11,
@@ -1373,11 +1414,58 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                     activeThumbColor: AppColors.accent,
                     onChanged: (v) {
                       HapticFeedback.selectionClick();
-                      setState(() => _autoResultFromScreenshot = v);
+                      setState(() {
+                        _autoResultFromScreenshot = v;
+                        if (!v) _fillPlayersLater = false;
+                      });
                     },
                   ),
                 ],
               ),
+              if (_autoResultFromScreenshot && !_isEditing) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _fillPlayersLater = !_fillPlayersLater);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.inputFill,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.borderSubtle),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _fillPlayersLater
+                              ? Icons.check_box_rounded
+                              : Icons.check_box_outline_blank_rounded,
+                          size: 18,
+                          color: _fillPlayersLater
+                              ? AppColors.accentBright
+                              : AppColors.textMuted,
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Add or edit team member names later',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1478,8 +1566,6 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
 
         ...List.generate(_squads.length, (i) {
           final squad = _squads[i];
-          final missingP1 = _autoResultFromScreenshot &&
-              squad.player1Ctrl.text.trim().isEmpty;
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -1488,11 +1574,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: missingP1
-                      ? AppColors.accentBorder
-                      : AppColors.borderSubtle,
-                ),
+                border: Border.all(color: AppColors.borderSubtle),
               ),
               child: Column(
                 children: [
@@ -1576,52 +1658,92 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                         ),
                     ],
                   ),
-                  if (_autoResultFromScreenshot) ...[
+                  if (_autoResultFromScreenshot && !_fillPlayersLater) ...[
                     const SizedBox(height: 6),
                     Padding(
                       padding: const EdgeInsets.only(right: 4, bottom: 2),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: TextField(
-                              controller: squad.player1Ctrl,
-                              onChanged: (_) => setState(() {}),
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
+                          ...List.generate(squad.playerCtrls.length, (mIdx) {
+                            final pCtrl = squad.playerCtrls[mIdx];
+                            return Padding(
+                              padding: EdgeInsets.only(
+                                bottom: mIdx == squad.playerCtrls.length - 1
+                                    ? 4
+                                    : 6,
                               ),
-                              decoration: const InputDecoration(
-                                labelText: 'Player 1 IGN *',
-                                hintText: 'Plain word e.g. OPPY',
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 9,
+                              child: TextField(
+                                controller: pCtrl,
+                                onChanged: (_) => setState(() {}),
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                decoration: InputDecoration(
+                                  labelText: mIdx == 0
+                                      ? 'Member 1 IGN (or edit later)'
+                                      : 'Member ${mIdx + 1} IGN',
+                                  hintText: 'Plain word e.g. OPPY',
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 9,
+                                  ),
+                                  suffixIcon: (squad.playerCtrls.length > 1 ||
+                                          pCtrl.text.isNotEmpty)
+                                      ? IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () {
+                                            HapticFeedback.selectionClick();
+                                            setState(() {
+                                              squad.removePlayer(mIdx);
+                                            });
+                                          },
+                                          icon: const Icon(
+                                            Icons.close_rounded,
+                                            size: 16,
+                                            color: AppColors.textMuted,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            );
+                          }),
+                          if (squad.playerCtrls.length < 5)
+                            GestureDetector(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() => squad.addPlayer());
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                  vertical: 2,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.add_rounded,
+                                      size: 14,
+                                      color: AppColors.accentBright,
+                                    ),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      'Add Member',
+                                      style: TextStyle(
+                                        color: AppColors.accentBright,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: squad.player2Ctrl,
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              decoration: const InputDecoration(
-                                labelText: 'Player 2 (Opt)',
-                                hintText: 'Optional 2nd IGN',
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 9,
-                                ),
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                     ),

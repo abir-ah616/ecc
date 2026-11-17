@@ -9,19 +9,26 @@ import {
   Plus,
   Minus,
   Trash2,
+  Users,
 } from 'lucide-react';
 import type { Team } from '../../types/tournament';
+import { resolveSquadPlayers } from '../../lib/rosterHelpers';
 import {
   extractLearnableTokens,
+  matchScannedRowsToTeams,
   scanMatchScreenshotsOffline,
   type MatchedScanRow,
+  type ScannedRankRow,
 } from '../../lib/screenshotScanner';
+import { SquadPlayersModal } from './SquadPlayersModal';
 
 interface ScanScreenshotModalProps {
   isOpen: boolean;
   matchNumber: number;
   teams: Team[];
+  autoResultFromScreenshot: boolean;
   onClose: () => void;
+  onUpdatePlayers: (updatedTeams: Team[], autoResultEnabled: boolean) => void;
   onApply: (
     entries: Array<{ teamId: string; placement: number | null; kills: number }>,
     learnedByTeamId: Record<string, string[]>
@@ -41,7 +48,9 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
   isOpen,
   matchNumber,
   teams,
+  autoResultFromScreenshot,
   onClose,
+  onUpdatePlayers,
   onApply,
 }) => {
   const [files, setFiles] = useState<File[]>([]);
@@ -50,6 +59,12 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
   const [progressVal, setProgressVal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [draftRows, setDraftRows] = useState<ReviewRankDraft[] | null>(null);
+  const [isPlayersOpen, setIsPlayersOpen] = useState(false);
+
+  const squadsWithPlayersCount = useMemo(
+    () => teams.filter((t) => resolveSquadPlayers(t).length > 0).length,
+    [teams]
+  );
 
   const duplicateTeamIds = useMemo(() => {
     const counts = new Map<string, number>();
@@ -180,33 +195,75 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 sm:p-5 select-none">
       <div className="glass-modal flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="glass-accent flex h-10 w-10 items-center justify-center rounded-xl text-amber-400">
               <ScanLine className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">
-                Scan Match {matchNumber} Screenshots (Offline OCR)
-              </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-bold text-white">
+                  Scan Match {matchNumber} Screenshots
+                </h3>
+                <span className="rounded-md border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                  Beta
+                </span>
+              </div>
               <p className="text-xs text-slate-400">
-                Attach 1-2 screenshots (e.g. #1-#11 and scrolled #2-#12). Overlapping ranks deduplicate automatically.
+                100% Free Offline OCR · Attach 1-3 screenshots (overlapping ranks deduplicate automatically).
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close screenshot scanner"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/[0.08] hover:text-white transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPlayersOpen(true)}
+              className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-200 transition-colors"
+            >
+              <Users className="h-3.5 w-3.5 text-amber-400" />
+              <span>
+                Edit Players ({squadsWithPlayersCount}/{teams.length})
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close screenshot scanner"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/[0.08] hover:text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {(!autoResultFromScreenshot || squadsWithPlayersCount === 0) && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.08] p-3.5">
+              <div className="text-xs text-amber-100/90 leading-relaxed">
+                <span className="font-semibold text-amber-300">
+                  {!autoResultFromScreenshot
+                    ? 'Auto-Match is currently off: '
+                    : 'No player IGNs added yet: '}
+                </span>
+                Turn it on and add 1 or more team member IGNs per squad so OCR assigns ranks automatically.
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPlayersOpen(true)}
+                className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-3.5 py-2 text-xs font-bold text-zinc-950 transition-colors"
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span>
+                  {!autoResultFromScreenshot
+                    ? 'Turn On & Add Players'
+                    : 'Add Team Members'}
+                </span>
+              </button>
+            </div>
+          )}
           {/* File Drop / Picker */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-dashed border-white/20 bg-white/[0.02] p-4">
             <div className="space-y-1">
@@ -468,6 +525,52 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
           </button>
         </div>
       </div>
+
+      {isPlayersOpen && (
+        <SquadPlayersModal
+          isOpen={isPlayersOpen}
+          teams={teams}
+          autoResultFromScreenshot={autoResultFromScreenshot}
+          onClose={() => setIsPlayersOpen(false)}
+          onSave={(updatedTeams, nextAuto) => {
+            onUpdatePlayers(updatedTeams, nextAuto);
+            // Live re-match any unassigned OCR rows using newly added/edited player names!
+            setDraftRows((prev) => {
+              if (!prev) return prev;
+              const scannedLike: ScannedRankRow[] = prev.map((r) => ({
+                rank: r.rank,
+                kills: r.kills,
+                rawPlayerText: r.rawPlayerText,
+                normalizedTokens: r.normalizedTokens,
+                confidence: 80,
+                isEdgeClipped: false,
+                sourceImageIndex: 0,
+              }));
+              const rematched = matchScannedRowsToTeams(
+                scannedLike,
+                updatedTeams
+              );
+              const byRank = new Map(rematched.map((m) => [m.rank, m]));
+              const usedTeams = new Set(
+                prev.map((r) => r.teamId).filter(Boolean)
+              );
+              return prev.map((r) => {
+                if (r.teamId) return r;
+                const hit = byRank.get(r.rank);
+                if (hit?.matchedTeamId && !usedTeams.has(hit.matchedTeamId)) {
+                  usedTeams.add(hit.matchedTeamId);
+                  return {
+                    ...r,
+                    teamId: hit.matchedTeamId,
+                    matchedKeyword: hit.matchedKeyword,
+                  };
+                }
+                return r;
+              });
+            });
+          }}
+        />
+      )}
     </div>
   );
 };

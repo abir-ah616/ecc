@@ -13,9 +13,11 @@ import {
 } from '../../store/tournamentStore';
 import type { SavedSquadRecord, TournamentMode } from '../../types/tournament';
 import {
+  buildSquadPlayerFields,
   compressImageFileToDataUrl,
   isPlaceholderSquadName,
   matchLogoFilenameToSquadIndex,
+  resolveSquadPlayers,
 } from '../../lib/rosterHelpers';
 import {
   TournamentDetailsSection,
@@ -58,6 +60,7 @@ export const CreateTournamentView: React.FC = () => {
   );
   const [autoResultFromScreenshot, setAutoResultFromScreenshot] =
     useState(false);
+  const [fillPlayersLater, setFillPlayersLater] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Format config
@@ -153,6 +156,7 @@ export const CreateTournamentView: React.FC = () => {
                 logoUrl: sq.logoUrl,
                 player1: sq.player1,
                 player2: sq.player2,
+                players: resolveSquadPlayers(sq),
                 learnedTokens: sq.learnedTokens,
               }
             : t
@@ -166,6 +170,7 @@ export const CreateTournamentView: React.FC = () => {
           logoUrl: sq.logoUrl,
           player1: sq.player1,
           player2: sq.player2,
+          players: resolveSquadPlayers(sq),
           learnedTokens: sq.learnedTokens,
         },
       ];
@@ -177,12 +182,20 @@ export const CreateTournamentView: React.FC = () => {
     setTeams((prev) =>
       prev.map((t, i) => {
         if (i !== idx) return t;
+        const currentPlayers = resolveSquadPlayers(t);
+        const vaultPlayers = resolveSquadPlayers(vaultMatch);
         return {
           ...t,
           name: val,
           logoUrl: t.logoUrl || vaultMatch?.logoUrl,
           player1: t.player1 || vaultMatch?.player1,
           player2: t.player2 || vaultMatch?.player2,
+          players:
+            currentPlayers.length > 0
+              ? t.players
+              : vaultPlayers.length > 0
+              ? vaultPlayers
+              : t.players,
           learnedTokens: t.learnedTokens || vaultMatch?.learnedTokens,
         };
       })
@@ -192,19 +205,6 @@ export const CreateTournamentView: React.FC = () => {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMode) return;
-
-    if (autoResultFromScreenshot) {
-      const missingIdx = teams.findIndex((t) => !t.player1?.trim());
-      if (missingIdx >= 0) {
-        const label = teams[missingIdx].name.trim() || `Squad ${missingIdx + 1}`;
-        setFormError(
-          `Please enter Player 1 IGN for "${label}" (Slot ${
-            missingIdx + 1
-          }) or turn off Screenshot Auto-Result.`
-        );
-        return;
-      }
-    }
     setFormError(null);
 
     createTournament({
@@ -222,13 +222,16 @@ export const CreateTournamentView: React.FC = () => {
         maxMatches,
         allowSameMatchBooyahActivation: false,
       },
-      teams: teams.map((t, idx) => ({
-        name: t.name.trim() || `Squad ${idx + 1}`,
-        logoUrl: t.logoUrl,
-        player1: t.player1?.trim(),
-        player2: t.player2?.trim(),
-        learnedTokens: t.learnedTokens,
-      })),
+      teams: teams.map((t, idx) => {
+        const rawList =
+          t.players !== undefined ? t.players : resolveSquadPlayers(t);
+        return {
+          name: t.name.trim() || `Squad ${idx + 1}`,
+          logoUrl: t.logoUrl,
+          ...buildSquadPlayerFields(rawList),
+          learnedTokens: t.learnedTokens,
+        };
+      }),
     });
   };
 
@@ -404,8 +407,13 @@ export const CreateTournamentView: React.FC = () => {
             autoResultFromScreenshot={autoResultFromScreenshot}
             onAutoResultFromScreenshotChange={(val) => {
               setAutoResultFromScreenshot(val);
-              if (!val) setFormError(null);
+              if (!val) {
+                setFillPlayersLater(false);
+                setFormError(null);
+              }
             }}
+            fillPlayersLater={fillPlayersLater}
+            onFillPlayersLaterChange={setFillPlayersLater}
           />
         </div>
 
@@ -433,6 +441,7 @@ export const CreateTournamentView: React.FC = () => {
                     logoUrl: vaultHit?.logoUrl,
                     player1: vaultHit?.player1,
                     player2: vaultHit?.player2,
+                    players: vaultHit ? resolveSquadPlayers(vaultHit) : undefined,
                     learnedTokens: vaultHit?.learnedTokens,
                   };
                 })
@@ -440,9 +449,19 @@ export const CreateTournamentView: React.FC = () => {
             }
             getInitials={generateInitials}
             autoResultFromScreenshot={autoResultFromScreenshot}
-            onPlayerChange={(idx, field, val) => {
+            fillPlayersLater={fillPlayersLater}
+            onPlayersChange={(idx, nextPlayers) => {
               setTeams((prev) =>
-                prev.map((t, i) => (i === idx ? { ...t, [field]: val } : t))
+                prev.map((t, i) =>
+                  i === idx
+                    ? {
+                        ...t,
+                        players: nextPlayers,
+                        player1: nextPlayers[0] || '',
+                        player2: nextPlayers[1] || '',
+                      }
+                    : t
+                )
               );
             }}
             savedSquads={savedSquads}

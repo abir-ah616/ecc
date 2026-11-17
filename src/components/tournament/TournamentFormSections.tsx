@@ -11,7 +11,7 @@ import {
   Images,
 } from 'lucide-react';
 import type { SavedSquadRecord, TournamentMode } from '../../types/tournament';
-import { parseSmartSlotList } from '../../lib/rosterHelpers';
+import { parseSmartSlotList, resolveSquadPlayers } from '../../lib/rosterHelpers';
 
 export interface RosterDraftItem {
   id?: string;
@@ -20,6 +20,7 @@ export interface RosterDraftItem {
   logoUrl?: string;
   player1?: string;
   player2?: string;
+  players?: string[];
   learnedTokens?: string[];
 }
 
@@ -42,6 +43,8 @@ interface TournamentDetailsSectionProps {
   onClearLogo: () => void;
   autoResultFromScreenshot?: boolean;
   onAutoResultFromScreenshotChange?: (val: boolean) => void;
+  fillPlayersLater?: boolean;
+  onFillPlayersLaterChange?: (val: boolean) => void;
 }
 
 export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> = ({
@@ -58,6 +61,8 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
   onClearLogo,
   autoResultFromScreenshot = false,
   onAutoResultFromScreenshotChange,
+  fillPlayersLater = false,
+  onFillPlayersLaterChange,
 }) => {
   return (
     <div className="glass-panel rounded-2xl p-5 space-y-4">
@@ -174,7 +179,7 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
 
       {/* Offline Screenshot Auto-Result Toggle */}
       {onAutoResultFromScreenshotChange && (
-        <div className="pt-1">
+        <div className="pt-1 space-y-2">
           <button
             type="button"
             role="switch"
@@ -199,11 +204,16 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
                 <ScanLine className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-white">
-                  Auto Result from Screenshot (Offline OCR)
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold text-white">
+                    Auto Result from Screenshot
+                  </span>
+                  <span className="rounded-md border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                    Beta
+                  </span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-                  Scan 1-2 match screenshots to auto-fill ranks and kills. Requires 1 player IGN per squad (2nd optional + Match 1 auto-learn).
+                  100% free offline OCR. Can also be turned on later, and squad member IGNs can be added or edited anytime.
                 </p>
               </div>
             </div>
@@ -220,6 +230,20 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
               />
             </div>
           </button>
+
+          {autoResultFromScreenshot && onFillPlayersLaterChange && (
+            <label className="glass-tile flex cursor-pointer items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-xs text-slate-300">
+              <span>
+                Add or edit team member names later (from Match Scorecard or Scan)
+              </span>
+              <input
+                type="checkbox"
+                checked={fillPlayersLater}
+                onChange={(e) => onFillPlayersLaterChange(e.target.checked)}
+                className="h-4 w-4 accent-amber-500 rounded cursor-pointer"
+              />
+            </label>
+          )}
         </div>
       )}
     </div>
@@ -543,11 +567,8 @@ interface SquadRosterSectionProps {
   onBulkImport: (lines: string[]) => void;
   getInitials: (name: string) => string;
   autoResultFromScreenshot?: boolean;
-  onPlayerChange?: (
-    index: number,
-    field: 'player1' | 'player2',
-    val: string
-  ) => void;
+  fillPlayersLater?: boolean;
+  onPlayersChange?: (index: number, nextPlayers: string[]) => void;
   savedSquads?: SavedSquadRecord[];
   onPickSavedSquad?: (squad: SavedSquadRecord) => void;
   onDeleteSavedSquad?: (squadId: string) => void;
@@ -564,7 +585,8 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
   onBulkImport,
   getInitials,
   autoResultFromScreenshot = false,
-  onPlayerChange,
+  fillPlayersLater = false,
+  onPlayersChange,
   savedSquads = [],
   onPickSavedSquad,
   onDeleteSavedSquad,
@@ -597,7 +619,9 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
             {autoResultFromScreenshot
-              ? 'Enter readable words from Player 1 IGN (Player 2 optional) for offline screenshot matching.'
+              ? fillPlayersLater
+                ? 'Player IGN entry deferred — you can add or edit team members anytime later.'
+                : 'Add 1 or more team member IGNs per squad (readable words work with stylish symbols; editable anytime later).'
               : 'Rename teams, drop multiple logos, or paste a WhatsApp/Discord slot list.'}
           </p>
         </div>
@@ -861,27 +885,76 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
               )}
             </div>
 
-            {autoResultFromScreenshot && onPlayerChange && (
-              <div className="grid grid-cols-2 gap-1.5 pl-8">
-                <input
-                  type="text"
-                  required
-                  value={team.player1 || ''}
-                  onChange={(e) =>
-                    onPlayerChange(index, 'player1', e.target.value)
-                  }
-                  placeholder="Player 1 IGN *"
-                  className="glass-input rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
-                />
-                <input
-                  type="text"
-                  value={team.player2 || ''}
-                  onChange={(e) =>
-                    onPlayerChange(index, 'player2', e.target.value)
-                  }
-                  placeholder="Player 2 (Opt)"
-                  className="glass-input rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
-                />
+            {autoResultFromScreenshot && !fillPlayersLater && onPlayersChange && (
+              <div className="space-y-1.5 pl-8">
+                {(() => {
+                  const memberList =
+                    team.players !== undefined
+                      ? team.players.length > 0
+                        ? team.players
+                        : ['']
+                      : (() => {
+                          const existing = resolveSquadPlayers(team);
+                          return existing.length > 0 ? existing : [''];
+                        })();
+
+                  return (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {memberList.map((memberVal, mIdx) => (
+                          <div key={mIdx} className="relative flex items-center">
+                            <input
+                              type="text"
+                              value={memberVal}
+                              onChange={(e) => {
+                                const updated = [...memberList];
+                                updated[mIdx] = e.target.value;
+                                onPlayersChange(index, updated);
+                              }}
+                              placeholder={
+                                mIdx === 0
+                                  ? 'Member 1 IGN (or edit later)'
+                                  : `Member ${mIdx + 1} IGN`
+                              }
+                              className="glass-input w-full rounded-lg pl-2.5 pr-6 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                            />
+                            {(memberList.length > 1 || memberVal.length > 0) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (memberList.length === 1) {
+                                    onPlayersChange(index, ['']);
+                                  } else {
+                                    onPlayersChange(
+                                      index,
+                                      memberList.filter((_, idx2) => idx2 !== mIdx)
+                                    );
+                                  }
+                                }}
+                                aria-label="Remove member"
+                                className="absolute right-1.5 text-slate-500 hover:text-rose-400"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {memberList.length < 5 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onPlayersChange(index, [...memberList, ''])
+                          }
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400 hover:text-amber-300 transition-colors"
+                        >
+                          <Plus className="h-3 w-3" />
+                          <span>Add Member</span>
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>

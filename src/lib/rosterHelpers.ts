@@ -237,3 +237,47 @@ export function matchLogoFilenameToSquadIndex(
   }
   return -1;
 }
+
+/**
+ * Resolves all configured team member IGNs for a squad (backward-compatible with player1/player2).
+ */
+export function resolveSquadPlayers(item?: {
+  player1?: string;
+  player2?: string;
+  players?: string[];
+}): string[] {
+  if (!item) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const candidates = [
+    ...(item.players || []),
+    item.player1 || '',
+    item.player2 || '',
+  ];
+  for (const raw of candidates) {
+    const trimmed = raw.trim().slice(0, 60);
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    out.push(trimmed);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/**
+ * Normalizes an array of draft player strings into synchronized { players, player1, player2 } fields.
+ */
+export function buildSquadPlayerFields(rawPlayers: string[]): {
+  players?: string[];
+  player1?: string;
+  player2?: string;
+} {
+  const cleaned = resolveSquadPlayers({ players: rawPlayers });
+  return {
+    players: cleaned.length > 0 ? cleaned : undefined,
+    player1: cleaned[0],
+    player2: cleaned[1],
+  };
+}

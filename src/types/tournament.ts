@@ -58,6 +58,7 @@ export interface Team {
   shortCode?: string;                    // 2-3 letter initials fallback
   player1?: string;                      // Primary player IGN keyword for screenshot OCR
   player2?: string;                      // Secondary optional player IGN keyword
+  players?: string[];                    // Full addable/editable list of squad member IGNs
   learnedTokens?: string[];              // Auto-learned OCR tokens from Match 1+ reviews
 }
 
@@ -134,6 +135,7 @@ export interface SavedSquadRecord {
   logoUrl?: string;
   player1?: string;
   player2?: string;
+  players?: string[];
   learnedTokens?: string[];
   updatedAt: number;
 }

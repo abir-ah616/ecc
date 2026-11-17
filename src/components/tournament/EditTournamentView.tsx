@@ -11,9 +11,11 @@ import type {
   TournamentRecord,
 } from '../../types/tournament';
 import {
+  buildSquadPlayerFields,
   compressImageFileToDataUrl,
   isPlaceholderSquadName,
   matchLogoFilenameToSquadIndex,
+  resolveSquadPlayers,
 } from '../../lib/rosterHelpers';
 import {
   TournamentDetailsSection,
@@ -148,6 +150,7 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
                 logoUrl: sq.logoUrl,
                 player1: sq.player1,
                 player2: sq.player2,
+                players: resolveSquadPlayers(sq),
                 learnedTokens: sq.learnedTokens,
               }
             : t
@@ -163,6 +166,7 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
           logoUrl: sq.logoUrl,
           player1: sq.player1,
           player2: sq.player2,
+          players: resolveSquadPlayers(sq),
           learnedTokens: sq.learnedTokens,
         },
       ];
@@ -171,18 +175,6 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (autoResultFromScreenshot) {
-      const missingIdx = teams.findIndex((t) => !t.player1?.trim());
-      if (missingIdx >= 0) {
-        const label = teams[missingIdx].name.trim() || `Squad ${missingIdx + 1}`;
-        setFormError(
-          `Please enter Player 1 IGN for "${label}" (Slot ${
-            missingIdx + 1
-          }) or turn off Screenshot Auto-Result.`
-        );
-        return;
-      }
-    }
     setFormError(null);
 
     updateTournament(tournament.id, {
@@ -200,13 +192,16 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
         maxMatches,
         allowSameMatchBooyahActivation: false,
       },
-      teams: teams.map((t, idx) => ({
-        ...t,
-        name: t.name.trim() || `Squad ${idx + 1}`,
-        shortCode: generateInitials(t.name.trim() || `Squad ${idx + 1}`),
-        player1: t.player1?.trim(),
-        player2: t.player2?.trim(),
-      })),
+      teams: teams.map((t, idx) => {
+        const rawList =
+          t.players !== undefined ? t.players : resolveSquadPlayers(t);
+        return {
+          ...t,
+          name: t.name.trim() || `Squad ${idx + 1}`,
+          shortCode: generateInitials(t.name.trim() || `Squad ${idx + 1}`),
+          ...buildSquadPlayerFields(rawList),
+        };
+      }),
     });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
@@ -318,20 +313,27 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
             onNameChange={(idx, val) => {
               const vaultHit = findSavedSquadByName(val);
               setTeams((prev) =>
-                prev.map((t, i) =>
-                  i === idx
-                    ? {
-                        ...t,
-                        name: val,
-                        shortCode: generateInitials(val),
-                        logoUrl: t.logoUrl || vaultHit?.logoUrl,
-                        player1: t.player1 || vaultHit?.player1,
-                        player2: t.player2 || vaultHit?.player2,
-                        learnedTokens:
-                          t.learnedTokens || vaultHit?.learnedTokens,
-                      }
-                    : t
-                )
+                prev.map((t, i) => {
+                  if (i !== idx) return t;
+                  const currentPlayers = resolveSquadPlayers(t);
+                  const vaultPlayers = resolveSquadPlayers(vaultHit);
+                  return {
+                    ...t,
+                    name: val,
+                    shortCode: generateInitials(val),
+                    logoUrl: t.logoUrl || vaultHit?.logoUrl,
+                    player1: t.player1 || vaultHit?.player1,
+                    player2: t.player2 || vaultHit?.player2,
+                    players:
+                      currentPlayers.length > 0
+                        ? t.players
+                        : vaultPlayers.length > 0
+                        ? vaultPlayers
+                        : t.players,
+                    learnedTokens:
+                      t.learnedTokens || vaultHit?.learnedTokens,
+                  };
+                })
               );
             }}
             onLogoUpload={handleLogoUpload}
@@ -349,6 +351,9 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
                     logoUrl: teams[idx]?.logoUrl || vaultHit?.logoUrl,
                     player1: teams[idx]?.player1 || vaultHit?.player1,
                     player2: teams[idx]?.player2 || vaultHit?.player2,
+                    players:
+                      teams[idx]?.players ||
+                      (vaultHit ? resolveSquadPlayers(vaultHit) : undefined),
                     learnedTokens:
                       teams[idx]?.learnedTokens || vaultHit?.learnedTokens,
                   };
@@ -357,9 +362,18 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
             }
             getInitials={generateInitials}
             autoResultFromScreenshot={autoResultFromScreenshot}
-            onPlayerChange={(idx, field, val) => {
+            onPlayersChange={(idx, nextPlayers) => {
               setTeams((prev) =>
-                prev.map((t, i) => (i === idx ? { ...t, [field]: val } : t))
+                prev.map((t, i) =>
+                  i === idx
+                    ? {
+                        ...t,
+                        players: nextPlayers,
+                        player1: nextPlayers[0] || '',
+                        player2: nextPlayers[1] || '',
+                      }
+                    : t
+                )
               );
             }}
             savedSquads={savedSquads}

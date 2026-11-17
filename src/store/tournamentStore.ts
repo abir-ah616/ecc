@@ -20,8 +20,10 @@ import {
 } from '../lib/scoring';
 import { sanitizeImportedTournamentPayload } from '../lib/authValidation';
 import {
+  buildSquadPlayerFields,
   incrementStageOrDayLabel,
   isPlaceholderSquadName,
+  resolveSquadPlayers,
   toSquadVaultId,
 } from '../lib/rosterHelpers';
 
@@ -134,13 +136,17 @@ function mergeTeamsIntoVault(
       new Set([...(prev?.learnedTokens || []), ...(t.learnedTokens || [])])
     ).slice(0, 32);
 
+    const explicitPlayers = resolveSquadPlayers(t);
+    const mergedPlayers =
+      explicitPlayers.length > 0 ? explicitPlayers : resolveSquadPlayers(prev);
+    const playerFields = buildSquadPlayerFields(mergedPlayers);
+
     const nextItem: SavedSquadRecord = {
       id,
       name: cleanName.slice(0, 120),
       shortCode: (t.shortCode || generateInitials(cleanName)).slice(0, 12),
       logoUrl: t.logoUrl || prev?.logoUrl,
-      player1: t.player1?.trim() || prev?.player1,
-      player2: t.player2?.trim() || prev?.player2,
+      ...playerFields,
       learnedTokens: mergedLearned.length > 0 ? mergedLearned : undefined,
       updatedAt: now,
     };
@@ -196,6 +202,7 @@ export interface TournamentStoreState {
       logoUrl?: string;
       player1?: string;
       player2?: string;
+      players?: string[];
       learnedTokens?: string[];
     }[];
     totalMatchesPlanned?: number;
@@ -368,13 +375,18 @@ export const useTournamentStore = create<TournamentStoreState>()(
                 const vaultHit = !isPlaceholderSquadName(cleanName)
                   ? vault.find((v) => v.id === toSquadVaultId(cleanName))
                   : undefined;
+                const explicitPlayers = resolveSquadPlayers(t);
+                const resolvedPlayers =
+                  explicitPlayers.length > 0
+                    ? explicitPlayers
+                    : resolveSquadPlayers(vaultHit);
+                const playerFields = buildSquadPlayerFields(resolvedPlayers);
                 return {
                   id: `team_${tournamentId}_${idx + 1}`,
                   name: cleanName,
                   logoUrl: t.logoUrl || vaultHit?.logoUrl,
                   shortCode: generateInitials(cleanName || `S${idx + 1}`),
-                  player1: t.player1?.trim() || vaultHit?.player1,
-                  player2: t.player2?.trim() || vaultHit?.player2,
+                  ...playerFields,
                   learnedTokens:
                     t.learnedTokens && t.learnedTokens.length > 0
                       ? t.learnedTokens
@@ -603,8 +615,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
           name: tm.name,
           logoUrl: tm.logoUrl,
           shortCode: tm.shortCode || generateInitials(tm.name),
-          player1: tm.player1,
-          player2: tm.player2,
+          ...buildSquadPlayerFields(resolveSquadPlayers(tm)),
           learnedTokens: tm.learnedTokens ? [...tm.learnedTokens] : undefined,
         }));
 

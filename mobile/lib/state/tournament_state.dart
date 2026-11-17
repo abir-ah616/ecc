@@ -180,17 +180,28 @@ class TournamentStore extends ChangeNotifier {
         ...t.learnedTokens,
       }.take(32).toList();
 
+      final explicitPlayers = resolveSquadPlayers(
+        players: t.players,
+        player1: t.player1,
+        player2: t.player2,
+      );
+      final resolvedPlayers = explicitPlayers.isNotEmpty
+          ? explicitPlayers
+          : resolveSquadPlayers(
+              players: prev?.players ?? const [],
+              player1: prev?.player1,
+              player2: prev?.player2,
+            );
+      final pf = buildSquadPlayerFields(resolvedPlayers);
+
       final item = SavedSquadRecord(
         id: id,
         name: clean.length > 120 ? clean.substring(0, 120) : clean,
         shortCode: (t.shortCode ?? generateTeamInitials(clean)),
         logoUrl: t.logoUrl ?? prev?.logoUrl,
-        player1: (t.player1 ?? '').trim().isNotEmpty
-            ? t.player1!.trim()
-            : prev?.player1,
-        player2: (t.player2 ?? '').trim().isNotEmpty
-            ? t.player2!.trim()
-            : prev?.player2,
+        player1: pf.player1,
+        player2: pf.player2,
+        players: pf.players,
         learnedTokens: mergedLearned,
         updatedAt: nowMs,
       );
@@ -249,17 +260,27 @@ class TournamentStore extends ChangeNotifier {
             final cleanName =
                 src.name.trim().isEmpty ? 'Squad ${i + 1}' : src.name.trim();
             final vaultHit = findSavedSquadByName(cleanName);
+            final explicitPlayers = resolveSquadPlayers(
+              players: src.players,
+              player1: src.player1,
+              player2: src.player2,
+            );
+            final resolvedPlayers = explicitPlayers.isNotEmpty
+                ? explicitPlayers
+                : resolveSquadPlayers(
+                    players: vaultHit?.players ?? const [],
+                    player1: vaultHit?.player1,
+                    player2: vaultHit?.player2,
+                  );
+            final pf = buildSquadPlayerFields(resolvedPlayers);
             return Team(
               id: 'team_${tournamentId}_${i + 1}',
               name: cleanName,
               logoUrl: src.logoUrl ?? vaultHit?.logoUrl,
               shortCode: generateTeamInitials(cleanName),
-              player1: (src.player1 ?? '').trim().isNotEmpty
-                  ? src.player1!.trim()
-                  : vaultHit?.player1,
-              player2: (src.player2 ?? '').trim().isNotEmpty
-                  ? src.player2!.trim()
-                  : vaultHit?.player2,
+              player1: pf.player1,
+              player2: pf.player2,
+              players: pf.players,
               learnedTokens: src.learnedTokens.isNotEmpty
                   ? src.learnedTokens
                   : (vaultHit?.learnedTokens ?? const []),
@@ -274,13 +295,21 @@ class TournamentStore extends ChangeNotifier {
                 ? 'Squad ${i + 1}'
                 : squadInputs[i].name.trim();
             final vaultHit = findSavedSquadByName(cleanName);
+            final pf = buildSquadPlayerFields(
+              resolveSquadPlayers(
+                players: vaultHit?.players ?? const [],
+                player1: vaultHit?.player1,
+                player2: vaultHit?.player2,
+              ),
+            );
             return Team(
               id: 'team_${tournamentId}_${i + 1}',
               name: cleanName,
               logoUrl: squadInputs[i].logoUrl ?? vaultHit?.logoUrl,
               shortCode: generateTeamInitials(cleanName),
-              player1: vaultHit?.player1,
-              player2: vaultHit?.player2,
+              player1: pf.player1,
+              player2: pf.player2,
+              players: pf.players,
               learnedTokens: vaultHit?.learnedTokens ?? const [],
             );
           }(),
@@ -583,17 +612,28 @@ class TournamentStore extends ChangeNotifier {
     final nextId = 'tourn_$ts';
     final formattedDate = _formatDateTime(now);
 
+    final srcTeams = source.teams;
     final clonedTeams = [
-      for (int i = 0; i < source.teams.length; i++)
-        Team(
-          id: 'team_${nextId}_${i + 1}',
-          name: source.teams[i].name,
-          logoUrl: source.teams[i].logoUrl,
-          shortCode: source.teams[i].shortCode,
-          player1: source.teams[i].player1,
-          player2: source.teams[i].player2,
-          learnedTokens: List<String>.from(source.teams[i].learnedTokens),
-        ),
+      for (int i = 0; i < srcTeams.length; i++)
+        () {
+          final pf = buildSquadPlayerFields(
+            resolveSquadPlayers(
+              players: srcTeams[i].players,
+              player1: srcTeams[i].player1,
+              player2: srcTeams[i].player2,
+            ),
+          );
+          return Team(
+            id: 'team_${nextId}_${i + 1}',
+            name: srcTeams[i].name,
+            logoUrl: srcTeams[i].logoUrl,
+            shortCode: srcTeams[i].shortCode,
+            player1: pf.player1,
+            player2: pf.player2,
+            players: pf.players,
+            learnedTokens: List<String>.from(srcTeams[i].learnedTokens),
+          );
+        }(),
     ];
 
     final match1Id = 'match_${nextId}_1';

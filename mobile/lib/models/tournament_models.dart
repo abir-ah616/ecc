@@ -270,6 +270,7 @@ class Team {
   final String? shortCode;
   final String? player1;
   final String? player2;
+  final List<String> players;
   final List<String> learnedTokens;
 
   const Team({
@@ -279,6 +280,7 @@ class Team {
     this.shortCode,
     this.player1,
     this.player2,
+    this.players = const [],
     this.learnedTokens = const [],
   });
 
@@ -289,6 +291,9 @@ class Team {
         shortCode: json['shortCode'] as String?,
         player1: json['player1'] as String?,
         player2: json['player2'] as String?,
+        players: ((json['players'] as List<dynamic>?) ?? const [])
+            .whereType<String>()
+            .toList(),
         learnedTokens: ((json['learnedTokens'] as List<dynamic>?) ?? const [])
             .whereType<String>()
             .toList(),
@@ -303,6 +308,7 @@ class Team {
           'player1': player1!.trim(),
         if (player2 != null && player2!.trim().isNotEmpty)
           'player2': player2!.trim(),
+        if (players.isNotEmpty) 'players': players,
         if (learnedTokens.isNotEmpty) 'learnedTokens': learnedTokens,
       };
 
@@ -313,7 +319,10 @@ class Team {
     bool clearLogo = false,
     String? shortCode,
     String? player1,
+    bool clearPlayer1 = false,
     String? player2,
+    bool clearPlayer2 = false,
+    List<String>? players,
     List<String>? learnedTokens,
   }) =>
       Team(
@@ -321,8 +330,9 @@ class Team {
         name: name ?? this.name,
         logoUrl: clearLogo ? null : (logoUrl ?? this.logoUrl),
         shortCode: shortCode ?? this.shortCode,
-        player1: player1 ?? this.player1,
-        player2: player2 ?? this.player2,
+        player1: clearPlayer1 ? null : (player1 ?? this.player1),
+        player2: clearPlayer2 ? null : (player2 ?? this.player2),
+        players: players ?? this.players,
         learnedTokens: learnedTokens ?? this.learnedTokens,
       );
 }
@@ -642,6 +652,7 @@ class SavedSquadRecord {
   final String? logoUrl;
   final String? player1;
   final String? player2;
+  final List<String> players;
   final List<String> learnedTokens;
   final int updatedAt;
 
@@ -652,6 +663,7 @@ class SavedSquadRecord {
     this.logoUrl,
     this.player1,
     this.player2,
+    this.players = const [],
     this.learnedTokens = const [],
     required this.updatedAt,
   });
@@ -664,6 +676,9 @@ class SavedSquadRecord {
         logoUrl: json['logoUrl'] as String?,
         player1: json['player1'] as String?,
         player2: json['player2'] as String?,
+        players: ((json['players'] as List<dynamic>?) ?? const [])
+            .whereType<String>()
+            .toList(),
         learnedTokens: ((json['learnedTokens'] as List<dynamic>?) ?? const [])
             .whereType<String>()
             .toList(),
@@ -679,6 +694,7 @@ class SavedSquadRecord {
           'player1': player1!.trim(),
         if (player2 != null && player2!.trim().isNotEmpty)
           'player2': player2!.trim(),
+        if (players.isNotEmpty) 'players': players,
         if (learnedTokens.isNotEmpty) 'learnedTokens': learnedTokens,
         'updatedAt': updatedAt,
       };

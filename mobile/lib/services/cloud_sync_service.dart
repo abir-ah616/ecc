@@ -50,6 +50,12 @@ class CloudSyncService {
           : null,
       'player1': (s.player1 ?? '').trim().isEmpty ? null : s.player1!.trim(),
       'player2': (s.player2 ?? '').trim().isEmpty ? null : s.player2!.trim(),
+      'players': s.players.isEmpty
+          ? null
+          : s.players
+              .take(12)
+              .map((p) => p.length > 120 ? p.substring(0, 120) : p)
+              .toList(),
       'learnedTokens': s.learnedTokens.take(40).toList(),
       'updatedAt':
           s.updatedAt > 0 ? s.updatedAt : DateTime.now().millisecondsSinceEpoch,

@@ -3,10 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../core/roster_helpers.dart';
 import '../../models/tournament_models.dart';
 import '../../services/screenshot_scanner.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/app_components.dart';
+import 'squad_players_sheet.dart';
 
 class _EditableScanRow {
   final int rank;
@@ -30,6 +32,8 @@ class ScanScreenshotSheet extends StatefulWidget {
   final int matchNumber;
   final List<Team> teams;
   final bool autoResultEnabled;
+  final void Function(List<Team> updatedTeams, bool autoResultEnabled)
+      onUpdatePlayers;
   final void Function(
     List<({String teamId, int? placement, int kills})> entries,
     Map<String, List<String>> learnedByTeamId,
@@ -40,6 +44,7 @@ class ScanScreenshotSheet extends StatefulWidget {
     required this.matchNumber,
     required this.teams,
     required this.autoResultEnabled,
+    required this.onUpdatePlayers,
     required this.onApply,
   });
 
@@ -49,10 +54,70 @@ class ScanScreenshotSheet extends StatefulWidget {
 
 class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
   final ImagePicker _picker = ImagePicker();
+  late List<Team> _teams;
+  late bool _autoEnabled;
   List<XFile> _pickedImages = [];
   List<_EditableScanRow> _rows = [];
   bool _isScanning = false;
   String? _errorMsg;
+
+  @override
+  void initState() {
+    super.initState();
+    _teams = List<Team>.from(widget.teams);
+    _autoEnabled = widget.autoResultEnabled;
+  }
+
+  Future<void> _openPlayersEditor() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SquadPlayersSheet(
+        teams: _teams,
+        autoResultEnabled: _autoEnabled,
+        onSave: (updatedTeams, nextAuto) {
+          widget.onUpdatePlayers(updatedTeams, nextAuto);
+          if (!mounted) return;
+          setState(() {
+            _teams = updatedTeams;
+            _autoEnabled = nextAuto;
+            if (_rows.isNotEmpty) {
+              final scannedLike = _rows
+                  .map(
+                    (r) => ScannedRankRow(
+                      rank: r.rank,
+                      kills: r.kills,
+                      rawPlayerText: r.rawPlayerText,
+                      normalizedTokens: r.normalizedTokens,
+                      confidence: 80,
+                      isEdgeClipped: false,
+                      sourceImageIndex: 0,
+                    ),
+                  )
+                  .toList();
+              final rematched =
+                  matchScannedRowsToTeams(scannedLike, updatedTeams);
+              final byRank = {for (final m in rematched) m.rank: m};
+              final usedTeams = _rows
+                  .where((r) => r.teamId.isNotEmpty)
+                  .map((r) => r.teamId)
+                  .toSet();
+              for (final r in _rows) {
+                if (r.teamId.isNotEmpty) continue;
+                final hit = byRank[r.rank];
+                if (hit?.matchedTeamId != null &&
+                    !usedTeams.contains(hit!.matchedTeamId)) {
+                  r.teamId = hit.matchedTeamId!;
+                  usedTeams.add(r.teamId);
+                }
+              }
+            }
+          });
+        },
+      ),
+    );
+  }
 
   Future<void> _pickImages() async {
     try {
@@ -82,14 +147,14 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
     try {
       final matched = await scanMatchScreenshotsOffline(
         filePaths: _pickedImages.map((f) => f.path).toList(),
-        teams: widget.teams,
+        teams: _teams,
       );
 
       final byRank = <int, MatchedScanRow>{
         for (final r in matched) r.rank: r,
       };
       final maxRank = math.max(
-        widget.teams.length,
+        _teams.length,
         matched.isEmpty
             ? 0
             : matched.map((r) => r.rank).reduce(math.max),
@@ -170,6 +235,15 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
   Widget build(BuildContext context) {
     final dupTeamIds = _computeDuplicateTeamIds();
     final assignedCount = _rows.where((r) => r.teamId.isNotEmpty).length;
+    final configuredSquads = _teams
+        .where(
+          (t) => resolveSquadPlayers(
+            players: t.players,
+            player1: t.player1,
+            player2: t.player2,
+          ).isNotEmpty,
+        )
+        .length;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.88,
@@ -185,15 +259,43 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
           child: Column(
             children: [
               SheetHeader(
-                title: 'Scan Match #${widget.matchNumber} Result',
+                title: 'Scan Match #${widget.matchNumber} Result (Beta)',
                 subtitle:
                     '100% Free On-Device OCR · Attach 1-3 screenshots (overlaps deduplicated)',
-                trailing: IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(
-                    Icons.close_rounded,
-                    color: AppColors.textSecondary,
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                      ),
+                      onPressed: _openPlayersEditor,
+                      icon: const Icon(
+                        Icons.group_outlined,
+                        size: 16,
+                        color: AppColors.accentBright,
+                      ),
+                      label: Text(
+                        'Players ($configuredSquads/${_teams.length})',
+                        style: const TextStyle(
+                          color: AppColors.accentBright,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -201,7 +303,7 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                   controller: scrollCtrl,
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
-                    if (!widget.autoResultEnabled)
+                    if (!_autoEnabled || configuredSquads == 0)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Container(
@@ -211,13 +313,43 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: AppColors.accentBorder),
                           ),
-                          child: const Text(
-                            'Tip: Turn ON "Auto Result from Screenshot" in Edit Event and add Player 1 IGNs so squads match automatically.',
-                            style: TextStyle(
-                              color: AppColors.accentBright,
-                              fontSize: 12,
-                              height: 1.35,
-                            ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  !_autoEnabled
+                                      ? 'Auto-Match is currently off. Turn it on and add squad member IGNs anytime.'
+                                      : 'Add 1 or more team member IGNs per squad so OCR matches squads automatically.',
+                                  style: const TextStyle(
+                                    color: AppColors.accentBright,
+                                    fontSize: 11.5,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: _openPlayersEditor,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 11,
+                                    vertical: 7,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accent,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    !_autoEnabled ? 'Turn On' : 'Add IGNs',
+                                    style: const TextStyle(
+                                      color: AppColors.inkOnAccent,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -455,7 +587,7 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                                                   ),
                                                 ),
                                               ),
-                                              ...widget.teams.map(
+                                              ..._teams.map(
                                                 (tm) => DropdownMenuItem(
                                                   value: tm.id,
                                                   child: Text(

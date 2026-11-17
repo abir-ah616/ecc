@@ -16,6 +16,7 @@ import {
   Zap,
   ListOrdered,
   X,
+  Users,
 } from 'lucide-react';
 import {
   useTournamentStore,
@@ -23,6 +24,7 @@ import {
 } from '../../store/tournamentStore';
 import { LiveStandingsPanel } from './LiveStandingsPanel';
 import { ScanScreenshotModal } from './ScanScreenshotModal';
+import { SquadPlayersModal } from './SquadPlayersModal';
 import { getPlacementPoints, getKillPoints } from '../../lib/scoring';
 import { formatStandingsTextSummary } from '../../lib/rosterHelpers';
 import type { Match } from '../../types/tournament';
@@ -44,12 +46,15 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     setCurrentTab,
     createMatch,
     getStandings,
+    getActiveTournament,
+    updateTournament,
   } = useTournamentStore();
 
   const [mobilePane, setMobilePane] = useState<'entry' | 'standings'>('entry');
   const [entryMode, setEntryMode] = useState<'slot' | 'rapid'>('slot');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
+  const [isPlayersOpen, setIsPlayersOpen] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
 
   const rankInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -402,7 +407,26 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   }`}
                 >
                   <ScanLine className="h-3.5 w-3.5" />
-                  <span>Scan Screenshot</span>
+                  <span>Scan</span>
+                  <span
+                    className={`rounded px-1 py-0.2 text-[10px] font-bold uppercase tracking-wide ${
+                      settings.autoResultFromScreenshot
+                        ? 'bg-zinc-950/20 text-zinc-950'
+                        : 'border border-amber-400/40 bg-amber-500/15 text-amber-300'
+                    }`}
+                  >
+                    Beta
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPlayersOpen(true)}
+                  title="Add or edit squad team member IGNs for screenshot auto-matching"
+                  className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors"
+                >
+                  <Users className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Players</span>
                 </button>
 
                 <button
@@ -921,11 +945,37 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
         isOpen={isScanOpen}
         matchNumber={match.matchNumber}
         teams={teams}
+        autoResultFromScreenshot={Boolean(settings.autoResultFromScreenshot)}
         onClose={() => setIsScanOpen(false)}
+        onUpdatePlayers={(updatedTeams, autoResultEnabled) => {
+          const active = getActiveTournament();
+          if (!active) return;
+          updateTournament(active.id, {
+            teams: updatedTeams,
+            autoResultFromScreenshot: autoResultEnabled,
+          });
+        }}
         onApply={(entries, learnedByTeamId) => {
           applyBatchMatchResults(match.id, entries, learnedByTeamId);
         }}
       />
+
+      {isPlayersOpen && (
+        <SquadPlayersModal
+          isOpen={isPlayersOpen}
+          teams={teams}
+          autoResultFromScreenshot={Boolean(settings.autoResultFromScreenshot)}
+          onClose={() => setIsPlayersOpen(false)}
+          onSave={(updatedTeams, autoResultEnabled) => {
+            const active = getActiveTournament();
+            if (!active) return;
+            updateTournament(active.id, {
+              teams: updatedTeams,
+              autoResultFromScreenshot: autoResultEnabled,
+            });
+          }}
+        />
+      )}
     </div>
   );
 };

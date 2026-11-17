@@ -162,3 +162,38 @@ int matchLogoFilenameToSquadIndex(
   }
   return -1;
 }
+
+List<String> resolveSquadPlayers({
+  List<String> players = const [],
+  String? player1,
+  String? player2,
+}) {
+  final out = <String>[];
+  final seen = <String>{};
+  final candidates = <String>[
+    ...players,
+    if (player1 != null) player1,
+    if (player2 != null) player2,
+  ];
+  for (final raw in candidates) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) continue;
+    final clipped = trimmed.length > 60 ? trimmed.substring(0, 60) : trimmed;
+    final lower = clipped.toLowerCase();
+    if (seen.contains(lower)) continue;
+    seen.add(lower);
+    out.add(clipped);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+({List<String> players, String? player1, String? player2})
+    buildSquadPlayerFields(List<String> rawPlayers) {
+  final cleaned = resolveSquadPlayers(players: rawPlayers);
+  return (
+    players: cleaned,
+    player1: cleaned.isNotEmpty ? cleaned[0] : null,
+    player2: cleaned.length > 1 ? cleaned[1] : null,
+  );
+}
