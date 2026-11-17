@@ -18,6 +18,7 @@ import {
   Gamepad2,
   Flag,
   Smartphone,
+  Cloud,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 import { useAuthStore } from '../../store/authStore';
@@ -50,6 +51,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     reopenTournament,
     undo,
     history,
+    cloudSyncStatus,
   } = useTournamentStore();
 
   const {
@@ -282,6 +284,30 @@ export const AppShell: React.FC<AppShellProps> = ({
               APK
             </span>
           </button>
+
+          {cloudSyncStatus !== 'idle' && (
+            <div className="mt-1 flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-[11px]">
+              <span className="inline-flex items-center gap-1.5 text-slate-400">
+                <Cloud className="h-3.5 w-3.5 text-emerald-400" />
+                <span>Cloud Sync</span>
+              </span>
+              <span
+                className={`font-semibold ${
+                  cloudSyncStatus === 'synced'
+                    ? 'text-emerald-400'
+                    : cloudSyncStatus === 'syncing'
+                    ? 'text-amber-300'
+                    : 'text-slate-400'
+                }`}
+              >
+                {cloudSyncStatus === 'synced'
+                  ? 'Live'
+                  : cloudSyncStatus === 'syncing'
+                  ? 'Syncing'
+                  : 'Local'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Active Tournament Context */}

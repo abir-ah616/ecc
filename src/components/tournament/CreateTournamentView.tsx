@@ -1,10 +1,22 @@
 import React, { useState } from 'react';
-import { ArrowLeft, ArrowRight, Swords, Flame, Play } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Swords,
+  Flame,
+  Play,
+  AlertCircle,
+} from 'lucide-react';
 import {
   useTournamentStore,
   generateInitials,
 } from '../../store/tournamentStore';
-import type { TournamentMode } from '../../types/tournament';
+import type { SavedSquadRecord, TournamentMode } from '../../types/tournament';
+import {
+  compressImageFileToDataUrl,
+  isPlaceholderSquadName,
+  matchLogoFilenameToSquadIndex,
+} from '../../lib/rosterHelpers';
 import {
   TournamentDetailsSection,
   FormatRulesSection,
@@ -13,25 +25,40 @@ import {
 } from './TournamentFormSections';
 
 export const CreateTournamentView: React.FC = () => {
-  const { createTournament, setCurrentTab, defaultPointSystem, pendingTemplate } =
-    useTournamentStore();
+  const {
+    createTournament,
+    setCurrentTab,
+    defaultPointSystem,
+    pendingTemplate,
+    organizerDefaults,
+    savedSquads,
+    findSavedSquadByName,
+    deleteSavedSquad,
+  } = useTournamentStore();
 
   const [selectedMode, setSelectedMode] = useState<TournamentMode | null>(
     () => pendingTemplate?.mode ?? null
   );
 
-  // Event info
+  // Event info (pre-filled with sticky organizer defaults when available)
   const [name, setName] = useState(
     () => pendingTemplate?.defaultEventName ?? 'Free Fire Championship'
   );
   const [roundOrDay, setRoundOrDay] = useState(
     () => pendingTemplate?.roundOrDay ?? 'Grand Finals - Day 1'
   );
-  const [hostName, setHostName] = useState('');
-  const [sponsorName, setSponsorName] = useState('');
-  const [customLogoUrl, setCustomLogoUrl] = useState<string | undefined>(
-    undefined
+  const [hostName, setHostName] = useState(
+    () => organizerDefaults.hostName || ''
   );
+  const [sponsorName, setSponsorName] = useState(
+    () => organizerDefaults.sponsorName || ''
+  );
+  const [customLogoUrl, setCustomLogoUrl] = useState<string | undefined>(
+    () => organizerDefaults.customLogoUrl
+  );
+  const [autoResultFromScreenshot, setAutoResultFromScreenshot] =
+    useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Format config
   const [totalMatchesPlanned, setTotalMatchesPlanned] = useState(
@@ -63,28 +90,122 @@ export const CreateTournamentView: React.FC = () => {
     }
   };
 
-  const handleTournamentLogoUpload = (file: File) => {
+  const handleTournamentLogoUpload = async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setCustomLogoUrl(e.target?.result as string);
-    reader.readAsDataURL(file);
+    const dataUrl = await compressImageFileToDataUrl(file, 256);
+    if (dataUrl) setCustomLogoUrl(dataUrl);
   };
 
-  const handleLogoUpload = (index: number, file: File) => {
+  const handleLogoUpload = async (index: number, file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const url = e.target?.result as string;
-      setTeams((prev) =>
-        prev.map((t, idx) => (idx === index ? { ...t, logoUrl: url } : t))
+    const url = await compressImageFileToDataUrl(file, 256);
+    if (!url) return;
+    setTeams((prev) =>
+      prev.map((t, idx) => (idx === index ? { ...t, logoUrl: url } : t))
+    );
+  };
+
+  const handleBulkLogoUpload = async (files: FileList) => {
+    const fileList = Array.from(files).filter((f) =>
+      f.type.startsWith('image/')
+    );
+    if (fileList.length === 0) return;
+
+    const compressed = await Promise.all(
+      fileList.map(async (f) => ({
+        name: f.name,
+        url: await compressImageFileToDataUrl(f, 256),
+      }))
+    );
+
+    setTeams((prev) => {
+      const next = prev.map((t) => ({ ...t }));
+      const used = new Set<number>();
+      const squadNames = next.map((t) => t.name);
+
+      for (const item of compressed) {
+        if (!item.url) continue;
+        const idx = matchLogoFilenameToSquadIndex(item.name, squadNames, used);
+        if (idx >= 0 && idx < next.length) {
+          used.add(idx);
+          next[idx] = { ...next[idx], logoUrl: item.url };
+        }
+      }
+      return next;
+    });
+  };
+
+  const handlePickSavedSquad = (sq: SavedSquadRecord) => {
+    setTeams((prev) => {
+      // Avoid duplicate insertion if already in roster
+      if (prev.some((t) => t.name.trim().toLowerCase() === sq.name.toLowerCase())) {
+        return prev;
+      }
+      const placeholderIdx = prev.findIndex((t) =>
+        isPlaceholderSquadName(t.name)
       );
-    };
-    reader.readAsDataURL(file);
+      if (placeholderIdx >= 0) {
+        return prev.map((t, idx) =>
+          idx === placeholderIdx
+            ? {
+                ...t,
+                name: sq.name,
+                logoUrl: sq.logoUrl,
+                player1: sq.player1,
+                player2: sq.player2,
+                learnedTokens: sq.learnedTokens,
+              }
+            : t
+        );
+      }
+      if (prev.length >= 24) return prev;
+      return [
+        ...prev,
+        {
+          name: sq.name,
+          logoUrl: sq.logoUrl,
+          player1: sq.player1,
+          player2: sq.player2,
+          learnedTokens: sq.learnedTokens,
+        },
+      ];
+    });
+  };
+
+  const handleNameChange = (idx: number, val: string) => {
+    const vaultMatch = findSavedSquadByName(val);
+    setTeams((prev) =>
+      prev.map((t, i) => {
+        if (i !== idx) return t;
+        return {
+          ...t,
+          name: val,
+          logoUrl: t.logoUrl || vaultMatch?.logoUrl,
+          player1: t.player1 || vaultMatch?.player1,
+          player2: t.player2 || vaultMatch?.player2,
+          learnedTokens: t.learnedTokens || vaultMatch?.learnedTokens,
+        };
+      })
+    );
   };
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMode) return;
+
+    if (autoResultFromScreenshot) {
+      const missingIdx = teams.findIndex((t) => !t.player1?.trim());
+      if (missingIdx >= 0) {
+        const label = teams[missingIdx].name.trim() || `Squad ${missingIdx + 1}`;
+        setFormError(
+          `Please enter Player 1 IGN for "${label}" (Slot ${
+            missingIdx + 1
+          }) or turn off Screenshot Auto-Result.`
+        );
+        return;
+      }
+    }
+    setFormError(null);
 
     createTournament({
       name: name.trim() || 'Free Fire Tournament',
@@ -94,6 +215,7 @@ export const CreateTournamentView: React.FC = () => {
       sponsorName: sponsorName.trim(),
       showLogos: true,
       customLogoUrl,
+      autoResultFromScreenshot,
       totalMatchesPlanned: Math.max(1, totalMatchesPlanned || 6),
       championRush: {
         targetPoints: Math.max(1, targetPoints || 80),
@@ -103,6 +225,9 @@ export const CreateTournamentView: React.FC = () => {
       teams: teams.map((t, idx) => ({
         name: t.name.trim() || `Squad ${idx + 1}`,
         logoUrl: t.logoUrl,
+        player1: t.player1?.trim(),
+        player2: t.player2?.trim(),
+        learnedTokens: t.learnedTokens,
       })),
     });
   };
@@ -153,7 +278,7 @@ export const CreateTournamentView: React.FC = () => {
 
               <ul className="space-y-1.5 text-xs text-slate-400 pt-1">
                 <li>• Set your own match count freely</li>
-                <li>• Automatic placement & elimination point calculation</li>
+                <li>• Automatic placement &amp; elimination point calculation</li>
                 <li>• Built-in tie-breaker hierarchy</li>
               </ul>
             </div>
@@ -189,7 +314,7 @@ export const CreateTournamentView: React.FC = () => {
               <ul className="space-y-1.5 text-xs text-slate-400 pt-1">
                 <li>• Open custom Target Points threshold</li>
                 <li>• Safety fallback Max Matches ceiling (5, 6, 7, 8, or 10)</li>
-                <li>• Automatic Rush status badges in standings & posters</li>
+                <li>• Automatic Rush status badges in standings &amp; posters</li>
               </ul>
             </div>
 
@@ -242,6 +367,13 @@ export const CreateTournamentView: React.FC = () => {
         </button>
       </div>
 
+      {formError && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-rose-500/45 bg-rose-500/10 p-3.5 text-xs text-rose-200">
+          <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+          <span>{formError}</span>
+        </div>
+      )}
+
       {/* Main Two-Column Setup Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-5 space-y-5">
@@ -269,6 +401,11 @@ export const CreateTournamentView: React.FC = () => {
             customLogoUrl={customLogoUrl}
             onLogoUpload={handleTournamentLogoUpload}
             onClearLogo={() => setCustomLogoUrl(undefined)}
+            autoResultFromScreenshot={autoResultFromScreenshot}
+            onAutoResultFromScreenshotChange={(val) => {
+              setAutoResultFromScreenshot(val);
+              if (!val) setFormError(null);
+            }}
           />
         </div>
 
@@ -284,16 +421,33 @@ export const CreateTournamentView: React.FC = () => {
               if (teams.length <= 2) return;
               setTeams(teams.filter((_, i) => i !== idx));
             }}
-            onNameChange={(idx, val) => {
-              setTeams((prev) =>
-                prev.map((t, i) => (i === idx ? { ...t, name: val } : t))
-              );
-            }}
+            onNameChange={handleNameChange}
             onLogoUpload={handleLogoUpload}
+            onBulkLogoUpload={handleBulkLogoUpload}
             onBulkImport={(lines) =>
-              setTeams(lines.slice(0, 24).map((l) => ({ name: l })))
+              setTeams(
+                lines.slice(0, 24).map((l) => {
+                  const vaultHit = findSavedSquadByName(l);
+                  return {
+                    name: l,
+                    logoUrl: vaultHit?.logoUrl,
+                    player1: vaultHit?.player1,
+                    player2: vaultHit?.player2,
+                    learnedTokens: vaultHit?.learnedTokens,
+                  };
+                })
+              )
             }
             getInitials={generateInitials}
+            autoResultFromScreenshot={autoResultFromScreenshot}
+            onPlayerChange={(idx, field, val) => {
+              setTeams((prev) =>
+                prev.map((t, i) => (i === idx ? { ...t, [field]: val } : t))
+              );
+            }}
+            savedSquads={savedSquads}
+            onPickSavedSquad={handlePickSavedSquad}
+            onDeleteSavedSquad={deleteSavedSquad}
           />
         </div>
       </div>

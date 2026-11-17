@@ -6,14 +6,21 @@ import {
   Plus,
   Trash2,
   SlidersHorizontal,
+  ScanLine,
+  Bookmark,
+  Images,
 } from 'lucide-react';
-import type { TournamentMode } from '../../types/tournament';
+import type { SavedSquadRecord, TournamentMode } from '../../types/tournament';
+import { parseSmartSlotList } from '../../lib/rosterHelpers';
 
 export interface RosterDraftItem {
   id?: string;
   name: string;
   shortCode?: string;
   logoUrl?: string;
+  player1?: string;
+  player2?: string;
+  learnedTokens?: string[];
 }
 
 const SCRIM_MATCH_PRESETS = [3, 4, 5, 6, 8, 10] as const;
@@ -33,6 +40,8 @@ interface TournamentDetailsSectionProps {
   customLogoUrl?: string;
   onLogoUpload: (file: File) => void;
   onClearLogo: () => void;
+  autoResultFromScreenshot?: boolean;
+  onAutoResultFromScreenshotChange?: (val: boolean) => void;
 }
 
 export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> = ({
@@ -47,6 +56,8 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
   customLogoUrl,
   onLogoUpload,
   onClearLogo,
+  autoResultFromScreenshot = false,
+  onAutoResultFromScreenshotChange,
 }) => {
   return (
     <div className="glass-panel rounded-2xl p-5 space-y-4">
@@ -160,6 +171,57 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
           )}
         </div>
       </div>
+
+      {/* Offline Screenshot Auto-Result Toggle */}
+      {onAutoResultFromScreenshotChange && (
+        <div className="pt-1">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoResultFromScreenshot}
+            onClick={() =>
+              onAutoResultFromScreenshotChange(!autoResultFromScreenshot)
+            }
+            className={`w-full flex items-center justify-between gap-3 rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${
+              autoResultFromScreenshot
+                ? 'border-amber-400/45 bg-amber-500/[0.08]'
+                : 'border-white/[0.08] bg-white/[0.03] hover:border-white/[0.16]'
+            }`}
+          >
+            <div className="flex items-start gap-3 min-w-0">
+              <div
+                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                  autoResultFromScreenshot
+                    ? 'bg-amber-500 text-zinc-950'
+                    : 'glass-input text-slate-300'
+                }`}
+              >
+                <ScanLine className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-white">
+                  Auto Result from Screenshot (Offline OCR)
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                  Scan 1-2 match screenshots to auto-fill ranks and kills. Requires 1 player IGN per squad (2nd optional + Match 1 auto-learn).
+                </p>
+              </div>
+            </div>
+
+            <div
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                autoResultFromScreenshot ? 'bg-amber-500' : 'bg-white/[0.14]'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                  autoResultFromScreenshot ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </div>
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -477,8 +539,18 @@ interface SquadRosterSectionProps {
   onRemoveTeam: (index: number) => void;
   onNameChange: (index: number, val: string) => void;
   onLogoUpload: (index: number, file: File) => void;
+  onBulkLogoUpload?: (files: FileList) => void;
   onBulkImport: (lines: string[]) => void;
   getInitials: (name: string) => string;
+  autoResultFromScreenshot?: boolean;
+  onPlayerChange?: (
+    index: number,
+    field: 'player1' | 'player2',
+    val: string
+  ) => void;
+  savedSquads?: SavedSquadRecord[];
+  onPickSavedSquad?: (squad: SavedSquadRecord) => void;
+  onDeleteSavedSquad?: (squadId: string) => void;
 }
 
 export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
@@ -488,10 +560,17 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
   onRemoveTeam,
   onNameChange,
   onLogoUpload,
+  onBulkLogoUpload,
   onBulkImport,
   getInitials,
+  autoResultFromScreenshot = false,
+  onPlayerChange,
+  savedSquads = [],
+  onPickSavedSquad,
+  onDeleteSavedSquad,
 }) => {
   const [showBulkPaste, setShowBulkPaste] = useState(false);
+  const [showVault, setShowVault] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [showCustomSquadCount, setShowCustomSquadCount] = useState(
     () => !(SQUAD_COUNT_PRESETS as readonly number[]).includes(teams.length)
@@ -501,10 +580,7 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
   );
 
   const handleApplyPaste = () => {
-    const lines = bulkText
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const lines = parseSmartSlotList(bulkText, 24);
     if (lines.length > 0) {
       onBulkImport(lines);
       setBulkText('');
@@ -520,7 +596,9 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
             Participating Squads ({teams.length})
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Rename teams, upload square logos, or paste a roster list.
+            {autoResultFromScreenshot
+              ? 'Enter readable words from Player 1 IGN (Player 2 optional) for offline screenshot matching.'
+              : 'Rename teams, drop multiple logos, or paste a WhatsApp/Discord slot list.'}
           </p>
         </div>
 
@@ -564,8 +642,42 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
             className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors"
           >
             <ClipboardList className="h-3.5 w-3.5 text-slate-400" />
-            <span>Paste List</span>
+            <span>Smart Paste</span>
           </button>
+
+          {onBulkLogoUpload && (
+            <label className="glass-pill inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors">
+              <Images className="h-3.5 w-3.5 text-slate-400" />
+              <span>Bulk Logos</span>
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    onBulkLogoUpload(e.target.files);
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </label>
+          )}
+
+          {savedSquads.length > 0 && onPickSavedSquad && (
+            <button
+              type="button"
+              onClick={() => setShowVault((v) => !v)}
+              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                showVault
+                  ? 'glass-accent text-amber-300'
+                  : 'glass-pill text-slate-200'
+              }`}
+            >
+              <Bookmark className="h-3.5 w-3.5 text-amber-400" />
+              <span>Vault ({savedSquads.length})</span>
+            </button>
+          )}
 
           {teams.length < 24 && (
             <button
@@ -606,16 +718,72 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
         </div>
       )}
 
+      {showVault && savedSquads.length > 0 && onPickSavedSquad && (
+        <div className="glass-tile rounded-xl p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-white">
+              Saved Squad Vault (Click to insert logo & players)
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowVault(false)}
+              className="text-xs text-slate-400 hover:text-white"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
+            {savedSquads.map((sq) => (
+              <div
+                key={sq.id}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-[#0D1017] pl-2 pr-1.5 py-1 text-xs text-slate-200 hover:border-amber-400/50 transition-colors"
+              >
+                <button
+                  type="button"
+                  onClick={() => onPickSavedSquad(sq)}
+                  className="inline-flex items-center gap-1.5 text-left cursor-pointer"
+                >
+                  {sq.logoUrl ? (
+                    <img
+                      src={sq.logoUrl}
+                      alt=""
+                      className="h-4 w-4 rounded object-contain"
+                    />
+                  ) : (
+                    <span className="text-[10px] font-bold text-amber-400">
+                      {sq.shortCode}
+                    </span>
+                  )}
+                  <span className="font-medium truncate max-w-[130px]">
+                    {sq.name}
+                  </span>
+                </button>
+                {onDeleteSavedSquad && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteSavedSquad(sq.id)}
+                    aria-label={`Remove ${sq.name} from vault`}
+                    className="rounded p-0.5 text-slate-500 hover:text-rose-400"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {showBulkPaste && (
         <div className="glass-tile rounded-xl p-3.5 space-y-2.5">
           <label className="block text-xs font-medium text-slate-300">
-            Paste one team name per line
+            Paste WhatsApp / Discord slot list (auto-cleans slot numbers &amp; attaches Vault logos)
           </label>
           <textarea
             rows={5}
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
-            placeholder={'Team Liquid\nEVOS Divine\nBuriram United\nTotal Gaming'}
+            placeholder={'Slot 01 - BDR Esports\n02) EVOS Divine | Confirmed\n#3 Team Liquid\n4. Total Gaming'}
             className="glass-input w-full rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
           />
           <div className="flex items-center justify-end gap-2">
@@ -641,54 +809,80 @@ export const SquadRosterSection: React.FC<SquadRosterSectionProps> = ({
         {teams.map((team, index) => (
           <div
             key={team.id || index}
-            className="glass-tile flex items-center gap-2.5 rounded-xl p-2"
+            className="glass-tile rounded-xl p-2.5 space-y-2"
           >
-            <span className="w-6 text-center text-[11px] font-semibold text-slate-400 tabular-nums shrink-0">
-              {String(index + 1).padStart(2, '0')}
-            </span>
+            <div className="flex items-center gap-2.5">
+              <span className="w-6 text-center text-[11px] font-semibold text-slate-400 tabular-nums shrink-0">
+                {String(index + 1).padStart(2, '0')}
+              </span>
 
-            <label
-              title="Upload team logo"
-              className="glass-input flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg text-[11px] font-bold text-slate-300 hover:border-amber-400 transition-colors"
-            >
-              {team.logoUrl ? (
-                <img
-                  src={team.logoUrl}
-                  alt={team.name}
-                  className="h-full w-full object-contain p-0.5"
-                />
-              ) : (
-                <span>{getInitials(team.name || `S${index + 1}`)}</span>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) onLogoUpload(index, file);
-                }}
-              />
-            </label>
-
-            <input
-              type="text"
-              required
-              value={team.name}
-              onChange={(e) => onNameChange(index, e.target.value)}
-              placeholder={`Squad ${index + 1}`}
-              className="min-w-0 flex-1 bg-transparent px-1 py-1 text-sm font-medium text-white placeholder-slate-500 focus:outline-none"
-            />
-
-            {teams.length > 2 && (
-              <button
-                type="button"
-                onClick={() => onRemoveTeam(index)}
-                aria-label={`Remove ${team.name || `Squad ${index + 1}`}`}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 transition-colors"
+              <label
+                title="Upload team logo"
+                className="glass-input flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg text-[11px] font-bold text-slate-300 hover:border-amber-400 transition-colors"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+                {team.logoUrl ? (
+                  <img
+                    src={team.logoUrl}
+                    alt={team.name}
+                    className="h-full w-full object-contain p-0.5"
+                  />
+                ) : (
+                  <span>{getInitials(team.name || `S${index + 1}`)}</span>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onLogoUpload(index, file);
+                  }}
+                />
+              </label>
+
+              <input
+                type="text"
+                required
+                value={team.name}
+                onChange={(e) => onNameChange(index, e.target.value)}
+                placeholder={`Squad ${index + 1}`}
+                className="min-w-0 flex-1 bg-transparent px-1 py-1 text-sm font-medium text-white placeholder-slate-500 focus:outline-none"
+              />
+
+              {teams.length > 2 && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveTeam(index)}
+                  aria-label={`Remove ${team.name || `Squad ${index + 1}`}`}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {autoResultFromScreenshot && onPlayerChange && (
+              <div className="grid grid-cols-2 gap-1.5 pl-8">
+                <input
+                  type="text"
+                  required
+                  value={team.player1 || ''}
+                  onChange={(e) =>
+                    onPlayerChange(index, 'player1', e.target.value)
+                  }
+                  placeholder="Player 1 IGN *"
+                  className="glass-input rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  value={team.player2 || ''}
+                  onChange={(e) =>
+                    onPlayerChange(index, 'player2', e.target.value)
+                  }
+                  placeholder="Player 2 (Opt)"
+                  className="glass-input rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                />
+              </div>
             )}
           </div>
         ))}

@@ -3,24 +3,60 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/roster_helpers.dart';
 import '../core/scoring.dart';
 import '../models/tournament_models.dart';
 
 const String _kStorageKey = 'esp_calc_mobile_store_v1';
 
+enum CloudSyncStatus { idle, syncing, synced, offline }
+
+class MobileCloudSyncHooks {
+  final void Function(TournamentRecord record)? onTournamentUpsert;
+  final void Function(String tournamentId)? onTournamentDelete;
+  final void Function(List<SavedSquadRecord> squads)? onSquadsUpsert;
+  final void Function(String squadId)? onSquadDelete;
+  final VoidCallback? onMetaUpdate;
+
+  const MobileCloudSyncHooks({
+    this.onTournamentUpsert,
+    this.onTournamentDelete,
+    this.onSquadsUpsert,
+    this.onSquadDelete,
+    this.onMetaUpdate,
+  });
+}
+
 class TournamentStore extends ChangeNotifier {
   List<TournamentRecord> _tournaments = [];
+  List<SavedSquadRecord> _savedSquads = [];
+  OrganizerDefaults _organizerDefaults = const OrganizerDefaults();
   String? _activeTournamentId;
   PointSystemConfig _defaultPointSystem = PointSystemConfig(
     placementPoints: List<int>.from(defaultPlacementPoints),
     killPoints: 1,
   );
   bool _isHydrated = false;
+  CloudSyncStatus _cloudSyncStatus = CloudSyncStatus.idle;
+  MobileCloudSyncHooks _cloudHooks = const MobileCloudSyncHooks();
 
   List<TournamentRecord> get tournaments => _tournaments;
+  List<SavedSquadRecord> get savedSquads => _savedSquads;
+  OrganizerDefaults get organizerDefaults => _organizerDefaults;
   String? get activeTournamentId => _activeTournamentId;
   PointSystemConfig get defaultPointSystem => _defaultPointSystem;
   bool get isHydrated => _isHydrated;
+  CloudSyncStatus get cloudSyncStatus => _cloudSyncStatus;
+
+  void registerCloudSyncHooks(MobileCloudSyncHooks hooks) {
+    _cloudHooks = hooks;
+  }
+
+  void setCloudSyncStatus(CloudSyncStatus status) {
+    if (_cloudSyncStatus == status) return;
+    _cloudSyncStatus = status;
+    notifyListeners();
+  }
 
   TournamentRecord? get activeTournament {
     if (_tournaments.isEmpty) return null;
@@ -75,6 +111,18 @@ class TournamentStore extends ChangeNotifier {
               .map((e) => TournamentRecord.fromJson(e as Map<String, dynamic>))
               .toList();
         }
+        final rawSquads = decoded['savedSquads'] as List<dynamic>?;
+        if (rawSquads != null) {
+          _savedSquads = rawSquads
+              .whereType<Map<String, dynamic>>()
+              .map(SavedSquadRecord.fromJson)
+              .toList();
+        }
+        if (decoded['organizerDefaults'] is Map<String, dynamic>) {
+          _organizerDefaults = OrganizerDefaults.fromJson(
+            decoded['organizerDefaults'] as Map<String, dynamic>,
+          );
+        }
         _activeTournamentId = decoded['activeTournamentId'] as String?;
         if (decoded['defaultPointSystem'] is Map<String, dynamic>) {
           _defaultPointSystem = PointSystemConfig.fromJson(
@@ -95,6 +143,8 @@ class TournamentStore extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final payload = jsonEncode({
         'tournaments': _tournaments.map((t) => t.toJson()).toList(),
+        'savedSquads': _savedSquads.map((s) => s.toJson()).toList(),
+        'organizerDefaults': _organizerDefaults.toJson(),
         'activeTournamentId': _activeTournamentId,
         'defaultPointSystem': _defaultPointSystem.toJson(),
       });
@@ -114,6 +164,63 @@ class TournamentStore extends ChangeNotifier {
     return DateFormat('dd MMM yyyy, hh:mm a').format(dt);
   }
 
+  List<SavedSquadRecord> _mergeTeamsIntoVault(List<Team> sourceTeams, int nowMs) {
+    final byId = <String, SavedSquadRecord>{
+      for (final s in _savedSquads) s.id: s,
+    };
+    final changed = <SavedSquadRecord>[];
+
+    for (final t in sourceTeams) {
+      final clean = t.name.trim();
+      if (isPlaceholderSquadName(clean)) continue;
+      final id = toSquadVaultId(clean);
+      final prev = byId[id];
+      final mergedLearned = <String>{
+        ...(prev?.learnedTokens ?? const []),
+        ...t.learnedTokens,
+      }.take(32).toList();
+
+      final item = SavedSquadRecord(
+        id: id,
+        name: clean.length > 120 ? clean.substring(0, 120) : clean,
+        shortCode: (t.shortCode ?? generateTeamInitials(clean)),
+        logoUrl: t.logoUrl ?? prev?.logoUrl,
+        player1: (t.player1 ?? '').trim().isNotEmpty
+            ? t.player1!.trim()
+            : prev?.player1,
+        player2: (t.player2 ?? '').trim().isNotEmpty
+            ? t.player2!.trim()
+            : prev?.player2,
+        learnedTokens: mergedLearned,
+        updatedAt: nowMs,
+      );
+      byId[id] = item;
+      changed.add(item);
+    }
+
+    final list = byId.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    _savedSquads = list;
+    return changed;
+  }
+
+  SavedSquadRecord? findSavedSquadByName(String name) {
+    final clean = name.trim();
+    if (isPlaceholderSquadName(clean)) return null;
+    final id = toSquadVaultId(clean);
+    for (final s in _savedSquads) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
+
+  void deleteSavedSquad(String squadId) {
+    _commit(() {
+      _savedSquads = _savedSquads.where((s) => s.id != squadId).toList();
+    });
+    _cloudHooks.onSquadDelete?.call(squadId);
+  }
+
   String createTournament({
     required String name,
     required TournamentMode mode,
@@ -122,7 +229,9 @@ class TournamentStore extends ChangeNotifier {
     String? sponsorName,
     bool showLogos = true,
     String? customLogoUrl,
-    required List<({String name, String? logoUrl})> squadInputs,
+    bool autoResultFromScreenshot = false,
+    List<({String name, String? logoUrl})> squadInputs = const [],
+    List<Team>? richSquads,
     int totalMatchesPlanned = 5,
     ChampionRushConfig? championRush,
   }) {
@@ -131,36 +240,70 @@ class TournamentStore extends ChangeNotifier {
     final tournamentId = 'tourn_$ts';
     final formattedDate = _formatDateTime(now);
 
-    final newTeams = [
-      for (int i = 0; i < squadInputs.length; i++)
-        Team(
-          id: 'team_${tournamentId}_${i + 1}',
-          name: squadInputs[i].name.trim().isEmpty
-              ? 'Squad ${i + 1}'
-              : squadInputs[i].name.trim(),
-          logoUrl: squadInputs[i].logoUrl,
-          shortCode: generateTeamInitials(
-            squadInputs[i].name.trim().isEmpty
-                ? 'S${i + 1}'
-                : squadInputs[i].name.trim(),
-          ),
-        ),
-    ];
+    final List<Team> newTeams;
+    if (richSquads != null && richSquads.isNotEmpty) {
+      newTeams = [
+        for (int i = 0; i < richSquads.length; i++)
+          () {
+            final src = richSquads[i];
+            final cleanName =
+                src.name.trim().isEmpty ? 'Squad ${i + 1}' : src.name.trim();
+            final vaultHit = findSavedSquadByName(cleanName);
+            return Team(
+              id: 'team_${tournamentId}_${i + 1}',
+              name: cleanName,
+              logoUrl: src.logoUrl ?? vaultHit?.logoUrl,
+              shortCode: generateTeamInitials(cleanName),
+              player1: (src.player1 ?? '').trim().isNotEmpty
+                  ? src.player1!.trim()
+                  : vaultHit?.player1,
+              player2: (src.player2 ?? '').trim().isNotEmpty
+                  ? src.player2!.trim()
+                  : vaultHit?.player2,
+              learnedTokens: src.learnedTokens.isNotEmpty
+                  ? src.learnedTokens
+                  : (vaultHit?.learnedTokens ?? const []),
+            );
+          }(),
+      ];
+    } else {
+      newTeams = [
+        for (int i = 0; i < squadInputs.length; i++)
+          () {
+            final cleanName = squadInputs[i].name.trim().isEmpty
+                ? 'Squad ${i + 1}'
+                : squadInputs[i].name.trim();
+            final vaultHit = findSavedSquadByName(cleanName);
+            return Team(
+              id: 'team_${tournamentId}_${i + 1}',
+              name: cleanName,
+              logoUrl: squadInputs[i].logoUrl ?? vaultHit?.logoUrl,
+              shortCode: generateTeamInitials(cleanName),
+              player1: vaultHit?.player1,
+              player2: vaultHit?.player2,
+              learnedTokens: vaultHit?.learnedTokens ?? const [],
+            );
+          }(),
+      ];
+    }
 
     final match1Id = 'match_${tournamentId}_1';
     final initialEntries = {
       for (final t in newTeams) t.id: TeamMatchEntry(teamId: t.id),
     };
 
+    final cleanHost = (hostName ?? '').trim();
+    final cleanSponsor = (sponsorName ?? '').trim();
+
     final newSettings = TournamentSettings(
       mode: mode,
       name: name.trim().isEmpty ? 'Tournament $formattedDate' : name.trim(),
       roundOrDay: roundOrDay.trim().isEmpty ? 'FINALS' : roundOrDay.trim(),
-      hostName: (hostName ?? '').trim().isEmpty ? null : hostName!.trim(),
-      sponsorName:
-          (sponsorName ?? '').trim().isEmpty ? null : sponsorName!.trim(),
+      hostName: cleanHost.isEmpty ? null : cleanHost,
+      sponsorName: cleanSponsor.isEmpty ? null : cleanSponsor,
       showLogos: showLogos,
       customLogoUrl: customLogoUrl,
+      autoResultFromScreenshot: autoResultFromScreenshot,
       totalMatchesPlanned: totalMatchesPlanned,
       teamCount: newTeams.length,
       pointSystem: _defaultPointSystem.copyWith(),
@@ -174,6 +317,7 @@ class TournamentStore extends ChangeNotifier {
       name: newSettings.name,
       createdAt: formattedDate,
       createdAtTimestamp: ts,
+      updatedAt: ts,
       settings: newSettings,
       teams: newTeams,
       matches: [
@@ -188,10 +332,24 @@ class TournamentStore extends ChangeNotifier {
       isEnded: false,
     );
 
+    late List<SavedSquadRecord> changedVault;
     _commit(() {
       _tournaments = [record, ..._tournaments];
       _activeTournamentId = tournamentId;
+      _organizerDefaults = OrganizerDefaults(
+        hostName:
+            cleanHost.isNotEmpty ? cleanHost : _organizerDefaults.hostName,
+        sponsorName: cleanSponsor.isNotEmpty
+            ? cleanSponsor
+            : _organizerDefaults.sponsorName,
+        customLogoUrl: customLogoUrl ?? _organizerDefaults.customLogoUrl,
+      );
+      changedVault = _mergeTeamsIntoVault(newTeams, ts);
     });
+
+    _cloudHooks.onTournamentUpsert?.call(record);
+    if (changedVault.isNotEmpty) _cloudHooks.onSquadsUpsert?.call(changedVault);
+    _cloudHooks.onMetaUpdate?.call();
 
     return match1Id;
   }
@@ -206,10 +364,15 @@ class TournamentStore extends ChangeNotifier {
     bool? showLogos,
     String? customLogoUrl,
     bool clearCustomLogo = false,
+    bool? autoResultFromScreenshot,
     int? totalMatchesPlanned,
     ChampionRushConfig? championRush,
     List<Team>? teams,
   }) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updatedRecord;
+    List<SavedSquadRecord> changedVault = const [];
+
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != tournamentId) return t;
@@ -232,26 +395,53 @@ class TournamentStore extends ChangeNotifier {
           showLogos: showLogos ?? t.settings.showLogos,
           customLogoUrl: customLogoUrl,
           clearCustomLogo: clearCustomLogo,
+          autoResultFromScreenshot:
+              autoResultFromScreenshot ?? t.settings.autoResultFromScreenshot,
           totalMatchesPlanned:
               totalMatchesPlanned ?? t.settings.totalMatchesPlanned,
           championRush: championRush ?? t.settings.championRush,
           teamCount: nextTeams.length,
         );
 
-        return t.copyWith(
+        updatedRecord = t.copyWith(
           name: nextSettings.name,
+          updatedAt: nowMs,
           settings: nextSettings,
           teams: nextTeams,
           matches: nextMatches,
         );
+        return updatedRecord!;
       }).toList();
+
+      if (teams != null) {
+        changedVault = _mergeTeamsIntoVault(teams, nowMs);
+      }
+      final cleanHost = (hostName ?? '').trim();
+      final cleanSponsor = (sponsorName ?? '').trim();
+      _organizerDefaults = OrganizerDefaults(
+        hostName:
+            cleanHost.isNotEmpty ? cleanHost : _organizerDefaults.hostName,
+        sponsorName: cleanSponsor.isNotEmpty
+            ? cleanSponsor
+            : _organizerDefaults.sponsorName,
+        customLogoUrl: clearCustomLogo
+            ? _organizerDefaults.customLogoUrl
+            : (customLogoUrl ?? _organizerDefaults.customLogoUrl),
+      );
     });
+
+    if (updatedRecord != null) {
+      _cloudHooks.onTournamentUpsert?.call(updatedRecord!);
+    }
+    if (changedVault.isNotEmpty) _cloudHooks.onSquadsUpsert?.call(changedVault);
+    _cloudHooks.onMetaUpdate?.call();
   }
 
   void switchActiveTournament(String id) {
     _commit(() {
       _activeTournamentId = id;
     });
+    _cloudHooks.onMetaUpdate?.call();
   }
 
   void deleteTournament(String id) {
@@ -262,9 +452,13 @@ class TournamentStore extends ChangeNotifier {
             _tournaments.isNotEmpty ? _tournaments.first.id : null;
       }
     });
+    _cloudHooks.onTournamentDelete?.call(id);
+    _cloudHooks.onMetaUpdate?.call();
   }
 
   void endTournamentById(String id) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != id) return t;
@@ -274,26 +468,34 @@ class TournamentStore extends ChangeNotifier {
           t.settings.copyWith(isManuallyEnded: true),
         );
         final leader = res.standings.isNotEmpty ? res.standings.first : null;
-        return t.copyWith(
+        updated = t.copyWith(
+          updatedAt: nowMs,
           isEnded: true,
           settings: t.settings.copyWith(isManuallyEnded: true),
           championTeamName: leader?.teamName,
           championScore: leader?.totalPoints,
         );
+        return updated!;
       }).toList();
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
   }
 
   void reopenTournamentById(String id) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != id) return t;
-        return t.copyWith(
+        updated = t.copyWith(
+          updatedAt: nowMs,
           isEnded: false,
           settings: t.settings.copyWith(isManuallyEnded: false),
         );
+        return updated!;
       }).toList();
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
   }
 
   void endActiveTournament() {
@@ -309,12 +511,19 @@ class TournamentStore extends ChangeNotifier {
   void updateActiveTheme(ThemePreset theme) {
     final active = activeTournament;
     if (active == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != active.id) return t;
-        return t.copyWith(settings: t.settings.copyWith(theme: theme));
+        updated = t.copyWith(
+          updatedAt: nowMs,
+          settings: t.settings.copyWith(theme: theme),
+        );
+        return updated!;
       }).toList();
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
   }
 
   void updateActivePosterMeta({
@@ -326,6 +535,8 @@ class TournamentStore extends ChangeNotifier {
   }) {
     final active = activeTournament;
     if (active == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != active.id) return t;
@@ -346,9 +557,15 @@ class TournamentStore extends ChangeNotifier {
               : t.settings.sponsorName,
           showLogos: showLogos ?? t.settings.showLogos,
         );
-        return t.copyWith(name: nextName, settings: nextSettings);
+        updated = t.copyWith(
+          name: nextName,
+          updatedAt: nowMs,
+          settings: nextSettings,
+        );
+        return updated!;
       }).toList();
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
   }
 
   String duplicateTournament(String sourceId) {
@@ -373,6 +590,9 @@ class TournamentStore extends ChangeNotifier {
           name: source.teams[i].name,
           logoUrl: source.teams[i].logoUrl,
           shortCode: source.teams[i].shortCode,
+          player1: source.teams[i].player1,
+          player2: source.teams[i].player2,
+          learnedTokens: List<String>.from(source.teams[i].learnedTokens),
         ),
     ];
 
@@ -381,13 +601,15 @@ class TournamentStore extends ChangeNotifier {
       for (final tm in clonedTeams) tm.id: TeamMatchEntry(teamId: tm.id),
     };
 
+    final nextStage = incrementStageOrDayLabel(source.settings.roundOrDay);
     final cloned = TournamentRecord(
       id: nextId,
-      name: '${source.name} (Copy)',
+      name: source.name,
       createdAt: formattedDate,
       createdAtTimestamp: ts,
+      updatedAt: ts,
       settings: source.settings.copyWith(
-        name: '${source.settings.name} (Copy)',
+        roundOrDay: nextStage,
         teamCount: clonedTeams.length,
         isManuallyEnded: false,
       ),
@@ -409,33 +631,41 @@ class TournamentStore extends ChangeNotifier {
       _activeTournamentId = nextId;
     });
 
+    _cloudHooks.onTournamentUpsert?.call(cloned);
+    _cloudHooks.onMetaUpdate?.call();
     return nextId;
   }
 
   void updateDefaultPointSystem(PointSystemConfig nextConfig) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _defaultPointSystem = nextConfig.copyWith();
       final active = activeTournament;
       if (active != null) {
         _tournaments = _tournaments.map((t) {
           if (t.id != active.id) return t;
-          return t.copyWith(
+          updated = t.copyWith(
+            updatedAt: nowMs,
             settings: t.settings.copyWith(pointSystem: nextConfig.copyWith()),
           );
+          return updated!;
         }).toList();
       }
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
+    _cloudHooks.onMetaUpdate?.call();
   }
 
   String createMatch() {
     final active = activeTournament;
     if (active == null) return '';
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
 
     final nextNum = active.matches.isEmpty
         ? 1
         : active.matches.map((m) => m.matchNumber).reduce(math.max) + 1;
-    final matchId =
-        'match_${active.id}_${DateTime.now().millisecondsSinceEpoch}';
+    final matchId = 'match_${active.id}_$nowMs';
 
     final entries = {
       for (final t in active.teams) t.id: TeamMatchEntry(teamId: t.id),
@@ -446,16 +676,22 @@ class TournamentStore extends ChangeNotifier {
       matchNumber: nextNum,
       entries: entries,
       isCompleted: false,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
+      createdAt: nowMs,
     );
 
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != active.id) return t;
-        return t.copyWith(matches: [...t.matches, newMatch]);
+        updated = t.copyWith(
+          updatedAt: nowMs,
+          matches: [...t.matches, newMatch],
+        );
+        return updated!;
       }).toList();
     });
 
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
     return matchId;
   }
 
@@ -467,6 +703,8 @@ class TournamentStore extends ChangeNotifier {
   }) {
     final active = activeTournament;
     if (active == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != active.id) return t;
@@ -480,42 +718,110 @@ class TournamentStore extends ChangeNotifier {
           );
           return m.copyWith(entries: nextEntries);
         }).toList();
-        return t.copyWith(matches: nextMatches);
+        updated = t.copyWith(updatedAt: nowMs, matches: nextMatches);
+        return updated!;
       }).toList();
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
+  }
+
+  void applyBatchMatchResults({
+    required String matchId,
+    required List<({String teamId, int? placement, int kills})> entries,
+    Map<String, List<String>>? learnedByTeamId,
+  }) {
+    final active = activeTournament;
+    if (active == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
+    List<SavedSquadRecord> changedVault = const [];
+
+    _commit(() {
+      _tournaments = _tournaments.map((t) {
+        if (t.id != active.id) return t;
+        final nextTeams = learnedByTeamId != null
+            ? t.teams.map((tm) {
+                final extra = learnedByTeamId[tm.id];
+                if (extra == null || extra.isEmpty) return tm;
+                final combined = <String>{
+                  ...tm.learnedTokens,
+                  ...extra,
+                }.take(32).toList();
+                return tm.copyWith(learnedTokens: combined);
+              }).toList()
+            : t.teams;
+
+        final nextMatches = t.matches.map((m) {
+          if (m.id != matchId) return m;
+          final nextEntries = Map<String, TeamMatchEntry>.from(m.entries);
+          for (final item in entries) {
+            nextEntries[item.teamId] = TeamMatchEntry(
+              teamId: item.teamId,
+              placement: item.placement,
+              kills: math.max(0, item.kills),
+            );
+          }
+          return m.copyWith(entries: nextEntries);
+        }).toList();
+
+        updated = t.copyWith(
+          updatedAt: nowMs,
+          teams: nextTeams,
+          matches: nextMatches,
+        );
+        return updated!;
+      }).toList();
+
+      if (updated != null && learnedByTeamId != null) {
+        changedVault = _mergeTeamsIntoVault(updated!.teams, nowMs);
+      }
+    });
+
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
+    if (changedVault.isNotEmpty) _cloudHooks.onSquadsUpsert?.call(changedVault);
   }
 
   void completeMatch(String matchId) {
     final active = activeTournament;
     if (active == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != active.id) return t;
         final nextMatches = t.matches
             .map((m) => m.id == matchId ? m.copyWith(isCompleted: true) : m)
             .toList();
-        return t.copyWith(matches: nextMatches);
+        updated = t.copyWith(updatedAt: nowMs, matches: nextMatches);
+        return updated!;
       }).toList();
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
   }
 
   void reopenMatch(String matchId) {
     final active = activeTournament;
     if (active == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != active.id) return t;
         final nextMatches = t.matches
             .map((m) => m.id == matchId ? m.copyWith(isCompleted: false) : m)
             .toList();
-        return t.copyWith(matches: nextMatches);
+        updated = t.copyWith(updatedAt: nowMs, matches: nextMatches);
+        return updated!;
       }).toList();
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
   }
 
   void deleteMatch(String matchId) {
     final active = activeTournament;
     if (active == null || active.matches.length <= 1) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != active.id) return t;
@@ -524,14 +830,17 @@ class TournamentStore extends ChangeNotifier {
           for (int i = 0; i < remaining.length; i++)
             remaining[i].copyWith(matchNumber: i + 1),
         ];
-        return t.copyWith(matches: renumbered);
+        updated = t.copyWith(updatedAt: nowMs, matches: renumbered);
+        return updated!;
       }).toList();
     });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
   }
 
   void resetActiveMatchData() {
     final active = activeTournament;
     if (active == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
     final cleanEntries = {
       for (final team in active.teams) team.id: TeamMatchEntry(teamId: team.id),
     };
@@ -540,23 +849,52 @@ class TournamentStore extends ChangeNotifier {
       matchNumber: 1,
       entries: cleanEntries,
       isCompleted: false,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
+      createdAt: nowMs,
     );
+    TournamentRecord? updated;
     _commit(() {
       _tournaments = _tournaments.map((t) {
         if (t.id != active.id) return t;
-        return t.copyWith(
+        updated = t.copyWith(
+          updatedAt: nowMs,
           matches: [cleanMatch1],
           isEnded: false,
           settings: t.settings.copyWith(isManuallyEnded: false),
         );
+        return updated!;
       }).toList();
+    });
+    if (updated != null) _cloudHooks.onTournamentUpsert?.call(updated!);
+  }
+
+  void applyCloudWorkspace({
+    List<TournamentRecord>? tournaments,
+    List<SavedSquadRecord>? savedSquads,
+    String? activeTournamentId,
+    bool updateActiveId = false,
+    PointSystemConfig? defaultPointSystem,
+    OrganizerDefaults? organizerDefaults,
+  }) {
+    _commit(() {
+      if (tournaments != null) _tournaments = tournaments;
+      if (savedSquads != null) _savedSquads = savedSquads;
+      if (defaultPointSystem != null) _defaultPointSystem = defaultPointSystem;
+      if (organizerDefaults != null) _organizerDefaults = organizerDefaults;
+      if (updateActiveId) {
+        if (activeTournamentId != null &&
+            _tournaments.any((t) => t.id == activeTournamentId)) {
+          _activeTournamentId = activeTournamentId;
+        } else if (_activeTournamentId == null && _tournaments.isNotEmpty) {
+          _activeTournamentId = _tournaments.first.id;
+        }
+      }
     });
   }
 
   String exportJson() {
     return const JsonEncoder.withIndent('  ').convert({
       'tournaments': _tournaments.map((t) => t.toJson()).toList(),
+      'savedSquads': _savedSquads.map((s) => s.toJson()).toList(),
       'activeTournamentId': _activeTournamentId,
       'defaultPointSystem': _defaultPointSystem.toJson(),
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
@@ -611,6 +949,7 @@ class TournamentStore extends ChangeNotifier {
           theme: s.theme,
           customLogoUrl: _sanitizeImageUrl(s.customLogoUrl),
           isManuallyEnded: s.isManuallyEnded,
+          autoResultFromScreenshot: s.autoResultFromScreenshot,
         );
         final cleanTeams = t.teams.take(64).map((tm) {
           final safeLogo = _sanitizeImageUrl(tm.logoUrl);
@@ -619,6 +958,9 @@ class TournamentStore extends ChangeNotifier {
             name: tm.name,
             logoUrl: safeLogo,
             shortCode: tm.shortCode,
+            player1: tm.player1,
+            player2: tm.player2,
+            learnedTokens: tm.learnedTokens,
           );
         }).toList();
         return t.copyWith(

@@ -11,9 +11,11 @@ import {
   Smartphone,
   Shield,
   ShieldOff,
+  FileText,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 import { calculateSingleMatchStandings } from '../../lib/scoring';
+import { formatStandingsTextSummary } from '../../lib/rosterHelpers';
 import { ResultGraphic } from './ResultGraphic';
 import { GRAPHIC_THEMES, resolveThemePreset } from '../../lib/theme';
 import type {
@@ -43,6 +45,7 @@ export const ResultView: React.FC = () => {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
 
   const previewStageRef = useRef<HTMLDivElement>(null);
   const graphicRef = useRef<HTMLDivElement>(null);
@@ -325,6 +328,34 @@ export const ResultView: React.FC = () => {
 
           {/* Export CTAs */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={async () => {
+                const txt = formatStandingsTextSummary({
+                  settings,
+                  standings: activeStandings,
+                  viewMode,
+                  matchNumber: selectedMatch?.matchNumber,
+                  completedMatches: completedMatches.length,
+                });
+                try {
+                  await navigator.clipboard.writeText(txt);
+                  setCopiedText(true);
+                  setTimeout(() => setCopiedText(false), 2200);
+                } catch {
+                  // Ignore clipboard error
+                }
+              }}
+              className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-200 transition-colors"
+            >
+              {copiedText ? (
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <FileText className="h-3.5 w-3.5 text-slate-400" />
+              )}
+              <span>{copiedText ? 'Text Copied' : 'Copy Text'}</span>
+            </button>
+
             <button
               type="button"
               onClick={handleCopyPng}

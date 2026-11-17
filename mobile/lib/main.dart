@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'models/tournament_models.dart';
+import 'services/cloud_sync_service.dart';
 import 'state/auth_state.dart';
 import 'state/tournament_state.dart';
 import 'theme/app_theme.dart';
@@ -57,9 +58,25 @@ class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _authStore = widget.authStoreOverride ?? AuthStore();
     _tournamentStore = widget.tournamentStoreOverride ?? TournamentStore();
+    _authStore.addListener(_syncCloudBinding);
+    _tournamentStore.addListener(_syncCloudBinding);
     if (!widget.skipAutoInit) {
       _authStore.initialize();
       _tournamentStore.hydrate();
+    }
+  }
+
+  void _syncCloudBinding() {
+    if (widget.skipAutoInit || !_tournamentStore.isHydrated) return;
+    final email = _authStore.firebaseUser?.email;
+    if (_authStore.integrityTrusted &&
+        _authStore.isAllowed &&
+        !_authStore.isLoading &&
+        email != null &&
+        email.isNotEmpty) {
+      CloudSyncService.instance.start(email, _tournamentStore);
+    } else {
+      CloudSyncService.instance.stop(_tournamentStore);
     }
   }
 
@@ -73,6 +90,11 @@ class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _authStore.removeListener(_syncCloudBinding);
+    _tournamentStore.removeListener(_syncCloudBinding);
+    if (!widget.skipAutoInit) {
+      CloudSyncService.instance.stop(_tournamentStore);
+    }
     if (widget.authStoreOverride == null) _authStore.dispose();
     if (widget.tournamentStoreOverride == null) _tournamentStore.dispose();
     super.dispose();

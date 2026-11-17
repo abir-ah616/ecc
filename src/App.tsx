@@ -5,6 +5,10 @@ import { HomeView } from './components/home/HomeView';
 import { LoginView } from './components/auth/LoginView';
 import { useTournamentStore } from './store/tournamentStore';
 import { useAuthStore, initAuthListener } from './store/authStore';
+import {
+  startCloudWorkspaceSync,
+  stopCloudWorkspaceSync,
+} from './lib/cloudSync';
 
 const CreateTournamentView = lazy(() =>
   import('./components/tournament/CreateTournamentView').then((m) => ({
@@ -76,6 +80,17 @@ export function App() {
   useEffect(() => {
     initAuthListener();
   }, []);
+
+  useEffect(() => {
+    if (firebaseUser?.email && isAllowed && !isLoading) {
+      startCloudWorkspaceSync(firebaseUser.email);
+    } else {
+      stopCloudWorkspaceSync();
+    }
+    return () => {
+      stopCloudWorkspaceSync();
+    };
+  }, [firebaseUser?.email, isAllowed, isLoading]);
 
   if (isLoading) {
     return (

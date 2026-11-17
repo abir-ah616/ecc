@@ -11,9 +11,9 @@ import {
 import { useTournamentStore } from '../../store/tournamentStore';
 import { EspCalcLogoMark } from '../ui/BrandLogo';
 
-const APK_URL = '/esp-calc.apk?v=20261116';
+const APK_URL = '/esp-calc.apk?v=20261118';
 const APK_FILENAME = 'ESP-CALC-v1.0.0.apk';
-const APK_SIZE_LABEL = '53.3 MB';
+const APK_SIZE_LABEL = '83.6 MB';
 
 interface AppScreenshot {
   src: string;
@@ -37,9 +37,9 @@ const APP_SCREENSHOTS: AppScreenshot[] = [
 
 const FEATURES = [
   'Calculate Classic Scrim & Champion Rush standings automatically',
+  '100% Free Offline Screenshot-to-Scorecard OCR + Rapid #1-#N tap mode',
   'Export 16:9 and 4:5 HD standings graphics in 7 broadcast themes',
-  'Quick templates & custom match, point target, and 2-24 squad setup',
-  'Works offline with saved tournament history and JSON backup',
+  'Live Cloud Sync with Web + Saved Squad Vault & offline JSON backup',
 ];
 
 export const AppDownloadView: React.FC = () => {

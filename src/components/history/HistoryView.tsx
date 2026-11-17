@@ -7,6 +7,7 @@ import {
   Search,
   Image as ImageIcon,
   Calendar,
+  CopyPlus,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 
@@ -15,6 +16,7 @@ export const HistoryView: React.FC = () => {
     tournaments,
     activeTournamentId,
     switchActiveTournament,
+    duplicateTournament,
     deleteTournament,
     setCurrentTab,
   } = useTournamentStore();
@@ -211,6 +213,16 @@ export const HistoryView: React.FC = () => {
                     >
                       <ImageIcon className="h-3.5 w-3.5 text-amber-400" />
                       <span>Poster</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => duplicateTournament(t.id)}
+                      title="Clone squads, logos & rules into Next Day / Stage"
+                      className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-200 transition-colors"
+                    >
+                      <CopyPlus className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Next Day / Clone</span>
                     </button>
 
                     {confirmDeleteId === t.id ? (

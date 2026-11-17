@@ -18,6 +18,7 @@ import {
   Shield,
   LogOut,
   History,
+  CopyPlus,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 import { useAuthStore } from '../../store/authStore';
@@ -66,6 +67,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
     activeTournamentId,
     getActiveTournament,
     switchActiveTournament,
+    duplicateTournament,
     deleteTournament,
     setCurrentTab,
     openCreateWithTemplate,
@@ -483,6 +485,16 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
                     <ImageIcon className="h-3.5 w-3.5 text-amber-400" />
                     <span>Poster</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => duplicateTournament(featuredTournament.id)}
+                    title="Duplicate roster & logos into Next Day"
+                    className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+                  >
+                    <CopyPlus className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>Next Day</span>
+                  </button>
                 </div>
               </div>
 
@@ -762,6 +774,18 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
                           >
                             <Edit3 className="h-3.5 w-3.5 text-slate-400" />
                             <span>Edit Squads</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              duplicateTournament(record.id);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-slate-200 hover:bg-white/[0.07] cursor-pointer"
+                          >
+                            <CopyPlus className="h-3.5 w-3.5 text-emerald-400" />
+                            <span>Next Day / Clone</span>
                           </button>
 
                           <button

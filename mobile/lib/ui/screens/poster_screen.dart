@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import '../../core/roster_helpers.dart';
 import '../../core/scoring.dart';
 import '../../models/tournament_models.dart';
 import '../../services/poster_server.dart';
@@ -739,13 +740,53 @@ class _PosterScreenState extends State<PosterScreen> {
                       onPressed: kIsWeb ? null : _saveToGallery,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: SecondaryPillButton(
                       label: 'Share',
                       icon: Icons.ios_share_rounded,
                       onPressed: kIsWeb || _isExporting ? null : _sharePoster,
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  SecondaryPillButton(
+                    label: 'Copy',
+                    icon: Icons.copy_all_rounded,
+                    onPressed: () async {
+                      final overallResult = widget.store.getStandings();
+                      final completedMatches = tournament.matches
+                          .where((m) => m.isCompleted)
+                          .length;
+                      List<TeamCumulativeStanding> activeRows =
+                          overallResult.standings;
+                      if (_viewMode == StandingsViewMode.singleMatch &&
+                          tournament.matches.isNotEmpty) {
+                        final chosen = tournament.matches.firstWhere(
+                          (m) => m.matchNumber == _selectedMatchNumber,
+                          orElse: () => tournament.matches.first,
+                        );
+                        activeRows = calculateSingleMatchStandings(
+                          tournament.teams,
+                          chosen,
+                          tournament.settings.pointSystem,
+                          tournament.settings.tieBreakOrder,
+                        );
+                      }
+                      final summary = formatStandingsTextSummary(
+                        settings: tournament.settings,
+                        standings: activeRows,
+                        viewMode: _viewMode,
+                        matchNumber: _selectedMatchNumber,
+                        completedMatches: completedMatches,
+                      );
+                      await Clipboard.setData(ClipboardData(text: summary));
+                      HapticFeedback.mediumImpact();
+                      if (!mounted) return;
+                      setState(() {
+                        _lastSavedBannerText =
+                            'Standings text copied for WhatsApp / Discord';
+                      });
+                    },
                   ),
                 ],
               ),

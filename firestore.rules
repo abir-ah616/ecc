@@ -28,6 +28,42 @@ rules_version = '2';
 //   - updatedAt: number (required, 0 <= ts <= request.time + 24h) - last update timestamp (ms)
 //   - updatedBy: string (optional, 0..254 chars) - admin identifier/email who last updated settings
 //
+// Collection: user_workspaces
+// Document ID: {emailId} (lowercase email address of the workspace owner)
+// Fields:
+//   - email: string (required, immutable, matches emailId, valid email, <= 254 chars)
+//   - activeTournamentId: string | null (optional, <= 128 chars) - currently active synced tournament ID
+//   - defaultPointSystem: map (optional, <= 32 keys) - organizer's synced default scoring configuration
+//   - organizerDefaults: map (optional, <= 64 keys) - organizer's synced default host/sponsor/theme settings
+//   - updatedAt: number (required, 0 <= ts <= request.time + 24h) - last sync timestamp (ms)
+//
+// Subcollection: user_workspaces/{emailId}/tournaments
+// Document ID: {tournamentId} (1..128 chars, matches data.id)
+// Fields:
+//   - id: string (required, immutable, matches tournamentId, 1..128 chars)
+//   - name: string (required, 1..200 chars) - tournament title
+//   - createdAt: string (required, <= 80 chars) - formatted creation date/time label
+//   - createdAtTimestamp: number (required, 0 <= ts <= request.time + 24h) - creation timestamp (ms)
+//   - updatedAt: number (required, 0 <= ts <= request.time + 24h) - last update timestamp (ms)
+//   - settings: map (required, <= 64 keys) - tournament configuration map
+//   - teams: list (required, <= 64 items) - team roster list
+//   - matches: list (required, <= 64 items) - match results list
+//   - isEnded: bool (required) - concluded status flag
+//   - championTeamName: string | null (optional, <= 160 chars) - crowned champion name
+//   - championScore: number | null (optional) - crowned champion total points
+//
+// Subcollection: user_workspaces/{emailId}/saved_squads
+// Document ID: {squadId} (1..128 chars, matches data.id)
+// Fields:
+//   - id: string (required, immutable, matches squadId, 1..128 chars)
+//   - name: string (required, 1..120 chars) - squad name
+//   - shortCode: string (required, 1..16 chars) - squad short code
+//   - logoUrl: string | null (optional, <= 900000 chars) - optional logo URL or data URL
+//   - player1: string | null (optional, <= 120 chars) - primary player identifier
+//   - player2: string | null (optional, <= 120 chars) - secondary player identifier
+//   - learnedTokens: list (optional, <= 40 items) - OCR/roster matching tokens
+//   - updatedAt: number (required, 0 <= ts <= request.time + 24h) - last update timestamp (ms)
+//
 // ===============================================================
 
 service cloud.firestore {
@@ -76,6 +112,21 @@ service cloud.firestore {
     function isTempLoginEnabled() {
       return exists(/databases/$(database)/documents/app_settings/auth) &&
         get(/databases/$(database)/documents/app_settings/auth).data.allowTempLogin == true;
+    }
+
+    // Check if the caller is the verified owner of emailId AND currently authorized for workspace Cloud Sync
+    function isAuthorizedWorkspaceOwner(emailId) {
+      return isOwner(emailId) && (
+        isSuperAdmin() ||
+        (
+          exists(/databases/$(database)/documents/allowed_users/$(emailId)) &&
+          get(/databases/$(database)/documents/allowed_users/$(emailId)).data.status == 'active' &&
+          (
+            get(/databases/$(database)/documents/allowed_users/$(emailId)).data.role in ['admin', 'user'] ||
+            (get(/databases/$(database)/documents/allowed_users/$(emailId)).data.role == 'temp' && isTempLoginEnabled())
+          )
+        )
+      );
     }
 
     // Verify UID hasn't been tampered with on self-onboarding or self-update
@@ -242,6 +293,117 @@ service cloud.firestore {
         uidUnchanged();
     }
 
+    function isValidWorkspaceMeta(data, emailId) {
+      return hasOnlyAllowedFields([
+          'email',
+          'activeTournamentId',
+          'defaultPointSystem',
+          'organizerDefaults',
+          'updatedAt'
+        ]) &&
+        hasRequiredFields([
+          'email',
+          'updatedAt'
+        ]) &&
+        data.email is string &&
+        data.email == emailId &&
+        isValidEmail(data.email) &&
+        isValidEpochMs(data.updatedAt) &&
+        (!('activeTournamentId' in data) ||
+          data.activeTournamentId == null ||
+          (data.activeTournamentId is string && data.activeTournamentId.size() <= 128)) &&
+        (!('defaultPointSystem' in data) ||
+          (data.defaultPointSystem is map && data.defaultPointSystem.size() <= 32)) &&
+        (!('organizerDefaults' in data) ||
+          (data.organizerDefaults is map && data.organizerDefaults.size() <= 64));
+    }
+
+    function isValidSyncedTournament(data, tournamentId) {
+      return hasOnlyAllowedFields([
+          'id',
+          'name',
+          'createdAt',
+          'createdAtTimestamp',
+          'updatedAt',
+          'settings',
+          'teams',
+          'matches',
+          'isEnded',
+          'championTeamName',
+          'championScore'
+        ]) &&
+        hasRequiredFields([
+          'id',
+          'name',
+          'createdAt',
+          'createdAtTimestamp',
+          'updatedAt',
+          'settings',
+          'teams',
+          'matches',
+          'isEnded'
+        ]) &&
+        data.id is string &&
+        data.id == tournamentId &&
+        data.id.size() >= 1 &&
+        data.id.size() <= 128 &&
+        validStringLength('name', 1, 200) &&
+        data.createdAt is string &&
+        data.createdAt.size() <= 80 &&
+        isValidEpochMs(data.createdAtTimestamp) &&
+        isValidEpochMs(data.updatedAt) &&
+        data.settings is map &&
+        data.settings.size() <= 64 &&
+        data.teams is list &&
+        data.teams.size() <= 64 &&
+        data.matches is list &&
+        data.matches.size() <= 64 &&
+        data.isEnded is bool &&
+        (!('championTeamName' in data) ||
+          data.championTeamName == null ||
+          (data.championTeamName is string && data.championTeamName.size() <= 160)) &&
+        (!('championScore' in data) ||
+          data.championScore == null ||
+          data.championScore is number);
+    }
+
+    function isValidSavedSquad(data, squadId) {
+      return hasOnlyAllowedFields([
+          'id',
+          'name',
+          'shortCode',
+          'logoUrl',
+          'player1',
+          'player2',
+          'learnedTokens',
+          'updatedAt'
+        ]) &&
+        hasRequiredFields([
+          'id',
+          'name',
+          'shortCode',
+          'updatedAt'
+        ]) &&
+        data.id is string &&
+        data.id == squadId &&
+        data.id.size() >= 1 &&
+        data.id.size() <= 128 &&
+        validStringLength('name', 1, 120) &&
+        validStringLength('shortCode', 1, 16) &&
+        (!('logoUrl' in data) ||
+          data.logoUrl == null ||
+          (data.logoUrl is string && data.logoUrl.size() <= 900000)) &&
+        (!('player1' in data) ||
+          data.player1 == null ||
+          (data.player1 is string && data.player1.size() <= 120)) &&
+        (!('player2' in data) ||
+          data.player2 == null ||
+          (data.player2 is string && data.player2.size() <= 120)) &&
+        (!('learnedTokens' in data) ||
+          (data.learnedTokens is list && data.learnedTokens.size() <= 40)) &&
+        isValidEpochMs(data.updatedAt);
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
@@ -270,6 +432,34 @@ service cloud.firestore {
 
       allow delete: if isAdmin() &&
         emailId != 'johncenahzoppy@gmail.com';
+    }
+
+    match /user_workspaces/{emailId} {
+      allow get: if isAuthorizedWorkspaceOwner(emailId);
+      allow list: if false;
+
+      allow create, update: if isAuthorizedWorkspaceOwner(emailId) &&
+        isValidWorkspaceMeta(request.resource.data, emailId);
+
+      allow delete: if isAuthorizedWorkspaceOwner(emailId);
+
+      match /tournaments/{tournamentId} {
+        allow get, list: if isAuthorizedWorkspaceOwner(emailId);
+
+        allow create, update: if isAuthorizedWorkspaceOwner(emailId) &&
+          isValidSyncedTournament(request.resource.data, tournamentId);
+
+        allow delete: if isAuthorizedWorkspaceOwner(emailId);
+      }
+
+      match /saved_squads/{squadId} {
+        allow get, list: if isAuthorizedWorkspaceOwner(emailId);
+
+        allow create, update: if isAuthorizedWorkspaceOwner(emailId) &&
+          isValidSavedSquad(request.resource.data, squadId);
+
+        allow delete: if isAuthorizedWorkspaceOwner(emailId);
+      }
     }
 
     // Default deny for all other collections and paths

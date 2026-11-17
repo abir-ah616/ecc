@@ -185,6 +185,18 @@ class HomeScreen extends StatelessWidget {
                         onOpenPoster();
                       },
                       onEdit: () => onEditEvent(record),
+                      onDuplicate: () {
+                        HapticFeedback.mediumImpact();
+                        store.duplicateTournament(record.id);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Created next stage from "${record.name}".',
+                            ),
+                          ),
+                        );
+                        onOpenMatches();
+                      },
                       onDelete: () => _confirmDelete(context, record),
                     ),
                   );
@@ -1030,6 +1042,7 @@ class _RecentProjectTile extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onOpenPoster;
   final VoidCallback onEdit;
+  final VoidCallback onDuplicate;
   final VoidCallback onDelete;
 
   const _RecentProjectTile({
@@ -1039,6 +1052,7 @@ class _RecentProjectTile extends StatelessWidget {
     required this.onOpen,
     required this.onOpenPoster,
     required this.onEdit,
+    required this.onDuplicate,
     required this.onDelete,
   });
 
@@ -1210,6 +1224,9 @@ class _RecentProjectTile extends StatelessWidget {
                     case 'edit':
                       onEdit();
                       break;
+                    case 'duplicate':
+                      onDuplicate();
+                      break;
                     case 'delete':
                       onDelete();
                       break;
@@ -1234,6 +1251,13 @@ class _RecentProjectTile extends StatelessWidget {
                     value: 'edit',
                     child: Text(
                       'Edit Event',
+                      style: TextStyle(color: AppColors.textPrimary),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'duplicate',
+                    child: Text(
+                      'Next Day / Clone',
                       style: TextStyle(color: AppColors.textPrimary),
                     ),
                   ),

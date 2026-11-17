@@ -140,6 +140,7 @@ class TournamentSettings {
   final ThemePreset theme;
   final String? customLogoUrl;
   final bool isManuallyEnded;
+  final bool autoResultFromScreenshot;
 
   const TournamentSettings({
     required this.mode,
@@ -158,6 +159,7 @@ class TournamentSettings {
     this.theme = ThemePreset.v2,
     this.customLogoUrl,
     this.isManuallyEnded = false,
+    this.autoResultFromScreenshot = false,
   });
 
   factory TournamentSettings.fromJson(Map<String, dynamic> json) {
@@ -193,6 +195,8 @@ class TournamentSettings {
       theme: themePresetFromJson(json['theme'] as String?),
       customLogoUrl: json['customLogoUrl'] as String?,
       isManuallyEnded: json['isManuallyEnded'] as bool? ?? false,
+      autoResultFromScreenshot:
+          json['autoResultFromScreenshot'] as bool? ?? false,
     );
   }
 
@@ -213,6 +217,7 @@ class TournamentSettings {
         'theme': themePresetToJson(theme),
         if (customLogoUrl != null) 'customLogoUrl': customLogoUrl,
         'isManuallyEnded': isManuallyEnded,
+        'autoResultFromScreenshot': autoResultFromScreenshot,
       };
 
   TournamentSettings copyWith({
@@ -233,6 +238,7 @@ class TournamentSettings {
     String? customLogoUrl,
     bool clearCustomLogo = false,
     bool? isManuallyEnded,
+    bool? autoResultFromScreenshot,
   }) =>
       TournamentSettings(
         mode: mode ?? this.mode,
@@ -252,6 +258,8 @@ class TournamentSettings {
         customLogoUrl:
             clearCustomLogo ? null : (customLogoUrl ?? this.customLogoUrl),
         isManuallyEnded: isManuallyEnded ?? this.isManuallyEnded,
+        autoResultFromScreenshot:
+            autoResultFromScreenshot ?? this.autoResultFromScreenshot,
       );
 }
 
@@ -260,12 +268,18 @@ class Team {
   final String name;
   final String? logoUrl;
   final String? shortCode;
+  final String? player1;
+  final String? player2;
+  final List<String> learnedTokens;
 
   const Team({
     required this.id,
     required this.name,
     this.logoUrl,
     this.shortCode,
+    this.player1,
+    this.player2,
+    this.learnedTokens = const [],
   });
 
   factory Team.fromJson(Map<String, dynamic> json) => Team(
@@ -273,6 +287,11 @@ class Team {
         name: json['name'] as String,
         logoUrl: json['logoUrl'] as String?,
         shortCode: json['shortCode'] as String?,
+        player1: json['player1'] as String?,
+        player2: json['player2'] as String?,
+        learnedTokens: ((json['learnedTokens'] as List<dynamic>?) ?? const [])
+            .whereType<String>()
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -280,6 +299,11 @@ class Team {
         'name': name,
         if (logoUrl != null) 'logoUrl': logoUrl,
         if (shortCode != null) 'shortCode': shortCode,
+        if (player1 != null && player1!.trim().isNotEmpty)
+          'player1': player1!.trim(),
+        if (player2 != null && player2!.trim().isNotEmpty)
+          'player2': player2!.trim(),
+        if (learnedTokens.isNotEmpty) 'learnedTokens': learnedTokens,
       };
 
   Team copyWith({
@@ -288,12 +312,18 @@ class Team {
     String? logoUrl,
     bool clearLogo = false,
     String? shortCode,
+    String? player1,
+    String? player2,
+    List<String>? learnedTokens,
   }) =>
       Team(
         id: id ?? this.id,
         name: name ?? this.name,
         logoUrl: clearLogo ? null : (logoUrl ?? this.logoUrl),
         shortCode: shortCode ?? this.shortCode,
+        player1: player1 ?? this.player1,
+        player2: player2 ?? this.player2,
+        learnedTokens: learnedTokens ?? this.learnedTokens,
       );
 }
 
@@ -521,6 +551,7 @@ class TournamentRecord {
   final String name;
   final String createdAt;
   final int createdAtTimestamp;
+  final int updatedAt;
   final TournamentSettings settings;
   final List<Team> teams;
   final List<MatchRecord> matches;
@@ -533,39 +564,44 @@ class TournamentRecord {
     required this.name,
     required this.createdAt,
     required this.createdAtTimestamp,
+    int? updatedAt,
     required this.settings,
     required this.teams,
     required this.matches,
     required this.isEnded,
     this.championTeamName,
     this.championScore,
-  });
+  }) : updatedAt = updatedAt ?? createdAtTimestamp;
 
-  factory TournamentRecord.fromJson(Map<String, dynamic> json) =>
-      TournamentRecord(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        createdAt: (json['createdAt'] as String?) ?? '',
-        createdAtTimestamp: (json['createdAtTimestamp'] as num?)?.toInt() ?? 0,
-        settings: TournamentSettings.fromJson(
-          (json['settings'] as Map<String, dynamic>?) ?? const {},
-        ),
-        teams: ((json['teams'] as List<dynamic>?) ?? const [])
-            .map((e) => Team.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        matches: ((json['matches'] as List<dynamic>?) ?? const [])
-            .map((e) => MatchRecord.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        isEnded: json['isEnded'] as bool? ?? false,
-        championTeamName: json['championTeamName'] as String?,
-        championScore: (json['championScore'] as num?)?.toInt(),
-      );
+  factory TournamentRecord.fromJson(Map<String, dynamic> json) {
+    final createdTs = (json['createdAtTimestamp'] as num?)?.toInt() ?? 0;
+    return TournamentRecord(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      createdAt: (json['createdAt'] as String?) ?? '',
+      createdAtTimestamp: createdTs,
+      updatedAt: (json['updatedAt'] as num?)?.toInt() ?? createdTs,
+      settings: TournamentSettings.fromJson(
+        (json['settings'] as Map<String, dynamic>?) ?? const {},
+      ),
+      teams: ((json['teams'] as List<dynamic>?) ?? const [])
+          .map((e) => Team.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      matches: ((json['matches'] as List<dynamic>?) ?? const [])
+          .map((e) => MatchRecord.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      isEnded: json['isEnded'] as bool? ?? false,
+      championTeamName: json['championTeamName'] as String?,
+      championScore: (json['championScore'] as num?)?.toInt(),
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'createdAt': createdAt,
         'createdAtTimestamp': createdAtTimestamp,
+        'updatedAt': updatedAt,
         'settings': settings.toJson(),
         'teams': teams.map((t) => t.toJson()).toList(),
         'matches': matches.map((m) => m.toJson()).toList(),
@@ -576,6 +612,7 @@ class TournamentRecord {
 
   TournamentRecord copyWith({
     String? name,
+    int? updatedAt,
     TournamentSettings? settings,
     List<Team>? teams,
     List<MatchRecord>? matches,
@@ -588,6 +625,7 @@ class TournamentRecord {
         name: name ?? this.name,
         createdAt: createdAt,
         createdAtTimestamp: createdAtTimestamp,
+        updatedAt: updatedAt ?? this.updatedAt,
         settings: settings ?? this.settings,
         teams: teams ?? this.teams,
         matches: matches ?? this.matches,
@@ -595,4 +633,78 @@ class TournamentRecord {
         championTeamName: championTeamName ?? this.championTeamName,
         championScore: championScore ?? this.championScore,
       );
+}
+
+class SavedSquadRecord {
+  final String id;
+  final String name;
+  final String shortCode;
+  final String? logoUrl;
+  final String? player1;
+  final String? player2;
+  final List<String> learnedTokens;
+  final int updatedAt;
+
+  const SavedSquadRecord({
+    required this.id,
+    required this.name,
+    required this.shortCode,
+    this.logoUrl,
+    this.player1,
+    this.player2,
+    this.learnedTokens = const [],
+    required this.updatedAt,
+  });
+
+  factory SavedSquadRecord.fromJson(Map<String, dynamic> json) =>
+      SavedSquadRecord(
+        id: (json['id'] as String?) ?? '',
+        name: (json['name'] as String?) ?? 'Squad',
+        shortCode: (json['shortCode'] as String?) ?? 'SQ',
+        logoUrl: json['logoUrl'] as String?,
+        player1: json['player1'] as String?,
+        player2: json['player2'] as String?,
+        learnedTokens: ((json['learnedTokens'] as List<dynamic>?) ?? const [])
+            .whereType<String>()
+            .toList(),
+        updatedAt: (json['updatedAt'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'shortCode': shortCode,
+        if (logoUrl != null) 'logoUrl': logoUrl,
+        if (player1 != null && player1!.trim().isNotEmpty)
+          'player1': player1!.trim(),
+        if (player2 != null && player2!.trim().isNotEmpty)
+          'player2': player2!.trim(),
+        if (learnedTokens.isNotEmpty) 'learnedTokens': learnedTokens,
+        'updatedAt': updatedAt,
+      };
+}
+
+class OrganizerDefaults {
+  final String hostName;
+  final String sponsorName;
+  final String? customLogoUrl;
+
+  const OrganizerDefaults({
+    this.hostName = '',
+    this.sponsorName = '',
+    this.customLogoUrl,
+  });
+
+  factory OrganizerDefaults.fromJson(Map<String, dynamic> json) =>
+      OrganizerDefaults(
+        hostName: (json['hostName'] as String?) ?? '',
+        sponsorName: (json['sponsorName'] as String?) ?? '',
+        customLogoUrl: json['customLogoUrl'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'hostName': hostName,
+        'sponsorName': sponsorName,
+        if (customLogoUrl != null) 'customLogoUrl': customLogoUrl,
+      };
 }

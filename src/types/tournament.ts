@@ -48,6 +48,7 @@ export interface TournamentSettings {
   theme: ThemePreset;
   customLogoUrl?: string;                // Uploaded tournament logo data URL
   isManuallyEnded?: boolean;             // When organizer clicks "End Tournament"
+  autoResultFromScreenshot?: boolean;    // Enables offline OCR screenshot result scanner
 }
 
 export interface Team {
@@ -55,6 +56,9 @@ export interface Team {
   name: string;
   logoUrl?: string;                      // Optional data URL
   shortCode?: string;                    // 2-3 letter initials fallback
+  player1?: string;                      // Primary player IGN keyword for screenshot OCR
+  player2?: string;                      // Secondary optional player IGN keyword
+  learnedTokens?: string[];              // Auto-learned OCR tokens from Match 1+ reviews
 }
 
 export interface TeamMatchEntry {
@@ -114,10 +118,28 @@ export interface TournamentRecord {
   name: string;
   createdAt: string;       // Formatted Date & Time e.g. "24 Oct 2026, 07:50 PM"
   createdAtTimestamp: number;
+  updatedAt?: number;      // Epoch ms for Web <-> Android Cloud Sync
   settings: TournamentSettings;
   teams: Team[];
   matches: Match[];
   isEnded: boolean;
   championTeamName?: string;
   championScore?: number;
+}
+
+export interface SavedSquadRecord {
+  id: string;
+  name: string;
+  shortCode: string;
+  logoUrl?: string;
+  player1?: string;
+  player2?: string;
+  learnedTokens?: string[];
+  updatedAt: number;
+}
+
+export interface OrganizerDefaults {
+  hostName: string;
+  sponsorName: string;
+  customLogoUrl?: string;
 }

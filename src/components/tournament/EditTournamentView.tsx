@@ -1,10 +1,20 @@
 import React, { useState } from 'react';
-import { Save, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Save, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import {
   useTournamentStore,
   generateInitials,
 } from '../../store/tournamentStore';
-import type { Team, TournamentMode, TournamentRecord } from '../../types/tournament';
+import type {
+  SavedSquadRecord,
+  Team,
+  TournamentMode,
+  TournamentRecord,
+} from '../../types/tournament';
+import {
+  compressImageFileToDataUrl,
+  isPlaceholderSquadName,
+  matchLogoFilenameToSquadIndex,
+} from '../../lib/rosterHelpers';
 import {
   TournamentDetailsSection,
   FormatRulesSection,
@@ -18,7 +28,14 @@ interface EditTournamentFormProps {
 const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
   tournament,
 }) => {
-  const { updateTournament, setCurrentTab, matches } = useTournamentStore();
+  const {
+    updateTournament,
+    setCurrentTab,
+    matches,
+    savedSquads,
+    findSavedSquadByName,
+    deleteSavedSquad,
+  } = useTournamentStore();
 
   const [name, setName] = useState(tournament.settings.name);
   const [roundOrDay, setRoundOrDay] = useState(tournament.settings.roundOrDay);
@@ -39,10 +56,14 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
   const [customLogoUrl, setCustomLogoUrl] = useState<string | undefined>(
     tournament.settings.customLogoUrl
   );
+  const [autoResultFromScreenshot, setAutoResultFromScreenshot] = useState(
+    Boolean(tournament.settings.autoResultFromScreenshot)
+  );
   const [teams, setTeams] = useState<Team[]>(() =>
     tournament.teams.map((t) => ({ ...t }))
   );
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const handleSetCount = (count: number) => {
     if (count === teams.length) return;
@@ -64,34 +85,114 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
     }
   };
 
-  const handleTournamentLogoUpload = (file: File) => {
+  const handleTournamentLogoUpload = async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setCustomLogoUrl(e.target?.result as string);
-    reader.readAsDataURL(file);
+    const dataUrl = await compressImageFileToDataUrl(file, 256);
+    if (dataUrl) setCustomLogoUrl(dataUrl);
   };
 
-  const handleLogoUpload = (index: number, file: File) => {
+  const handleLogoUpload = async (index: number, file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const url = e.target?.result as string;
-      setTeams((prev) =>
-        prev.map((t, idx) => (idx === index ? { ...t, logoUrl: url } : t))
+    const url = await compressImageFileToDataUrl(file, 256);
+    if (!url) return;
+    setTeams((prev) =>
+      prev.map((t, idx) => (idx === index ? { ...t, logoUrl: url } : t))
+    );
+  };
+
+  const handleBulkLogoUpload = async (files: FileList) => {
+    const fileList = Array.from(files).filter((f) =>
+      f.type.startsWith('image/')
+    );
+    if (fileList.length === 0) return;
+
+    const compressed = await Promise.all(
+      fileList.map(async (f) => ({
+        name: f.name,
+        url: await compressImageFileToDataUrl(f, 256),
+      }))
+    );
+
+    setTeams((prev) => {
+      const next = prev.map((t) => ({ ...t }));
+      const used = new Set<number>();
+      const squadNames = next.map((t) => t.name);
+
+      for (const item of compressed) {
+        if (!item.url) continue;
+        const idx = matchLogoFilenameToSquadIndex(item.name, squadNames, used);
+        if (idx >= 0 && idx < next.length) {
+          used.add(idx);
+          next[idx] = { ...next[idx], logoUrl: item.url };
+        }
+      }
+      return next;
+    });
+  };
+
+  const handlePickSavedSquad = (sq: SavedSquadRecord) => {
+    setTeams((prev) => {
+      if (prev.some((t) => t.name.trim().toLowerCase() === sq.name.toLowerCase())) {
+        return prev;
+      }
+      const placeholderIdx = prev.findIndex((t) =>
+        isPlaceholderSquadName(t.name)
       );
-    };
-    reader.readAsDataURL(file);
+      if (placeholderIdx >= 0) {
+        return prev.map((t, idx) =>
+          idx === placeholderIdx
+            ? {
+                ...t,
+                name: sq.name,
+                shortCode: sq.shortCode,
+                logoUrl: sq.logoUrl,
+                player1: sq.player1,
+                player2: sq.player2,
+                learnedTokens: sq.learnedTokens,
+              }
+            : t
+        );
+      }
+      if (prev.length >= 24) return prev;
+      return [
+        ...prev,
+        {
+          id: `team_${tournament.id}_${Date.now()}_${prev.length + 1}`,
+          name: sq.name,
+          shortCode: sq.shortCode,
+          logoUrl: sq.logoUrl,
+          player1: sq.player1,
+          player2: sq.player2,
+          learnedTokens: sq.learnedTokens,
+        },
+      ];
+    });
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (autoResultFromScreenshot) {
+      const missingIdx = teams.findIndex((t) => !t.player1?.trim());
+      if (missingIdx >= 0) {
+        const label = teams[missingIdx].name.trim() || `Squad ${missingIdx + 1}`;
+        setFormError(
+          `Please enter Player 1 IGN for "${label}" (Slot ${
+            missingIdx + 1
+          }) or turn off Screenshot Auto-Result.`
+        );
+        return;
+      }
+    }
+    setFormError(null);
+
     updateTournament(tournament.id, {
       name: name.trim() || 'Free Fire Tournament',
       roundOrDay: roundOrDay.trim(),
       hostName: hostName.trim(),
       sponsorName: sponsorName.trim(),
       customLogoUrl,
-      showLogos: true,
+      showLogos: tournament.settings.showLogos ?? true,
+      autoResultFromScreenshot,
       mode,
       totalMatchesPlanned: Math.max(1, totalMatchesPlanned || 6),
       championRush: {
@@ -103,6 +204,8 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
         ...t,
         name: t.name.trim() || `Squad ${idx + 1}`,
         shortCode: generateInitials(t.name.trim() || `Squad ${idx + 1}`),
+        player1: t.player1?.trim(),
+        player2: t.player2?.trim(),
       })),
     });
     setSavedSuccess(true);
@@ -126,10 +229,10 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
           </button>
           <div>
             <h1 className="text-base sm:text-lg font-bold text-white">
-              Squads & Tournament Info
+              Squads &amp; Tournament Info
             </h1>
             <p className="text-xs text-slate-400">
-              Modify settings or update team badges anytime
+              Modify settings, player IGNs, or update team badges anytime
             </p>
           </div>
         </div>
@@ -151,6 +254,13 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
           </button>
         </div>
       </div>
+
+      {formError && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-rose-500/45 bg-rose-500/10 p-3.5 text-xs text-rose-200">
+          <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+          <span>{formError}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-5 space-y-5">
@@ -177,6 +287,11 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
             customLogoUrl={customLogoUrl}
             onLogoUpload={handleTournamentLogoUpload}
             onClearLogo={() => setCustomLogoUrl(undefined)}
+            autoResultFromScreenshot={autoResultFromScreenshot}
+            onAutoResultFromScreenshotChange={(val) => {
+              setAutoResultFromScreenshot(val);
+              if (!val) setFormError(null);
+            }}
           />
         </div>
 
@@ -201,28 +316,55 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
               setTeams(teams.filter((_, i) => i !== idx));
             }}
             onNameChange={(idx, val) => {
+              const vaultHit = findSavedSquadByName(val);
               setTeams((prev) =>
                 prev.map((t, i) =>
                   i === idx
-                    ? { ...t, name: val, shortCode: generateInitials(val) }
+                    ? {
+                        ...t,
+                        name: val,
+                        shortCode: generateInitials(val),
+                        logoUrl: t.logoUrl || vaultHit?.logoUrl,
+                        player1: t.player1 || vaultHit?.player1,
+                        player2: t.player2 || vaultHit?.player2,
+                        learnedTokens:
+                          t.learnedTokens || vaultHit?.learnedTokens,
+                      }
                     : t
                 )
               );
             }}
             onLogoUpload={handleLogoUpload}
+            onBulkLogoUpload={handleBulkLogoUpload}
             onBulkImport={(lines) =>
               setTeams(
-                lines.slice(0, 24).map((l, idx) => ({
-                  id:
-                    teams[idx]?.id ||
-                    `team_${tournament.id}_${Date.now()}_${idx + 1}`,
-                  name: l,
-                  shortCode: generateInitials(l),
-                  logoUrl: teams[idx]?.logoUrl,
-                }))
+                lines.slice(0, 24).map((l, idx) => {
+                  const vaultHit = findSavedSquadByName(l);
+                  return {
+                    id:
+                      teams[idx]?.id ||
+                      `team_${tournament.id}_${Date.now()}_${idx + 1}`,
+                    name: l,
+                    shortCode: generateInitials(l),
+                    logoUrl: teams[idx]?.logoUrl || vaultHit?.logoUrl,
+                    player1: teams[idx]?.player1 || vaultHit?.player1,
+                    player2: teams[idx]?.player2 || vaultHit?.player2,
+                    learnedTokens:
+                      teams[idx]?.learnedTokens || vaultHit?.learnedTokens,
+                  };
+                })
               )
             }
             getInitials={generateInitials}
+            autoResultFromScreenshot={autoResultFromScreenshot}
+            onPlayerChange={(idx, field, val) => {
+              setTeams((prev) =>
+                prev.map((t, i) => (i === idx ? { ...t, [field]: val } : t))
+              );
+            }}
+            savedSquads={savedSquads}
+            onPickSavedSquad={handlePickSavedSquad}
+            onDeleteSavedSquad={deleteSavedSquad}
           />
         </div>
       </div>

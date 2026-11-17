@@ -9,6 +9,8 @@ import type {
   TournamentRecord,
   TournamentSettings,
   ChampionRushConfig,
+  SavedSquadRecord,
+  OrganizerDefaults,
 } from '../types/tournament';
 import type { TournamentLayoutPreset } from '../lib/templates';
 import {
@@ -17,6 +19,11 @@ import {
   DEFAULT_TIE_BREAK_ORDER,
 } from '../lib/scoring';
 import { sanitizeImportedTournamentPayload } from '../lib/authValidation';
+import {
+  incrementStageOrDayLabel,
+  isPlaceholderSquadName,
+  toSquadVaultId,
+} from '../lib/rosterHelpers';
 
 export const DEFAULT_POINT_SYSTEM: PointSystemConfig = {
   placementPoints: [...DEFAULT_PLACEMENT_POINTS],
@@ -92,10 +99,68 @@ export const SAMPLE_TEAM_NAMES = [
 
 // Initial empty default tournaments list (No sample or fake demo data loaded by default)
 
+export type CloudSyncStatus = 'idle' | 'syncing' | 'synced' | 'offline';
+
+export interface CloudSyncHooks {
+  onTournamentUpsert?: (record: TournamentRecord) => void;
+  onTournamentDelete?: (tournamentId: string) => void;
+  onSquadsUpsert?: (squads: SavedSquadRecord[]) => void;
+  onSquadDelete?: (squadId: string) => void;
+  onMetaUpdate?: () => void;
+}
+
+let cloudHooks: CloudSyncHooks = {};
+export function registerCloudSyncHooks(hooks: CloudSyncHooks) {
+  cloudHooks = hooks;
+}
+
+function mergeTeamsIntoVault(
+  existing: SavedSquadRecord[],
+  teams: Team[],
+  now = Date.now()
+): { nextVault: SavedSquadRecord[]; changed: SavedSquadRecord[] } {
+  const byId = new Map<string, SavedSquadRecord>();
+  for (const sq of existing) {
+    byId.set(sq.id, sq);
+  }
+  const changed: SavedSquadRecord[] = [];
+
+  for (const t of teams) {
+    const cleanName = t.name.trim();
+    if (isPlaceholderSquadName(cleanName)) continue;
+    const id = toSquadVaultId(cleanName);
+    const prev = byId.get(id);
+    const mergedLearned = Array.from(
+      new Set([...(prev?.learnedTokens || []), ...(t.learnedTokens || [])])
+    ).slice(0, 32);
+
+    const nextItem: SavedSquadRecord = {
+      id,
+      name: cleanName.slice(0, 120),
+      shortCode: (t.shortCode || generateInitials(cleanName)).slice(0, 12),
+      logoUrl: t.logoUrl || prev?.logoUrl,
+      player1: t.player1?.trim() || prev?.player1,
+      player2: t.player2?.trim() || prev?.player2,
+      learnedTokens: mergedLearned.length > 0 ? mergedLearned : undefined,
+      updatedAt: now,
+    };
+    byId.set(id, nextItem);
+    changed.push(nextItem);
+  }
+
+  const nextVault = Array.from(byId.values()).sort(
+    (a, b) => b.updatedAt - a.updatedAt
+  );
+  return { nextVault, changed };
+}
+
 export interface TournamentStoreState {
   tournaments: TournamentRecord[];
   activeTournamentId: string | null;
   defaultPointSystem: PointSystemConfig;
+  savedSquads: SavedSquadRecord[];
+  organizerDefaults: OrganizerDefaults;
+  cloudSyncStatus: CloudSyncStatus;
   currentTab: string; // 'home' | 'create' | 'history' | 'results' | matchId
 
   // Reactive conveniences representing active tournament
@@ -123,9 +188,16 @@ export interface TournamentStoreState {
     sponsorName?: string;
     showLogos?: boolean;
     customLogoUrl?: string;
+    autoResultFromScreenshot?: boolean;
     teamCount?: number;
     teamNames?: string[];
-    teams?: { name: string; logoUrl?: string }[];
+    teams?: {
+      name: string;
+      logoUrl?: string;
+      player1?: string;
+      player2?: string;
+      learnedTokens?: string[];
+    }[];
     totalMatchesPlanned?: number;
     championRush?: {
       targetPoints: number;
@@ -144,11 +216,14 @@ export interface TournamentStoreState {
       sponsorName?: string;
       showLogos?: boolean;
       customLogoUrl?: string;
+      autoResultFromScreenshot?: boolean;
       totalMatchesPlanned?: number;
       championRush?: ChampionRushConfig;
       teams?: Team[];
     }
   ) => void;
+
+  duplicateTournament: (sourceId: string) => string | null;
 
   switchActiveTournament: (id: string, targetTab?: string) => void;
   deleteTournament: (id: string) => void;
@@ -169,6 +244,16 @@ export interface TournamentStoreState {
   removeTeam: (teamId: string) => void;
   reorderTeams: (startIndex: number, endIndex: number) => void;
 
+  // Squad Vault
+  findSavedSquadByName: (name: string) => SavedSquadRecord | undefined;
+  upsertSavedSquad: (
+    squad: Omit<SavedSquadRecord, 'id' | 'shortCode' | 'updatedAt'> & {
+      id?: string;
+      shortCode?: string;
+    }
+  ) => void;
+  deleteSavedSquad: (squadId: string) => void;
+
   // Active Tournament Matches
   createMatch: () => string;
   updateMatchEntry: (
@@ -177,9 +262,24 @@ export interface TournamentStoreState {
     placement: number | null,
     kills: number
   ) => void;
+  applyBatchMatchResults: (
+    matchId: string,
+    entries: Array<{ teamId: string; placement: number | null; kills: number }>,
+    learnedByTeamId?: Record<string, string[]>
+  ) => void;
   completeMatch: (matchId: string) => void;
   reopenMatch: (matchId: string) => void;
   deleteMatch: (matchId: string) => void;
+
+  // Cloud Sync internal setters
+  setCloudSyncStatus: (status: CloudSyncStatus) => void;
+  applyCloudWorkspace: (payload: {
+    tournaments?: TournamentRecord[];
+    savedSquads?: SavedSquadRecord[];
+    activeTournamentId?: string | null;
+    defaultPointSystem?: PointSystemConfig;
+    organizerDefaults?: OrganizerDefaults;
+  }) => void;
 
   // Utility Actions
   undo: () => void;
@@ -208,6 +308,12 @@ export const useTournamentStore = create<TournamentStoreState>()(
       tournaments: [],
       activeTournamentId: null,
       defaultPointSystem: { ...DEFAULT_POINT_SYSTEM },
+      savedSquads: [],
+      organizerDefaults: {
+        hostName: '',
+        sponsorName: '',
+      },
+      cloudSyncStatus: 'idle',
       currentTab: 'home',
       pendingTemplate: null,
 
@@ -248,32 +354,60 @@ export const useTournamentStore = create<TournamentStoreState>()(
 
       createTournament: (data) => {
         const now = new Date();
-        const tournamentId = `tourn_${now.getTime()}`;
+        const nowMs = now.getTime();
+        const tournamentId = `tourn_${nowMs}`;
         const formattedDate = formatDateTime(now);
 
         const pointSys = get().defaultPointSystem;
+        const vault = get().savedSquads;
 
-        const newTeams: Team[] = data.teams && data.teams.length > 0
-          ? data.teams.map((t, idx) => ({
-              id: `team_${tournamentId}_${idx + 1}`,
-              name: t.name.trim() || `Squad ${idx + 1}`,
-              logoUrl: t.logoUrl,
-              shortCode: generateInitials(t.name.trim() || `S${idx + 1}`),
-            }))
-          : (data.teamNames || []).map((name, idx) => ({
-              id: `team_${tournamentId}_${idx + 1}`,
-              name: name.trim() || `Squad ${idx + 1}`,
-              shortCode: generateInitials(name.trim() || `S${idx + 1}`),
-            }));
+        const newTeams: Team[] =
+          data.teams && data.teams.length > 0
+            ? data.teams.map((t, idx) => {
+                const cleanName = t.name.trim() || `Squad ${idx + 1}`;
+                const vaultHit = !isPlaceholderSquadName(cleanName)
+                  ? vault.find((v) => v.id === toSquadVaultId(cleanName))
+                  : undefined;
+                return {
+                  id: `team_${tournamentId}_${idx + 1}`,
+                  name: cleanName,
+                  logoUrl: t.logoUrl || vaultHit?.logoUrl,
+                  shortCode: generateInitials(cleanName || `S${idx + 1}`),
+                  player1: t.player1?.trim() || vaultHit?.player1,
+                  player2: t.player2?.trim() || vaultHit?.player2,
+                  learnedTokens:
+                    t.learnedTokens && t.learnedTokens.length > 0
+                      ? t.learnedTokens
+                      : vaultHit?.learnedTokens,
+                };
+              })
+            : (data.teamNames || []).map((name, idx) => {
+                const cleanName = name.trim() || `Squad ${idx + 1}`;
+                return {
+                  id: `team_${tournamentId}_${idx + 1}`,
+                  name: cleanName,
+                  shortCode: generateInitials(cleanName || `S${idx + 1}`),
+                };
+              });
+
+        const prevDefaults = get().organizerDefaults;
+        const cleanHost = data.hostName?.trim() || '';
+        const cleanSponsor = data.sponsorName?.trim() || '';
+        const nextDefaults: OrganizerDefaults = {
+          hostName: cleanHost || prevDefaults.hostName,
+          sponsorName: cleanSponsor || prevDefaults.sponsorName,
+          customLogoUrl: data.customLogoUrl || prevDefaults.customLogoUrl,
+        };
 
         const newSettings: TournamentSettings = {
           mode: data.mode,
           name: data.name.trim() || `Tournament ${formattedDate}`,
           roundOrDay: data.roundOrDay?.trim() || 'FINALS',
-          hostName: data.hostName?.trim() || 'BD ESPORTS ARENA',
-          sponsorName: data.sponsorName?.trim() || 'ARENA SPONSORS',
+          hostName: cleanHost || 'BD ESPORTS ARENA',
+          sponsorName: cleanSponsor || 'ARENA SPONSORS',
           showLogos: data.showLogos ?? true,
           customLogoUrl: data.customLogoUrl,
+          autoResultFromScreenshot: Boolean(data.autoResultFromScreenshot),
           totalMatchesPlanned: data.totalMatchesPlanned || 5,
           teamCount: newTeams.length,
           pointSystem: { ...pointSys },
@@ -288,7 +422,10 @@ export const useTournamentStore = create<TournamentStoreState>()(
         };
 
         const match1Id = `match_${tournamentId}_1`;
-        const initialEntries: Record<string, { teamId: string; placement: number | null; kills: number }> = {};
+        const initialEntries: Record<
+          string,
+          { teamId: string; placement: number | null; kills: number }
+        > = {};
         for (const t of newTeams) {
           initialEntries[t.id] = { teamId: t.id, placement: null, kills: 0 };
         }
@@ -298,31 +435,43 @@ export const useTournamentStore = create<TournamentStoreState>()(
           matchNumber: 1,
           entries: initialEntries,
           isCompleted: false,
-          createdAt: Date.now(),
+          createdAt: nowMs,
         };
 
         const newRecord: TournamentRecord = {
           id: tournamentId,
           name: newSettings.name,
           createdAt: formattedDate,
-          createdAtTimestamp: now.getTime(),
+          createdAtTimestamp: nowMs,
+          updatedAt: nowMs,
           settings: newSettings,
           teams: newTeams,
           matches: [match1],
           isEnded: false,
         };
 
+        const { nextVault, changed: vaultChanged } = mergeTeamsIntoVault(
+          vault,
+          newTeams,
+          nowMs
+        );
         const nextTournaments = [newRecord, ...get().tournaments];
         const resolved = resolveActive(nextTournaments, tournamentId);
 
         set({
           tournaments: nextTournaments,
           activeTournamentId: tournamentId,
+          savedSquads: nextVault,
+          organizerDefaults: nextDefaults,
           teams: resolved.teams,
           matches: resolved.matches,
           settings: resolved.settings,
           currentTab: match1Id,
         });
+
+        cloudHooks.onTournamentUpsert?.(newRecord);
+        if (vaultChanged.length > 0) cloudHooks.onSquadsUpsert?.(vaultChanged);
+        cloudHooks.onMetaUpdate?.();
 
         return tournamentId;
       },
@@ -330,24 +479,47 @@ export const useTournamentStore = create<TournamentStoreState>()(
       updateTournament: (tournamentId, data) => {
         const target = get().tournaments.find((t) => t.id === tournamentId);
         if (!target) return;
+        const nowMs = Date.now();
 
         const updatedSettings: TournamentSettings = {
           ...target.settings,
           name: data.name !== undefined ? data.name : target.settings.name,
           mode: data.mode !== undefined ? data.mode : target.settings.mode,
-          roundOrDay: data.roundOrDay !== undefined ? data.roundOrDay : target.settings.roundOrDay,
-          hostName: data.hostName !== undefined ? data.hostName : target.settings.hostName,
-          sponsorName: data.sponsorName !== undefined ? data.sponsorName : target.settings.sponsorName,
-          showLogos: data.showLogos !== undefined ? data.showLogos : target.settings.showLogos,
-          customLogoUrl: data.customLogoUrl !== undefined ? data.customLogoUrl : target.settings.customLogoUrl,
-          totalMatchesPlanned: data.totalMatchesPlanned !== undefined ? data.totalMatchesPlanned : target.settings.totalMatchesPlanned,
-          championRush: data.championRush !== undefined ? data.championRush : target.settings.championRush,
+          roundOrDay:
+            data.roundOrDay !== undefined
+              ? data.roundOrDay
+              : target.settings.roundOrDay,
+          hostName:
+            data.hostName !== undefined ? data.hostName : target.settings.hostName,
+          sponsorName:
+            data.sponsorName !== undefined
+              ? data.sponsorName
+              : target.settings.sponsorName,
+          showLogos:
+            data.showLogos !== undefined
+              ? data.showLogos
+              : target.settings.showLogos,
+          customLogoUrl:
+            data.customLogoUrl !== undefined
+              ? data.customLogoUrl
+              : target.settings.customLogoUrl,
+          autoResultFromScreenshot:
+            data.autoResultFromScreenshot !== undefined
+              ? data.autoResultFromScreenshot
+              : target.settings.autoResultFromScreenshot,
+          totalMatchesPlanned:
+            data.totalMatchesPlanned !== undefined
+              ? data.totalMatchesPlanned
+              : target.settings.totalMatchesPlanned,
+          championRush:
+            data.championRush !== undefined
+              ? data.championRush
+              : target.settings.championRush,
           teamCount: data.teams ? data.teams.length : target.settings.teamCount,
         };
 
         const updatedTeams = data.teams ? data.teams : target.teams;
 
-        // Ensure all matches have entries for all teams
         const updatedMatches = target.matches.map((m) => {
           const entries = { ...m.entries };
           for (const tm of updatedTeams) {
@@ -358,11 +530,14 @@ export const useTournamentStore = create<TournamentStoreState>()(
           return { ...m, entries };
         });
 
-        // If tournament is ended, recompute champion info
         let nextChampionTeamName = target.championTeamName;
         let nextChampionScore = target.championScore;
         if (target.isEnded) {
-          const standingsRes = calculateTournamentStandings(updatedTeams, updatedMatches, updatedSettings);
+          const standingsRes = calculateTournamentStandings(
+            updatedTeams,
+            updatedMatches,
+            updatedSettings
+          );
           const topSquad = standingsRes.standings[0];
           if (topSquad) {
             nextChampionTeamName = topSquad.teamName;
@@ -370,27 +545,130 @@ export const useTournamentStore = create<TournamentStoreState>()(
           }
         }
 
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== tournamentId) return t;
-          return {
+          updatedRecord = {
             ...t,
             name: updatedSettings.name,
+            updatedAt: nowMs,
             settings: updatedSettings,
             teams: updatedTeams,
             matches: updatedMatches,
             championTeamName: nextChampionTeamName,
             championScore: nextChampionScore,
           };
+          return updatedRecord;
         });
 
+        const { nextVault, changed: vaultChanged } = mergeTeamsIntoVault(
+          get().savedSquads,
+          updatedTeams,
+          nowMs
+        );
+        const prevDefaults = get().organizerDefaults;
+        const nextDefaults: OrganizerDefaults = {
+          hostName: data.hostName?.trim() || prevDefaults.hostName,
+          sponsorName: data.sponsorName?.trim() || prevDefaults.sponsorName,
+          customLogoUrl: data.customLogoUrl || prevDefaults.customLogoUrl,
+        };
+
         const resolved = resolveActive(nextTournaments, tournamentId);
+        set({
+          tournaments: nextTournaments,
+          activeTournamentId: tournamentId,
+          savedSquads: nextVault,
+          organizerDefaults: nextDefaults,
+          teams: resolved.teams,
+          matches: resolved.matches,
+          settings: resolved.settings,
+        });
+
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
+        if (vaultChanged.length > 0) cloudHooks.onSquadsUpsert?.(vaultChanged);
+        cloudHooks.onMetaUpdate?.();
+      },
+
+      duplicateTournament: (sourceId: string) => {
+        const source = get().tournaments.find((t) => t.id === sourceId);
+        if (!source) return null;
+
+        const now = new Date();
+        const nowMs = now.getTime();
+        const tournamentId = `tourn_${nowMs}`;
+        const formattedDate = formatDateTime(now);
+
+        const clonedTeams: Team[] = source.teams.map((tm, idx) => ({
+          id: `team_${tournamentId}_${idx + 1}`,
+          name: tm.name,
+          logoUrl: tm.logoUrl,
+          shortCode: tm.shortCode || generateInitials(tm.name),
+          player1: tm.player1,
+          player2: tm.player2,
+          learnedTokens: tm.learnedTokens ? [...tm.learnedTokens] : undefined,
+        }));
+
+        const nextRound = incrementStageOrDayLabel(source.settings.roundOrDay);
+        const clonedSettings: TournamentSettings = {
+          ...source.settings,
+          roundOrDay: nextRound,
+          isManuallyEnded: false,
+          pointSystem: {
+            placementPoints: [...source.settings.pointSystem.placementPoints],
+            killPoints: source.settings.pointSystem.killPoints,
+          },
+          tieBreakOrder: [...source.settings.tieBreakOrder],
+          championRush: { ...source.settings.championRush },
+        };
+
+        const match1Id = `match_${tournamentId}_1`;
+        const initialEntries: Record<
+          string,
+          { teamId: string; placement: number | null; kills: number }
+        > = {};
+        for (const t of clonedTeams) {
+          initialEntries[t.id] = { teamId: t.id, placement: null, kills: 0 };
+        }
+
+        const clonedRecord: TournamentRecord = {
+          id: tournamentId,
+          name: clonedSettings.name,
+          createdAt: formattedDate,
+          createdAtTimestamp: nowMs,
+          updatedAt: nowMs,
+          settings: clonedSettings,
+          teams: clonedTeams,
+          matches: [
+            {
+              id: match1Id,
+              matchNumber: 1,
+              entries: initialEntries,
+              isCompleted: false,
+              createdAt: nowMs,
+            },
+          ],
+          isEnded: false,
+        };
+
+        const nextTournaments = [clonedRecord, ...get().tournaments];
+        const resolved = resolveActive(nextTournaments, tournamentId);
+        document.documentElement.setAttribute(
+          'data-theme',
+          clonedSettings.theme || 'v2'
+        );
+
         set({
           tournaments: nextTournaments,
           activeTournamentId: tournamentId,
           teams: resolved.teams,
           matches: resolved.matches,
           settings: resolved.settings,
+          currentTab: match1Id,
         });
+
+        cloudHooks.onTournamentUpsert?.(clonedRecord);
+        cloudHooks.onMetaUpdate?.();
+        return tournamentId;
       },
 
       switchActiveTournament: (id: string, targetTab?: string) => {
@@ -406,6 +684,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
             settings: resolved.settings,
             currentTab: targetTab || (lastMatch ? lastMatch.id : 'results'),
           });
+          cloudHooks.onMetaUpdate?.();
         }
       },
 
@@ -421,11 +700,14 @@ export const useTournamentStore = create<TournamentStoreState>()(
           settings: resolved.settings,
           currentTab: 'history',
         });
+        cloudHooks.onTournamentDelete?.(id);
+        cloudHooks.onMetaUpdate?.();
       },
 
       endActiveTournament: () => {
         const active = get().getActiveTournament();
         if (!active) return;
+        const nowMs = Date.now();
 
         const standingsResult = calculateTournamentStandings(active.teams, active.matches, {
           ...active.settings,
@@ -434,10 +716,12 @@ export const useTournamentStore = create<TournamentStoreState>()(
 
         const championTeam = standingsResult.standings[0];
 
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== active.id) return t;
-          return {
+          updatedRecord = {
             ...t,
+            updatedAt: nowMs,
             isEnded: true,
             championTeamName: championTeam?.teamName || 'Leader',
             championScore: championTeam?.totalPoints || 0,
@@ -446,6 +730,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
               isManuallyEnded: true,
             },
           };
+          return updatedRecord;
         });
 
         const resolved = resolveActive(nextTournaments, active.id);
@@ -456,22 +741,27 @@ export const useTournamentStore = create<TournamentStoreState>()(
           settings: resolved.settings,
           currentTab: 'results',
         });
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
       },
 
       reopenActiveTournament: () => {
         const active = get().getActiveTournament();
         if (!active) return;
+        const nowMs = Date.now();
 
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== active.id) return t;
-          return {
+          updatedRecord = {
             ...t,
+            updatedAt: nowMs,
             isEnded: false,
             settings: {
               ...t.settings,
               isManuallyEnded: false,
             },
           };
+          return updatedRecord;
         });
 
         const resolved = resolveActive(nextTournaments, active.id);
@@ -481,11 +771,13 @@ export const useTournamentStore = create<TournamentStoreState>()(
           matches: resolved.matches,
           settings: resolved.settings,
         });
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
       },
 
       endTournamentById: (id: string) => {
         const tourn = get().tournaments.find((t) => t.id === id);
         if (!tourn) return;
+        const nowMs = Date.now();
 
         const standingsResult = calculateTournamentStandings(tourn.teams, tourn.matches, {
           ...tourn.settings,
@@ -494,10 +786,12 @@ export const useTournamentStore = create<TournamentStoreState>()(
 
         const championTeam = standingsResult.standings[0];
 
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== id) return t;
-          return {
+          updatedRecord = {
             ...t,
+            updatedAt: nowMs,
             isEnded: true,
             championTeamName: championTeam?.teamName || 'Leader',
             championScore: championTeam?.totalPoints || 0,
@@ -506,6 +800,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
               isManuallyEnded: true,
             },
           };
+          return updatedRecord;
         });
 
         const resolved = resolveActive(nextTournaments, get().activeTournamentId);
@@ -515,19 +810,24 @@ export const useTournamentStore = create<TournamentStoreState>()(
           matches: resolved.matches,
           settings: resolved.settings,
         });
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
       },
 
       reopenTournamentById: (id: string) => {
+        const nowMs = Date.now();
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== id) return t;
-          return {
+          updatedRecord = {
             ...t,
+            updatedAt: nowMs,
             isEnded: false,
             settings: {
               ...t.settings,
               isManuallyEnded: false,
             },
           };
+          return updatedRecord;
         });
 
         const resolved = resolveActive(nextTournaments, get().activeTournamentId);
@@ -537,6 +837,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
           matches: resolved.matches,
           settings: resolved.settings,
         });
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
       },
 
       endTournament: () => {
@@ -554,18 +855,22 @@ export const useTournamentStore = create<TournamentStoreState>()(
       updateActiveSettings: (updates: Partial<TournamentSettings>) => {
         const active = get().getActiveTournament();
         if (!active) return;
+        const nowMs = Date.now();
 
         if (updates.theme) {
           document.documentElement.setAttribute('data-theme', updates.theme);
         }
 
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== active.id) return t;
-          return {
+          updatedRecord = {
             ...t,
+            updatedAt: nowMs,
             name: updates.name || t.name,
             settings: { ...t.settings, ...updates },
           };
+          return updatedRecord;
         });
 
         const resolved = resolveActive(nextTournaments, active.id);
@@ -575,12 +880,14 @@ export const useTournamentStore = create<TournamentStoreState>()(
           matches: resolved.matches,
           settings: resolved.settings,
         });
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
       },
 
       updateDefaultPointSystem: (updates: Partial<PointSystemConfig>) => {
         set((state) => ({
           defaultPointSystem: { ...state.defaultPointSystem, ...updates },
         }));
+        cloudHooks.onMetaUpdate?.();
       },
 
       setTeams: (newTeams: Team[]) => {
@@ -705,12 +1012,59 @@ export const useTournamentStore = create<TournamentStoreState>()(
         });
       },
 
+      findSavedSquadByName: (name: string) => {
+        const clean = name.trim();
+        if (!clean || isPlaceholderSquadName(clean)) return undefined;
+        const targetId = toSquadVaultId(clean);
+        return get().savedSquads.find((s) => s.id === targetId);
+      },
+
+      upsertSavedSquad: (squad) => {
+        const cleanName = squad.name.trim();
+        if (isPlaceholderSquadName(cleanName)) return;
+        const nowMs = Date.now();
+        const id = squad.id || toSquadVaultId(cleanName);
+        const existing = get().savedSquads.find((s) => s.id === id);
+        const mergedLearned = Array.from(
+          new Set([
+            ...(existing?.learnedTokens || []),
+            ...(squad.learnedTokens || []),
+          ])
+        ).slice(0, 32);
+
+        const record: SavedSquadRecord = {
+          id,
+          name: cleanName.slice(0, 120),
+          shortCode: (squad.shortCode || generateInitials(cleanName)).slice(0, 12),
+          logoUrl: squad.logoUrl !== undefined ? squad.logoUrl : existing?.logoUrl,
+          player1: squad.player1 !== undefined ? squad.player1.trim() : existing?.player1,
+          player2: squad.player2 !== undefined ? squad.player2.trim() : existing?.player2,
+          learnedTokens: mergedLearned.length > 0 ? mergedLearned : undefined,
+          updatedAt: nowMs,
+        };
+
+        const nextVault = [
+          record,
+          ...get().savedSquads.filter((s) => s.id !== id),
+        ];
+        set({ savedSquads: nextVault });
+        cloudHooks.onSquadsUpsert?.([record]);
+      },
+
+      deleteSavedSquad: (squadId: string) => {
+        set((state) => ({
+          savedSquads: state.savedSquads.filter((s) => s.id !== squadId),
+        }));
+        cloudHooks.onSquadDelete?.(squadId);
+      },
+
       createMatch: () => {
         const active = get().getActiveTournament();
         if (!active) return '';
+        const nowMs = Date.now();
 
         const nextNum = active.matches.length + 1;
-        const matchId = `match_${active.id}_${nextNum}_${Date.now()}`;
+        const matchId = `match_${active.id}_${nextNum}_${nowMs}`;
 
         const initialEntries: Record<string, { teamId: string; placement: number | null; kills: number }> = {};
         for (const t of active.teams) {
@@ -722,15 +1076,18 @@ export const useTournamentStore = create<TournamentStoreState>()(
           matchNumber: nextNum,
           entries: initialEntries,
           isCompleted: false,
-          createdAt: Date.now(),
+          createdAt: nowMs,
         };
 
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== active.id) return t;
-          return {
+          updatedRecord = {
             ...t,
+            updatedAt: nowMs,
             matches: [...t.matches, newMatch],
           };
+          return updatedRecord;
         });
 
         const resolved = resolveActive(nextTournaments, active.id);
@@ -742,17 +1099,21 @@ export const useTournamentStore = create<TournamentStoreState>()(
           currentTab: matchId,
         });
 
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
         return matchId;
       },
 
       updateMatchEntry: (matchId, teamId, placement, kills) => {
         const active = get().getActiveTournament();
         if (!active) return;
+        const nowMs = Date.now();
 
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== active.id) return t;
-          return {
+          updatedRecord = {
             ...t,
+            updatedAt: nowMs,
             matches: t.matches.map((m) => {
               if (m.id !== matchId) return m;
               const currentEntry = m.entries[teamId] || { teamId, placement: null, kills: 0 };
@@ -769,6 +1130,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
               };
             }),
           };
+          return updatedRecord;
         });
 
         const resolved = resolveActive(nextTournaments, active.id);
@@ -778,23 +1140,124 @@ export const useTournamentStore = create<TournamentStoreState>()(
           matches: resolved.matches,
           settings: resolved.settings,
         });
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
+      },
+
+      applyBatchMatchResults: (matchId, entries, learnedByTeamId) => {
+        const active = get().getActiveTournament();
+        if (!active) return;
+        const nowMs = Date.now();
+
+        let updatedRecord: TournamentRecord | null = null;
+        const nextTournaments = get().tournaments.map((t) => {
+          if (t.id !== active.id) return t;
+
+          const nextTeams = learnedByTeamId
+            ? t.teams.map((tm) => {
+                const extra = learnedByTeamId[tm.id];
+                if (!extra || extra.length === 0) return tm;
+                const combined = Array.from(
+                  new Set([...(tm.learnedTokens || []), ...extra])
+                ).slice(0, 32);
+                return { ...tm, learnedTokens: combined };
+              })
+            : t.teams;
+
+          const nextMatches = t.matches.map((m) => {
+            if (m.id !== matchId) return m;
+            const nextEntries = { ...m.entries };
+            for (const item of entries) {
+              nextEntries[item.teamId] = {
+                teamId: item.teamId,
+                placement: item.placement,
+                kills: Math.max(0, item.kills),
+              };
+            }
+            return { ...m, entries: nextEntries };
+          });
+
+          updatedRecord = {
+            ...t,
+            updatedAt: nowMs,
+            teams: nextTeams,
+            matches: nextMatches,
+          };
+          return updatedRecord;
+        });
+
+        let nextVault = get().savedSquads;
+        let vaultChanged: SavedSquadRecord[] = [];
+        if (updatedRecord && learnedByTeamId) {
+          const merged = mergeTeamsIntoVault(
+            nextVault,
+            (updatedRecord as TournamentRecord).teams,
+            nowMs
+          );
+          nextVault = merged.nextVault;
+          vaultChanged = merged.changed;
+        }
+
+        const resolved = resolveActive(nextTournaments, active.id);
+        set({
+          tournaments: nextTournaments,
+          savedSquads: nextVault,
+          teams: resolved.teams,
+          matches: resolved.matches,
+          settings: resolved.settings,
+        });
+
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
+        if (vaultChanged.length > 0) cloudHooks.onSquadsUpsert?.(vaultChanged);
       },
 
       completeMatch: (matchId) => {
         const active = get().getActiveTournament();
         if (!active) return;
+        const nowMs = Date.now();
 
+        let updatedRecord: TournamentRecord | null = null;
         const nextTournaments = get().tournaments.map((t) => {
           if (t.id !== active.id) return t;
-          return {
+          updatedRecord = {
             ...t,
+            updatedAt: nowMs,
             matches: t.matches.map((m) => (m.id === matchId ? { ...m, isCompleted: true } : m)),
           };
+          return updatedRecord;
         });
 
         const resolved = resolveActive(nextTournaments, active.id);
         set({
           tournaments: nextTournaments,
+          teams: resolved.teams,
+          matches: resolved.matches,
+          settings: resolved.settings,
+        });
+        if (updatedRecord) cloudHooks.onTournamentUpsert?.(updatedRecord);
+      },
+
+      setCloudSyncStatus: (status) => set({ cloudSyncStatus: status }),
+
+      applyCloudWorkspace: (payload) => {
+        const state = get();
+        const nextTournaments = payload.tournaments ?? state.tournaments;
+        const nextSavedSquads = payload.savedSquads ?? state.savedSquads;
+        const candidateActiveId =
+          payload.activeTournamentId !== undefined
+            ? payload.activeTournamentId
+            : state.activeTournamentId;
+        const validActiveId =
+          candidateActiveId && nextTournaments.some((t) => t.id === candidateActiveId)
+            ? candidateActiveId
+            : nextTournaments[0]?.id ?? null;
+        const resolved = resolveActive(nextTournaments, validActiveId);
+
+        set({
+          tournaments: nextTournaments,
+          savedSquads: nextSavedSquads,
+          activeTournamentId: validActiveId,
+          defaultPointSystem: payload.defaultPointSystem ?? state.defaultPointSystem,
+          organizerDefaults: payload.organizerDefaults ?? state.organizerDefaults,
           teams: resolved.teams,
           matches: resolved.matches,
           settings: resolved.settings,
@@ -1103,6 +1566,17 @@ export const useTournamentStore = create<TournamentStoreState>()(
     {
       name: 'freefire_multi_tournament_store_v2',
       storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        tournaments: state.tournaments,
+        activeTournamentId: state.activeTournamentId,
+        defaultPointSystem: state.defaultPointSystem,
+        savedSquads: state.savedSquads,
+        organizerDefaults: state.organizerDefaults,
+        currentTab: state.currentTab,
+        teams: state.teams,
+        matches: state.matches,
+        settings: state.settings,
+      }),
     }
   )
 );

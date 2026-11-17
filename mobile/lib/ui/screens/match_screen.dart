@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/roster_helpers.dart';
 import '../../core/scoring.dart';
 import '../../models/tournament_models.dart';
 import '../../state/tournament_state.dart';
 import '../../theme/app_theme.dart';
+import '../sheets/scan_screenshot_sheet.dart';
 import '../widgets/app_components.dart';
 
 class MatchScreen extends StatefulWidget {
@@ -31,7 +33,65 @@ class MatchScreen extends StatefulWidget {
 class _MatchScreenState extends State<MatchScreen> {
   int _tab = 0; // 0 = Scorecard, 1 = Standings
   int _standingsScope = 0; // 0 = Overall, 1 = This Match
+  bool _rapidMode = false; // false = Slots, true = Rapid #1-#N
   String? _selectedMatchId;
+
+  Future<void> _openScannerSheet(
+    TournamentRecord tournament,
+    MatchRecord match,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ScanScreenshotSheet(
+        matchNumber: match.matchNumber,
+        teams: tournament.teams,
+        autoResultEnabled: tournament.settings.autoResultFromScreenshot,
+        onApply: (entries, learnedByTeamId) {
+          widget.store.applyBatchMatchResults(
+            matchId: match.id,
+            entries: entries,
+            learnedByTeamId: learnedByTeamId,
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Applied ${entries.length} scanned rank(s) to Match #${match.matchNumber}.',
+                ),
+              ),
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  Future<void> _copyStandingsText(
+    TournamentRecord tournament,
+    List<TeamCumulativeStanding> rows, {
+    required StandingsViewMode viewMode,
+    int? matchNumber,
+  }) async {
+    final completedMatches =
+        tournament.matches.where((m) => m.isCompleted).length;
+    final summary = formatStandingsTextSummary(
+      settings: tournament.settings,
+      standings: rows,
+      viewMode: viewMode,
+      matchNumber: matchNumber,
+      completedMatches: completedMatches,
+    );
+    await Clipboard.setData(ClipboardData(text: summary));
+    HapticFeedback.mediumImpact();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Standings text copied for WhatsApp / Discord.'),
+      ),
+    );
+  }
 
   @override
   void didUpdateWidget(covariant MatchScreen oldWidget) {
@@ -571,9 +631,66 @@ class _MatchScreenState extends State<MatchScreen> {
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
+          child: Row(
+            children: [
+              _ScopePill(
+                label: 'Slots',
+                selected: !_rapidMode,
+                onTap: () => setState(() => _rapidMode = false),
+              ),
+              const SizedBox(width: 8),
+              _ScopePill(
+                label: 'Rapid #1-${tournament.teams.length}',
+                selected: _rapidMode,
+                onTap: () => setState(() => _rapidMode = true),
+              ),
+              const Spacer(),
+              if (!activeMatch.isCompleted)
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    _openScannerSheet(tournament, activeMatch);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentSurface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppColors.accentBorder),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.document_scanner_rounded,
+                          size: 14,
+                          color: AppColors.accentBright,
+                        ),
+                        SizedBox(width: 5),
+                        Text(
+                          'Scan OCR',
+                          style: TextStyle(
+                            color: AppColors.accentBright,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
         if (duplicateRanks.isNotEmpty || unrankedCount > 0)
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -619,179 +736,185 @@ class _MatchScreenState extends State<MatchScreen> {
           ),
 
         Expanded(
-          child: ListView.builder(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
-            itemCount: tournament.teams.length,
-            itemBuilder: (_, index) {
-              final team = tournament.teams[index];
-              final entry = activeMatch.entries[team.id];
-              final placement = entry?.placement;
-              final kills = entry?.kills ?? 0;
-              final res = calculateTeamMatchResult(
-                team.id,
-                placement,
-                kills,
-                tournament.settings.pointSystem,
-              );
+          child: _rapidMode
+              ? _buildRapidRankScorecard(tournament, activeMatch)
+              : ListView.builder(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
+                  itemCount: tournament.teams.length,
+                  itemBuilder: (_, index) {
+                    final team = tournament.teams[index];
+                    final entry = activeMatch.entries[team.id];
+                    final placement = entry?.placement;
+                    final kills = entry?.kills ?? 0;
+                    final res = calculateTeamMatchResult(
+                      team.id,
+                      placement,
+                      kills,
+                      tournament.settings.pointSystem,
+                    );
 
-              return RepaintBoundary(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 11,
-                  ),
-                  decoration: BoxDecoration(
-                    color: placement == 1
-                        ? AppColors.accentSurface
-                        : AppColors.surface,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: placement == 1
-                          ? AppColors.accentBorder
-                          : AppColors.borderSubtle,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      SquadBadge(
-                        teamName: team.name,
-                        shortCode: team.shortCode,
-                        logoUrl: team.logoUrl,
-                        size: 38,
-                        highlight: placement == 1,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              team.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Total ${res.totalPoints} pts (${res.placementPoints}+${res.killPoints})',
-                              style: kTabularNumbers.copyWith(
-                                color: AppColors.textMuted,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // 1-Tap Rank Pill
-                      GestureDetector(
-                        onTap: activeMatch.isCompleted
-                            ? null
-                            : () => _openRankPicker(
-                                  tournament: tournament,
-                                  match: activeMatch,
-                                  team: team,
-                                  currentPlacement: placement,
-                                  currentKills: kills,
-                                ),
+                    return RepaintBoundary(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
                         child: Container(
-                          width: 58,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 11,
+                          ),
                           decoration: BoxDecoration(
                             color: placement == 1
-                                ? AppColors.accent
-                                : AppColors.inputFill,
-                            borderRadius: BorderRadius.circular(12),
+                                ? AppColors.accentSurface
+                                : AppColors.surface,
+                            borderRadius: BorderRadius.circular(18),
                             border: Border.all(
                               color: placement == 1
-                                  ? AppColors.accent
-                                  : AppColors.borderStrong,
+                                  ? AppColors.accentBorder
+                                  : AppColors.borderSubtle,
                             ),
                           ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            placement == null ? 'RANK' : '#$placement',
-                            style: kTabularNumbers.copyWith(
-                              color: placement == 1
-                                  ? AppColors.inkOnAccent
-                                  : placement != null
-                                      ? AppColors.textPrimary
-                                      : AppColors.textMuted,
-                              fontSize: placement == null ? 11 : 13,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
+                          child: Row(
+                            children: [
+                              SquadBadge(
+                                teamName: team.name,
+                                shortCode: team.shortCode,
+                                logoUrl: team.logoUrl,
+                                size: 38,
+                                highlight: placement == 1,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      team.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Total ${res.totalPoints} pts (${res.placementPoints}+${res.killPoints})',
+                                      style: kTabularNumbers.copyWith(
+                                        color: AppColors.textMuted,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
 
-                      // Tactile Kill Stepper
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.inputFill,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.borderSubtle),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _KillStepButton(
-                              icon: Icons.remove_rounded,
-                              enabled: !activeMatch.isCompleted && kills > 0,
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                widget.store.updateMatchEntry(
-                                  matchId: activeMatch.id,
-                                  teamId: team.id,
-                                  placement: placement,
-                                  kills: kills - 1,
-                                );
-                              },
-                            ),
-                            SizedBox(
-                              width: 28,
-                              child: Center(
-                                child: Text(
-                                  '$kills',
-                                  style: kTabularNumbers.copyWith(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
+                              // 1-Tap Rank Pill
+                              GestureDetector(
+                                onTap: activeMatch.isCompleted
+                                    ? null
+                                    : () => _openRankPicker(
+                                          tournament: tournament,
+                                          match: activeMatch,
+                                          team: team,
+                                          currentPlacement: placement,
+                                          currentKills: kills,
+                                        ),
+                                child: Container(
+                                  width: 58,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: placement == 1
+                                        ? AppColors.accent
+                                        : AppColors.inputFill,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: placement == 1
+                                          ? AppColors.accent
+                                          : AppColors.borderStrong,
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    placement == null ? 'RANK' : '#$placement',
+                                    style: kTabularNumbers.copyWith(
+                                      color: placement == 1
+                                          ? AppColors.inkOnAccent
+                                          : placement != null
+                                              ? AppColors.textPrimary
+                                              : AppColors.textMuted,
+                                      fontSize: placement == null ? 11 : 13,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            _KillStepButton(
-                              icon: Icons.add_rounded,
-                              enabled: !activeMatch.isCompleted,
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                widget.store.updateMatchEntry(
-                                  matchId: activeMatch.id,
-                                  teamId: team.id,
-                                  placement: placement,
-                                  kills: kills + 1,
-                                );
-                              },
-                            ),
-                          ],
+                              const SizedBox(width: 8),
+
+                              // Tactile Kill Stepper
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: AppColors.inputFill,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppColors.borderSubtle,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _KillStepButton(
+                                      icon: Icons.remove_rounded,
+                                      enabled:
+                                          !activeMatch.isCompleted && kills > 0,
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        widget.store.updateMatchEntry(
+                                          matchId: activeMatch.id,
+                                          teamId: team.id,
+                                          placement: placement,
+                                          kills: kills - 1,
+                                        );
+                                      },
+                                    ),
+                                    SizedBox(
+                                      width: 28,
+                                      child: Center(
+                                        child: Text(
+                                          '$kills',
+                                          style: kTabularNumbers.copyWith(
+                                            color: AppColors.textPrimary,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    _KillStepButton(
+                                      icon: Icons.add_rounded,
+                                      enabled: !activeMatch.isCompleted,
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        widget.store.updateMatchEntry(
+                                          matchId: activeMatch.id,
+                                          teamId: team.id,
+                                          placement: placement,
+                                          kills: kills + 1,
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
-                ),
-              );
-            },
-          ),
         ),
 
         // Match Completion Bar (cleanly anchored above bottom nav bar)
@@ -845,6 +968,340 @@ class _MatchScreenState extends State<MatchScreen> {
     );
   }
 
+  Widget _buildRapidRankScorecard(
+    TournamentRecord tournament,
+    MatchRecord activeMatch,
+  ) {
+    final teamCount = tournament.teams.length;
+    final byRank = <int, Team>{};
+    final unplaced = <Team>[];
+
+    for (final tm in tournament.teams) {
+      final p = activeMatch.entries[tm.id]?.placement;
+      if (p != null && p >= 1 && p <= teamCount && !byRank.containsKey(p)) {
+        byRank[p] = tm;
+      } else {
+        unplaced.add(tm);
+      }
+    }
+
+    int? nextOpenRank;
+    for (int r = 1; r <= teamCount; r++) {
+      if (!byRank.containsKey(r)) {
+        nextOpenRank = r;
+        break;
+      }
+    }
+
+    void assignNextRank(Team chosen) {
+      if (activeMatch.isCompleted || nextOpenRank == null) return;
+      HapticFeedback.selectionClick();
+      final chosenKills = activeMatch.entries[chosen.id]?.kills ?? 0;
+
+      // Auto-fill the last remaining squad when only 2 unplaced squads remain
+      final remainingAfter =
+          unplaced.where((u) => u.id != chosen.id).toList();
+      final openRanksAfter = [
+        for (int r = 1; r <= teamCount; r++)
+          if (!byRank.containsKey(r) && r != nextOpenRank) r,
+      ];
+
+      if (remainingAfter.length == 1 && openRanksAfter.length == 1) {
+        final lastSquad = remainingAfter.first;
+        final lastKills = activeMatch.entries[lastSquad.id]?.kills ?? 0;
+        widget.store.applyBatchMatchResults(
+          matchId: activeMatch.id,
+          entries: [
+            (
+              teamId: chosen.id,
+              placement: nextOpenRank,
+              kills: chosenKills,
+            ),
+            (
+              teamId: lastSquad.id,
+              placement: openRanksAfter.first,
+              kills: lastKills,
+            ),
+          ],
+        );
+      } else {
+        widget.store.updateMatchEntry(
+          matchId: activeMatch.id,
+          teamId: chosen.id,
+          placement: nextOpenRank,
+          kills: chosenKills,
+        );
+      }
+    }
+
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
+      children: [
+        if (!activeMatch.isCompleted &&
+            nextOpenRank != null &&
+            unplaced.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceElevated,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.accentBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'TAP SQUAD FOR #$nextOpenRank',
+                        style: const TextStyle(
+                          color: AppColors.accentBright,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (byRank.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.mediumImpact();
+                            widget.store.applyBatchMatchResults(
+                              matchId: activeMatch.id,
+                              entries: [
+                                for (final tm in tournament.teams)
+                                  (
+                                    teamId: tm.id,
+                                    placement: null,
+                                    kills:
+                                        activeMatch.entries[tm.id]?.kills ?? 0,
+                                  ),
+                              ],
+                            );
+                          },
+                          child: const Text(
+                            'Reset Ranks',
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: unplaced.map((tm) {
+                      return GestureDetector(
+                        onTap: () => assignNextRank(tm),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 11,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.inputFill,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: AppColors.borderStrong),
+                          ),
+                          child: Text(
+                            tm.name,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        ...List.generate(teamCount, (idx) {
+          final rank = idx + 1;
+          final team = byRank[rank];
+          final kills =
+              team == null ? 0 : (activeMatch.entries[team.id]?.kills ?? 0);
+          final res = team == null
+              ? null
+              : calculateTeamMatchResult(
+                  team.id,
+                  rank,
+                  kills,
+                  tournament.settings.pointSystem,
+                );
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: rank == 1 && team != null
+                    ? AppColors.accentSurface
+                    : AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: rank == 1 && team != null
+                      ? AppColors.accentBorder
+                      : AppColors.borderSubtle,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: rank == 1 ? AppColors.accent : AppColors.inputFill,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '#$rank',
+                      style: kTabularNumbers.copyWith(
+                        color: rank == 1
+                            ? AppColors.inkOnAccent
+                            : AppColors.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  if (team == null)
+                    const Expanded(
+                      child: Text(
+                        'Tap squad chip above to assign',
+                        style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    )
+                  else ...[
+                    SquadBadge(
+                      teamName: team.name,
+                      shortCode: team.shortCode,
+                      logoUrl: team.logoUrl,
+                      size: 32,
+                      highlight: rank == 1,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            team.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            '${res!.totalPoints} pts (${res.placementPoints}+${res.killPoints})',
+                            style: kTabularNumbers.copyWith(
+                              color: AppColors.textMuted,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!activeMatch.isCompleted)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          widget.store.updateMatchEntry(
+                            matchId: activeMatch.id,
+                            teamId: team.id,
+                            placement: null,
+                            kills: kills,
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 16,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.inputFill,
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(color: AppColors.borderSubtle),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _KillStepButton(
+                            icon: Icons.remove_rounded,
+                            enabled: !activeMatch.isCompleted && kills > 0,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              widget.store.updateMatchEntry(
+                                matchId: activeMatch.id,
+                                teamId: team.id,
+                                placement: rank,
+                                kills: kills - 1,
+                              );
+                            },
+                          ),
+                          SizedBox(
+                            width: 24,
+                            child: Center(
+                              child: Text(
+                                '$kills',
+                                style: kTabularNumbers.copyWith(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                          _KillStepButton(
+                            icon: Icons.add_rounded,
+                            enabled: !activeMatch.isCompleted,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              widget.store.updateMatchEntry(
+                                matchId: activeMatch.id,
+                                teamId: team.id,
+                                placement: rank,
+                                kills: kills + 1,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   Widget _buildStandings(
     TournamentRecord tournament,
     MatchRecord activeMatch,
@@ -879,6 +1336,25 @@ class _MatchScreenState extends State<MatchScreen> {
               onTap: () => setState(() => _standingsScope = 1),
             ),
             const Spacer(),
+            IconButton(
+              tooltip: 'Copy Standings Text',
+              visualDensity: VisualDensity.compact,
+              onPressed: rows.isEmpty
+                  ? null
+                  : () => _copyStandingsText(
+                        tournament,
+                        rows,
+                        viewMode: _standingsScope == 0
+                            ? StandingsViewMode.overall
+                            : StandingsViewMode.singleMatch,
+                        matchNumber: activeMatch.matchNumber,
+                      ),
+              icon: const Icon(
+                Icons.copy_all_rounded,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+            ),
             TextButton.icon(
               onPressed: widget.onOpenPoster,
               icon: const Icon(
