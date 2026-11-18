@@ -11,9 +11,9 @@ import {
 import { useTournamentStore } from '../../store/tournamentStore';
 import { EspCalcLogoMark } from '../ui/BrandLogo';
 
-const APK_URL = '/esp-calc.apk?v=20261118c';
+const APK_URL = '/esp-calc.apk?v=20261118h';
 const APK_FILENAME = 'ESP-CALC-v1.0.0.apk';
-const APK_SIZE_LABEL = '83.9 MB';
+const APK_SIZE_LABEL = '84.1 MB';
 
 interface AppScreenshot {
   src: string;

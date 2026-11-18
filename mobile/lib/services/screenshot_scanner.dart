@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../models/tournament_models.dart';
+import 'ff_digit_cnn_weights.dart';
 
 class OcrWordBox {
   final String text;
@@ -66,32 +68,34 @@ class MatchedScanRow {
 
 const Map<int, String> _kHomoglyphRuneMap = {
   // Greek, Cyrillic, Cherokee, Currency/Nickfinder, Small-caps & Letterlike lookalikes
-  0x0391: 'a', 0x0410: 'a', 0x13AA: 'a', 0x039B: 'a', 0x03B1: 'a', 0x0430: 'a', 0x1D2C: 'a', 0x1D43: 'a', 0x20B3: 'a',
-  0x0392: 'b', 0x0412: 'b', 0x0299: 'b', 0x0432: 'b', 0x1D2E: 'b', 0x1D47: 'b', 0x212C: 'b', 0x0E3F: 'b', 0x20BF: 'b',
+  0x0391: 'a', 0x0410: 'a', 0x13AA: 'a', 0x039B: 'a', 0x03B1: 'a', 0x0430: 'a', 0x1D2C: 'a', 0x1D43: 'a', 0x20B3: 'a', 0x0245: 'a', 0x028C: 'a', 0x0E14: 'a',
+  0x0392: 'b', 0x0412: 'b', 0x0299: 'b', 0x0432: 'b', 0x1D2E: 'b', 0x1D47: 'b', 0x212C: 'b', 0x0E3F: 'b', 0x20BF: 'b', 0x00DF: 'b',
   0x0421: 'c', 0x13DF: 'c', 0x1D04: 'c', 0x0441: 'c', 0x1D9C: 'c', 0x212D: 'c', 0x00A2: 'c', 0x20B5: 'c',
   0x13A0: 'd', 0x1D05: 'd', 0x010E: 'd', 0x0110: 'd', 0x0111: 'd', 0x1D30: 'd', 0x1D48: 'd',
-  0x0395: 'e', 0x0415: 'e', 0x13AC: 'e', 0x1D07: 'e', 0x0435: 'e', 0x03B5: 'e', 0x1D31: 'e', 0x1D49: 'e', 0x2130: 'e', 0x20AC: 'e',
+  0x0395: 'e', 0x0415: 'e', 0x13AC: 'e', 0x1D07: 'e', 0x0435: 'e', 0x03B5: 'e', 0x1D31: 'e', 0x1D49: 'e', 0x2130: 'e', 0x20AC: 'e', 0x0246: 'e', 0x0247: 'e',
   0x0492: 'f', 0xA730: 'f', 0x0493: 'f', 0x1DA0: 'f', 0x2131: 'f',
   0x0262: 'g', 0x13C0: 'g', 0x1D33: 'g', 0x1D4D: 'g', 0x20B2: 'g',
   0x0397: 'h', 0x041D: 'h', 0x13BB: 'h', 0x029C: 'h', 0x043D: 'h', 0x1D34: 'h', 0x02B0: 'h', 0x210B: 'h', 0x210C: 'h', 0x20B4: 'h',
-  0x0399: 'i', 0x0406: 'i', 0x0407: 'i', 0x026A: 'i', 0x0456: 'i', 0x0457: 'i', 0x1D35: 'i', 0x2071: 'i', 0x2110: 'i',
+  0x0399: 'i', 0x0406: 'i', 0x0407: 'i', 0x026A: 'i', 0x0456: 'i', 0x0457: 'i', 0x1D35: 'i', 0x2071: 'i', 0x2110: 'i', 0x00A1: 'i',
   0x0408: 'j', 0x1D0A: 'j', 0x0458: 'j', 0x1D36: 'j', 0x02B2: 'j', 0x2111: 'j',
   0x039A: 'k', 0x041A: 'k', 0x1D0B: 'k', 0x043A: 'k', 0x1D37: 'k', 0x1D4F: 'k', 0x20AD: 'k',
   0x13DE: 'l', 0x029F: 'l', 0x0141: 'l', 0x0142: 'l', 0x1D38: 'l', 0x02E1: 'l', 0x2112: 'l', 0x2113: 'l', 0x00A3: 'l',
   0x039C: 'm', 0x041C: 'm', 0x13B7: 'm', 0x1D0D: 'm', 0x043C: 'm', 0x1D39: 'm', 0x1D50: 'm', 0x2133: 'm', 0x20BC: 'm',
   0x039D: 'n', 0x0274: 'n', 0x0418: 'n', 0x0438: 'n', 0x0419: 'n', 0x0439: 'n', 0x1D3A: 'n', 0x207F: 'n', 0x20A6: 'n', 0x2115: 'n',
-  0x039F: 'o', 0x041E: 'o', 0x00D8: 'o', 0x00F8: 'o', 0x1D0F: 'o', 0x043E: 'o', 0x1D3C: 'o', 0x1D52: 'o',
+  0x039F: 'o', 0x041E: 'o', 0x00D8: 'o', 0x00F8: 'o', 0x1D0F: 'o', 0x043E: 'o', 0x1D3C: 'o', 0x1D52: 'o', 0x04E8: 'o', 0x04E9: 'o',
   0x03A1: 'p', 0x0420: 'p', 0x1D18: 'p', 0x0440: 'p', 0x1D3E: 'p', 0x1D56: 'p', 0x20B1: 'p', 0x2119: 'p',
   0x042F: 'r', 0x0280: 'r', 0x13D2: 'r', 0x044F: 'r', 0x1D3F: 'r', 0x02B3: 'r', 0x211B: 'r', 0x211C: 'r', 0x211D: 'r', 0x20B9: 'r', 0x20BD: 'r',
   0x0405: 's', 0x13DA: 's', 0xA731: 's', 0x0455: 's', 0x0024: 's', 0x02E2: 's',
   0x03A4: 't', 0x0422: 't', 0x1D1B: 't', 0x0442: 't', 0x1D40: 't', 0x1D57: 't', 0x20AE: 't', 0x20B8: 't', 0x20BA: 't',
-  0x054D: 'u', 0x1D1C: 'u', 0x03C5: 'u', 0x1D41: 'u', 0x1D58: 'u',
+  0x054D: 'u', 0x1D1C: 'u', 0x03C5: 'u', 0x1D41: 'u', 0x1D58: 'u', 0x0244: 'u', 0x0289: 'u',
   0x0474: 'v', 0x1D20: 'v', 0x0475: 'v', 0x2C7D: 'v', 0x1D5B: 'v',
   0x13B3: 'w', 0x1D21: 'w', 0x03C9: 'w', 0x1D42: 'w', 0x02B7: 'w', 0x20A9: 'w',
   0x03A7: 'x', 0x0425: 'x', 0x0445: 'x', 0x02E3: 'x',
-  0x03A5: 'y', 0x0423: 'y', 0x028F: 'y', 0x0443: 'y', 0x00A5: 'y', 0x02B8: 'y',
+  0x03A5: 'y', 0x0423: 'y', 0x028F: 'y', 0x0443: 'y', 0x00A5: 'y', 0x02B8: 'y', 0x024E: 'y', 0x024F: 'y',
   0x0396: 'z', 0x1D22: 'z', 0x1DBB: 'z', 0x2124: 'z', 0x2128: 'z',
-  0x30E1: ' ', 0x4E42: ' ', 0x0F3A: ' ', 0x0F3B: ' ', 0x0F12: ' ', 0x262C: ' ',
+  0x30E1: ' ', 0x30C4: ' ', 0x4E42: ' ', 0x4E45: ' ', 0x534D: ' ', 0x3005: ' ', 0x4E95: ' ',
+  0x0F3A: ' ', 0x0F3B: ' ', 0x0F12: ' ', 0x262C: ' ', 0x20DD: ' ',
+  0x2020: ' ', 0x2021: ' ', 0xA9C1: ' ', 0xA9C2: ' ',
   0x2122: ' ', 0x00AE: ' ',
 };
 
@@ -110,6 +114,21 @@ String _foldLatinDiacritic(int rune) {
 }
 
 String _foldRune(int rune) {
+  if (rune >= 0x24B6 && rune <= 0x24CF) {
+    return '${String.fromCharCode(0x61 + (rune - 0x24B6))} ';
+  }
+  if (rune >= 0x24D0 && rune <= 0x24E9) {
+    return '${String.fromCharCode(0x61 + (rune - 0x24D0))} ';
+  }
+  if (rune >= 0x2776 && rune <= 0x277E) {
+    return '${rune - 0x2775}';
+  }
+  if (rune >= 0x2780 && rune <= 0x2788) {
+    return '${rune - 0x277F}';
+  }
+  if (rune >= 0x278A && rune <= 0x2792) {
+    return '${rune - 0x2789}';
+  }
   final direct = _kHomoglyphRuneMap[rune];
   if (direct != null) return direct;
   final latin = _foldLatinDiacritic(rune);
@@ -133,16 +152,42 @@ String _foldRune(int rune) {
   return String.fromCharCode(rune).toLowerCase();
 }
 
-String normalizeFreeFireIgn(String raw) {
+String _preMapHomoglyphs(String raw) {
   if (raw.isEmpty) return '';
   final sb = StringBuffer();
   for (final rune in raw.runes) {
-    if (rune >= 0x0300 && rune <= 0x036F) continue;
+    if ((rune >= 0x0300 && rune <= 0x036F) ||
+        (rune >= 0x20DE && rune <= 0x20E0)) {
+      continue;
+    }
     sb.write(_foldRune(rune));
   }
+  return sb.toString();
+}
 
-  final words = sb
-      .toString()
+String _expandInlineSymbolLeet(String raw) {
+  if (raw.isEmpty) return '';
+  return _preMapHomoglyphs(raw)
+      .replaceAll('@', 'a')
+      .replaceAllMapped(
+        RegExp(r"([a-z0-9])[!|'\u00A1]+([a-z0-9])"),
+        (m) => '${m[1]}i${m[2]}',
+      )
+      .replaceAllMapped(
+        RegExp(r'([a-z0-9.])\?(?=\s|$)'),
+        (m) => '${m[1]}7',
+      )
+      .replaceAllMapped(
+        RegExp(r'(^|\s)!(?=[a-z])'),
+        (m) => '${m[1]} ',
+      );
+}
+
+String normalizeFreeFireIgn(String raw) {
+  if (raw.isEmpty) return '';
+  final mapped = _preMapHomoglyphs(raw);
+
+  final words = mapped
       .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
       .trim()
       .split(RegExp(r'\s+'))
@@ -167,101 +212,230 @@ String normalizeFreeFireIgn(String raw) {
   return merged.join(' ');
 }
 
-List<String> extractIgnTokens(String raw) {
-  final norm = normalizeFreeFireIgn(raw);
-  if (norm.isEmpty) return const [];
-  final rawWords = norm.split(' ').where((w) => w.isNotEmpty).toList();
-  final parts = rawWords
-      .where((p) => p.length >= 2 && !RegExp(r'^\d+$').hasMatch(p))
-      .toList();
-  final set = <String>{...parts};
+final RegExp _kNoiseFragmentRe = RegExp(
+  r'^(?:eliminations?|elims?|ations?|tions?|ions?|ons?|ns|ws|is)$',
+  caseSensitive: false,
+);
 
-  for (int i = 0; i < rawWords.length; i++) {
-    if (i + 1 < rawWords.length) {
-      final pair = rawWords[i] + rawWords[i + 1];
-      if (pair.length >= 3 && !RegExp(r'^\d+$').hasMatch(pair)) set.add(pair);
-    }
-    if (i + 2 < rawWords.length) {
-      final trip = rawWords[i] + rawWords[i + 1] + rawWords[i + 2];
-      if (trip.length >= 4 && !RegExp(r'^\d+$').hasMatch(trip)) set.add(trip);
-    }
+List<String> extractIgnTokens(String raw) {
+  if (raw.isEmpty) return const [];
+  final variants = <String>{};
+  final baseNorm = normalizeFreeFireIgn(raw);
+  if (baseNorm.isNotEmpty) variants.add(baseNorm);
+
+  final leetNorm = normalizeFreeFireIgn(_expandInlineSymbolLeet(raw));
+  if (leetNorm.isNotEmpty) variants.add(leetNorm);
+
+  final xSplit = raw.replaceAllMapped(
+    RegExp(r'([A-Z0-9]{2,5})x([A-Z0-9]{2,})'),
+    (m) => '${m[1]} ${m[2]}',
+  );
+  if (xSplit != raw) {
+    final xNorm = normalizeFreeFireIgn(_expandInlineSymbolLeet(xSplit));
+    if (xNorm.isNotEmpty) variants.add(xNorm);
   }
 
-  final collapsed = parts.join();
-  if (collapsed.length >= 3 && collapsed.length <= 32) set.add(collapsed);
+  final set = <String>{};
+  for (final norm in variants) {
+    final rawWords = norm
+        .split(' ')
+        .where((w) => w.isNotEmpty && !_kNoiseFragmentRe.hasMatch(w))
+        .toList();
+    final parts = rawWords
+        .where((p) => p.length >= 2 && !RegExp(r'^\d+$').hasMatch(p))
+        .toList();
+    for (final p in parts) {
+      set.add(p);
+      final stem = p.replaceFirst(RegExp(r'(?:x?\d+|\d+x)$'), '');
+      if (stem.length >= 4 && stem != p) set.add(stem);
+      if (p.length >= 5 && RegExp(r'^(?:ns|ws|ms|s|w|n|v)').hasMatch(p)) {
+        final debleed2 = p.replaceFirst(RegExp(r'^(?:ns|ws|ms)'), '');
+        if (debleed2.length >= 4 && debleed2 != p) set.add(debleed2);
+        final debleed1 = p.substring(1);
+        if (debleed1.length >= 4) set.add(debleed1);
+      }
+    }
+
+    for (int i = 0; i < rawWords.length; i++) {
+      if (i + 1 < rawWords.length) {
+        final pair = rawWords[i] + rawWords[i + 1];
+        if (pair.length >= 3 && !RegExp(r'^\d+$').hasMatch(pair)) set.add(pair);
+      }
+      if (i + 2 < rawWords.length) {
+        final trip = rawWords[i] + rawWords[i + 1] + rawWords[i + 2];
+        if (trip.length >= 4 && !RegExp(r'^\d+$').hasMatch(trip)) set.add(trip);
+      }
+    }
+
+    final collapsed = parts.join();
+    if (collapsed.length >= 3 && collapsed.length <= 32) set.add(collapsed);
+  }
   return set.toList();
 }
 
 String _foldOcrAndLeet(String s) => s
     .toLowerCase()
     .replaceAll('0', 'o')
-    .replaceAll(RegExp(r'[1l|!]'), 'i')
+    .replaceAll(RegExp(r'[1l|!\u00A1]'), 'i')
     .replaceAll('5', 's')
     .replaceAll('4', 'a')
     .replaceAll('8', 'b')
+    .replaceAll('6', 'g')
+    .replaceAll('3', 'e')
     .replaceAll('2', 'z')
+    .replaceAll('7', 't')
     .replaceAll(RegExp(r'[^a-z0-9]'), '');
 
-int _damerauLevenshtein(String a, String b) {
-  if (a == b) return 0;
+final Float64List _kOcrCostTable = () {
+  final table = Float64List(128 * 128);
+  for (int i = 0; i < table.length; i++) {
+    table[i] = 1.0;
+  }
+  for (int c = 0; c < 128; c++) {
+    table[c * 128 + c] = 0.0;
+  }
+  void addGroup(String chars, double cost) {
+    for (int i = 0; i < chars.length; i++) {
+      for (int j = i + 1; j < chars.length; j++) {
+        final c0 = chars.codeUnitAt(i);
+        final c1 = chars.codeUnitAt(j);
+        if (c0 < 128 && c1 < 128) {
+          table[c0 * 128 + c1] = math.min(cost, table[c0 * 128 + c1]);
+          table[c1 * 128 + c0] = math.min(cost, table[c1 * 128 + c0]);
+        }
+      }
+    }
+  }
+
+  addGroup('odquc', 0.32);
+  addGroup('kxhr', 0.35);
+  addGroup('aeo', 0.38);
+  addGroup('mnwh', 0.38);
+  addGroup('iltyvj', 0.35);
+  addGroup('bprd', 0.38);
+  addGroup('uvwy', 0.35);
+  addGroup('ft', 0.35);
+  addGroup('sz', 0.35);
+  addGroup('bs', 0.42);
+  addGroup('tr', 0.40);
+  return table;
+}();
+
+bool _isAsciiVowel(int cu) =>
+    cu == 0x61 || cu == 0x65 || cu == 0x69 || cu == 0x6F || cu == 0x75;
+
+Float64List _dpScratch = Float64List(4096);
+
+double _weightedDamerauLevenshtein(String a, String b) {
+  if (a == b) return 0.0;
   final la = a.length;
   final lb = b.length;
-  if (la == 0) return lb;
-  if (lb == 0) return la;
+  if (la == 0) return lb.toDouble();
+  if (lb == 0) return la.toDouble();
 
-  final dp = List<List<int>>.generate(
-    la + 1,
-    (_) => List<int>.filled(lb + 1, 0),
-  );
+  final stride = lb + 1;
+  final needed = (la + 1) * stride;
+  if (_dpScratch.length < needed) {
+    _dpScratch = Float64List(math.max(needed, _dpScratch.length * 2));
+  }
+  final dp = _dpScratch;
+
   for (int i = 0; i <= la; i++) {
-    dp[i][0] = i;
+    dp[i * stride] = i * 0.85;
   }
   for (int j = 0; j <= lb; j++) {
-    dp[0][j] = j;
+    dp[j] = j * 0.85;
   }
 
   for (int i = 1; i <= la; i++) {
+    final ca = a.codeUnitAt(i - 1);
+    final delCost = _isAsciiVowel(ca) ? 0.65 : 0.85;
+    final rowOff = i * stride;
+    final prevOff = (i - 1) * stride;
     for (int j = 1; j <= lb; j++) {
-      final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
-      var val = math.min(
-        math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1),
-        dp[i - 1][j - 1] + cost,
-      );
+      final cb = b.codeUnitAt(j - 1);
+      final subCost = ca == cb
+          ? 0.0
+          : (ca < 128 && cb < 128 ? _kOcrCostTable[ca * 128 + cb] : 1.0);
+      final insCost = _isAsciiVowel(cb) ? 0.65 : 0.85;
+      final d1 = dp[prevOff + j] + delCost;
+      final d2 = dp[rowOff + j - 1] + insCost;
+      final d3 = dp[prevOff + j - 1] + subCost;
+      var val = d1 < d2 ? (d1 < d3 ? d1 : d3) : (d2 < d3 ? d2 : d3);
       if (i > 1 &&
           j > 1 &&
-          a.codeUnitAt(i - 1) == b.codeUnitAt(j - 2) &&
-          a.codeUnitAt(i - 2) == b.codeUnitAt(j - 1)) {
-        val = math.min(val, dp[i - 2][j - 2] + 1);
+          ca == b.codeUnitAt(j - 2) &&
+          a.codeUnitAt(i - 2) == cb) {
+        final tr = dp[(i - 2) * stride + (j - 2)] + 0.45;
+        if (tr < val) val = tr;
       }
-      dp[i][j] = val;
+      dp[rowOff + j] = val;
     }
   }
-  return dp[la][lb];
+  return dp[la * stride + lb];
+}
+
+final Map<String, List<String>> _kFoldedVariantsCache = {};
+
+List<String> _getFoldedVariants(String raw) {
+  final cached = _kFoldedVariantsCache[raw];
+  if (cached != null) return cached;
+  final set = <String>{
+    _foldOcrAndLeet(normalizeFreeFireIgn(_expandInlineSymbolLeet(raw))),
+    _foldOcrAndLeet(normalizeFreeFireIgn(raw)),
+  }..removeWhere((s) => s.isEmpty);
+  final computed = set.toList(growable: false);
+  if (_kFoldedVariantsCache.length > 4096) {
+    _kFoldedVariantsCache.clear();
+  }
+  _kFoldedVariantsCache[raw] = computed;
+  return computed;
 }
 
 double ocrFuzzySimilarity(String candidateToken, String keywordRaw) {
-  final kw = _foldOcrAndLeet(normalizeFreeFireIgn(keywordRaw));
-  final cand = _foldOcrAndLeet(normalizeFreeFireIgn(candidateToken));
-  if (kw.isEmpty || cand.isEmpty) return 0;
-  if (cand == kw) return 1.0;
-  if (kw.length >= 3 && cand.contains(kw)) return 0.96;
-  if (cand.length >= 4 && kw.contains(cand)) {
-    return math.min(0.92, cand.length / kw.length + 0.22);
-  }
+  final kwVariants = _getFoldedVariants(keywordRaw);
+  final candVariants = _getFoldedVariants(candidateToken);
 
-  if (cand.length > kw.length && kw.length >= 3) {
-    var best = 0.0;
-    for (int start = 0; start <= cand.length - kw.length; start++) {
-      final slice = cand.substring(start, start + kw.length);
-      final sim = 1.0 - _damerauLevenshtein(slice, kw) / kw.length;
-      if (sim > best) best = sim;
+  if (kwVariants.isEmpty || candVariants.isEmpty) return 0;
+
+  var bestOverall = 0.0;
+  for (final kw in kwVariants) {
+    for (final cand in candVariants) {
+      if (cand == kw) return 1.0;
+      if (kw.length >= 3 && cand.contains(kw)) {
+        bestOverall = math.max(bestOverall, 0.96);
+        continue;
+      }
+      if (cand.length >= 4 && kw.contains(cand)) {
+        bestOverall = math.max(
+          bestOverall,
+          math.min(0.92, cand.length / kw.length + 0.22),
+        );
+      }
+
+      if (cand.length > kw.length && kw.length >= 3) {
+        var bestSlice = 0.0;
+        for (int start = 0; start <= cand.length - kw.length; start++) {
+          final slice = cand.substring(start, start + kw.length);
+          final sim = 1.0 - _weightedDamerauLevenshtein(slice, kw) / kw.length;
+          if (sim > bestSlice) bestSlice = sim;
+        }
+        if (bestSlice >= 0.75) {
+          bestOverall = math.max(bestOverall, bestSlice * 0.95);
+        }
+      }
+
+      final maxLen = math.max(cand.length, kw.length);
+      if (maxLen >= 3) {
+        final sim = math.max(
+          0.0,
+          1.0 - _weightedDamerauLevenshtein(cand, kw) / maxLen,
+        );
+        bestOverall = math.max(bestOverall, sim);
+      }
     }
-    if (best >= 0.70) return best * 0.95;
   }
-
-  final maxLen = math.max(cand.length, kw.length);
-  if (maxLen < 3) return 0;
-  return 1.0 - _damerauLevenshtein(cand, kw) / maxLen;
+  return bestOverall;
 }
 
 ({double score, String? matchedKeyword}) scoreSquadAgainstTokens(
@@ -287,13 +461,24 @@ double ocrFuzzySimilarity(String candidateToken, String keywordRaw) {
     final baseWeight = seenPlayers.length == 1 ? 1.0 : 0.98;
     keywords.add((label: clean, weight: baseWeight));
 
-    final subParts = normalizeFreeFireIgn(clean)
+    final normLeet = normalizeFreeFireIgn(_expandInlineSymbolLeet(clean));
+    final collapsed = normLeet.replaceAll(' ', '');
+    final collapsedStem = collapsed.replaceFirst(RegExp(r'(?:x?\d+|\d+x)$'), '');
+    if (collapsedStem.length >= 4 && collapsedStem != collapsed) {
+      keywords.add((label: collapsedStem, weight: baseWeight * 0.96));
+    }
+
+    final subParts = normLeet
         .split(' ')
         .where((w) => w.length >= 4 && !RegExp(r'^\d+$').hasMatch(w));
-    final collapsedClean = normalizeFreeFireIgn(clean).replaceAll(' ', '');
     for (final sp in subParts) {
-      if (sp != collapsedClean) {
-        keywords.add((label: sp, weight: baseWeight * 0.94));
+      final partWeight = sp.length >= 5 ? baseWeight * 0.95 : baseWeight * 0.89;
+      if (sp != collapsed) {
+        keywords.add((label: sp, weight: partWeight));
+      }
+      final spStem = sp.replaceFirst(RegExp(r'(?:x?\d+|\d+x)$'), '');
+      if (spStem.length >= 4 && spStem != sp) {
+        keywords.add((label: spStem, weight: partWeight * 0.98));
       }
     }
   }
@@ -319,7 +504,7 @@ double ocrFuzzySimilarity(String candidateToken, String keywordRaw) {
       final sim = ocrFuzzySimilarity(tok, kw.label) * kw.weight;
       if (sim > kwBest) kwBest = sim;
     }
-    if (kwBest >= 0.72) hits++;
+    if (kwBest >= 0.70) hits++;
     if (kwBest > bestScore) {
       bestScore = kwBest;
       bestKw = kw.label;
@@ -331,347 +516,203 @@ double ocrFuzzySimilarity(String candidateToken, String keywordRaw) {
 }
 
 // ============================================================================
-// Condensed Sports Numeral 12x16 Classifier (for Free Fire yellow kill digits
-// and right-column rank badges)
+// Dedicated Free Fire Neural Digit & Position CNN (16x20 Aspect-Preserving)
+// Architecture: Input(1x20x16) -> Conv3x3(12)+ReLU -> MaxPool2x2
+//               -> Conv3x3(24)+ReLU -> MaxPool2x2 -> FC(48)+ReLU -> FC(10)
 // ============================================================================
 
-const Map<int, List<String>> _kDigitTemplates = {
-  0: [
-    '..########..',
-    '.##########.',
-    '.##########.',
-    '####...#####',
-    '####....####',
-    '####....####',
-    '####....####',
-    '###.....####',
-    '###.....####',
-    '####....####',
-    '####....####',
-    '####....####',
-    '#####..#####',
-    '.##########.',
-    '.##########.',
-    '..########..',
-  ],
-  1: [
-    '...######...',
-    '.#########..',
-    '##########..',
-    '##########..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-    '...#######..',
-  ],
-  2: [
-    '..########..',
-    '.##########.',
-    '####...#####',
-    '.......#####',
-    '.......#####',
-    '......######',
-    '.....######.',
-    '...########.',
-    '..########..',
-    '.#######....',
-    '######......',
-    '#####.......',
-    '#########...',
-    '############',
-    '############',
-    '.###########',
-  ],
-  3: [
-    '..########..',
-    '##########..',
-    '###########.',
-    '......######',
-    '......######',
-    '.....######.',
-    '..#########.',
-    '.##########.',
-    '.##########.',
-    '.....#######',
-    '......######',
-    '......######',
-    '.....#######',
-    '###########.',
-    '.##########.',
-    '..########..',
-  ],
-  4: [
-    '.....####...',
-    '....######..',
-    '...#######..',
-    '..########..',
-    '..#########.',
-    '.####..####.',
-    '#####..####.',
-    '############',
-    '############',
-    '############',
-    '.###########',
-    '......#####.',
-    '......#####.',
-    '......#####.',
-    '......#####.',
-    '......#####.',
-  ],
-  5: [
-    '.#########..',
-    '##########..',
-    '#####.......',
-    '#####.......',
-    '#####.......',
-    '#########...',
-    '##########..',
-    '.##########.',
-    '.....#######',
-    '.......#####',
-    '.......#####',
-    '.......#####',
-    '.....#######',
-    '.##########.',
-    '..#########.',
-    '...#######..',
-  ],
-  6: [
-    '....#####...',
-    '...######...',
-    '..######....',
-    '..#####.....',
-    '.#######....',
-    '.#########..',
-    '###########.',
-    '############',
-    '####...#####',
-    '###.....####',
-    '###.....####',
-    '####...#####',
-    '###########.',
-    '.##########.',
-    '.##########.',
-    '..########..',
-  ],
-  7: [
-    '.##########.',
-    '############',
-    '############',
-    '......######',
-    '......#####.',
-    '.....######.',
-    '.....#####..',
-    '....######..',
-    '....#####...',
-    '...######...',
-    '...#####....',
-    '...#####....',
-    '..#####.....',
-    '..#####.....',
-    '..####......',
-    '..####......',
-  ],
-  8: [
-    '..########..',
-    '.##########.',
-    '.###...####.',
-    '###.....####',
-    '###.....####',
-    '.###...####.',
-    '.##########.',
-    '..########..',
-    '.##########.',
-    '####...#####',
-    '###.....####',
-    '###.....####',
-    '####...#####',
-    '.##########.',
-    '..########..',
-    '...######...',
-  ],
-  9: [
-    '..########..',
-    '.##########.',
-    '####...#####',
-    '###.....####',
-    '###.....####',
-    '###.....####',
-    '####...#####',
-    '.###########',
-    '..#########.',
-    '......#####.',
-    '.....######.',
-    '.....#####..',
-    '....#####...',
-    '...######...',
-    '...#####....',
-    '..#####.....',
-  ],
-};
+const int _kCnnGw = 16;
+const int _kCnnGh = 20;
+const int _kCnnC1 = 12;
+const int _kCnnC2 = 24;
+const int _kCnnH1 = 10;
+const int _kCnnW1 = 8;
+const int _kCnnH2 = 5;
+const int _kCnnW2 = 4;
+const int _kCnnFlat = _kCnnC2 * _kCnnH2 * _kCnnW2; // 480
+const int _kCnnHid = 48;
+const int _kCnnCls = 10;
 
-final Map<int, Float32List> _kTemplateVecs = () {
-  final out = <int, Float32List>{};
-  for (int d = 0; d <= 9; d++) {
-    final rows = _kDigitTemplates[d]!;
-    final raw = Float32List(192);
-    for (int y = 0; y < 16; y++) {
-      for (int x = 0; x < 12; x++) {
-        raw[y * 12 + x] = rows[y].codeUnitAt(x) == 0x23 ? 1.0 : 0.0;
-      }
+class _DecodedDigitCnn {
+  final Float32List w1;
+  final Float32List b1;
+  final Float32List w2;
+  final Float32List b2;
+  final Float32List w3;
+  final Float32List b3;
+  final Float32List w4;
+  final Float32List b4;
+
+  const _DecodedDigitCnn({
+    required this.w1,
+    required this.b1,
+    required this.w2,
+    required this.b2,
+    required this.w3,
+    required this.b3,
+    required this.w4,
+    required this.b4,
+  });
+}
+
+_DecodedDigitCnn? _cachedDigitCnn;
+final Float32List _cnnPool1Scratch = Float32List(_kCnnC1 * _kCnnH1 * _kCnnW1);
+final Float32List _cnnPool2Scratch = Float32List(_kCnnFlat);
+final Float32List _cnnHidScratch = Float32List(_kCnnHid);
+
+_DecodedDigitCnn _getDigitCnn() {
+  if (_cachedDigitCnn != null) return _cachedDigitCnn!;
+  final rawBytes = base64Decode(kFfDigitCnnB64);
+  final qBytes = Int8List.sublistView(rawBytes);
+  const lens = <int>[
+    _kCnnC1 * 9,
+    _kCnnC1,
+    _kCnnC2 * _kCnnC1 * 9,
+    _kCnnC2,
+    _kCnnHid * _kCnnFlat,
+    _kCnnHid,
+    _kCnnCls * _kCnnHid,
+    _kCnnCls,
+  ];
+  var offset = 0;
+  final tensors = <Float32List>[];
+  for (int idx = 0; idx < lens.length; idx++) {
+    final len = lens[idx];
+    final scale = kFfDigitCnnScales[idx];
+    final out = Float32List(len);
+    for (int i = 0; i < len; i++) {
+      out[i] = qBytes[offset + i] * scale;
     }
-    final blur = Float32List(192);
-    for (int y = 0; y < 16; y++) {
-      for (int x = 0; x < 12; x++) {
-        var sum = 0.0;
-        var w = 0.0;
-        for (int dy = -1; dy <= 1; dy++) {
-          for (int dx = -1; dx <= 1; dx++) {
-            final ny = y + dy;
-            final nx = x + dx;
-            if (ny >= 0 && ny < 16 && nx >= 0 && nx < 12) {
-              final wt = (dx == 0 && dy == 0) ? 4.0 : 1.0;
-              sum += raw[ny * 12 + nx] * wt;
-              w += wt;
+    offset += len;
+    tensors.add(out);
+  }
+  _cachedDigitCnn = _DecodedDigitCnn(
+    w1: tensors[0],
+    b1: tensors[1],
+    w2: tensors[2],
+    b2: tensors[3],
+    w3: tensors[4],
+    b3: tensors[5],
+    w4: tensors[6],
+    b4: tensors[7],
+  );
+  return _cachedDigitCnn!;
+}
+
+int _classifyGlyphCnn16x20(Float32List x) {
+  final net = _getDigitCnn();
+
+  // Conv1 (3x3, pad=1) + ReLU + MaxPool1 (2x2) -> 12x10x8
+  for (int oc = 0; oc < _kCnnC1; oc++) {
+    final wOff = oc * 9;
+    final bias = net.b1[oc];
+    for (int py = 0; py < _kCnnH1; py++) {
+      for (int px = 0; px < _kCnnW1; px++) {
+        var best = 0.0;
+        for (int dy = 0; dy < 2; dy++) {
+          final y = py * 2 + dy;
+          for (int dx = 0; dx < 2; dx++) {
+            final xx = px * 2 + dx;
+            var s = bias;
+            for (int ky = -1; ky <= 1; ky++) {
+              final iy = y + ky;
+              if (iy < 0 || iy >= _kCnnGh) continue;
+              final kRow = (ky + 1) * 3;
+              for (int kx = -1; kx <= 1; kx++) {
+                final ix = xx + kx;
+                if (ix < 0 || ix >= _kCnnGw) continue;
+                s += x[iy * _kCnnGw + ix] * net.w1[wOff + kRow + (kx + 1)];
+              }
             }
+            if (s > best) best = s;
           }
         }
-        blur[y * 12 + x] = sum / w;
+        _cnnPool1Scratch[(oc * _kCnnH1 + py) * _kCnnW1 + px] = best;
       }
     }
-    out[d] = blur;
   }
-  return out;
-}();
 
-int _classifyGlyph12x16(Float32List grid, double aspect) {
-  if (aspect < 0.44) return 1;
-
-  var meanG = 0.0;
-  for (int i = 0; i < 192; i++) {
-    meanG += grid[i];
-  }
-  meanG /= 192.0;
-  var varG = 0.0;
-  for (int i = 0; i < 192; i++) {
-    final dg = grid[i] - meanG;
-    varG += dg * dg;
-  }
-  final stdG = varG > 0 ? math.sqrt(varG) : 1.0;
-
-  double regionMean(int x0, int x1, int y0, int y1) {
-    var s = 0.0;
-    var n = 0;
-    for (int y = y0; y <= y1; y++) {
-      for (int x = x0; x <= x1; x++) {
-        s += grid[y * 12 + x];
-        n++;
+  // Conv2 (3x3, pad=1) + ReLU + MaxPool2 (2x2) -> 24x5x4 (480)
+  for (int oc = 0; oc < _kCnnC2; oc++) {
+    final bias = net.b2[oc];
+    for (int py = 0; py < _kCnnH2; py++) {
+      for (int px = 0; px < _kCnnW2; px++) {
+        var best = 0.0;
+        for (int dy = 0; dy < 2; dy++) {
+          final y = py * 2 + dy;
+          for (int dx = 0; dx < 2; dx++) {
+            final xx = px * 2 + dx;
+            var s = bias;
+            for (int ic = 0; ic < _kCnnC1; ic++) {
+              final inBase = ic * _kCnnH1 * _kCnnW1;
+              final wBase = (oc * _kCnnC1 + ic) * 9;
+              for (int ky = -1; ky <= 1; ky++) {
+                final iy = y + ky;
+                if (iy < 0 || iy >= _kCnnH1) continue;
+                final kRow = (ky + 1) * 3;
+                for (int kx = -1; kx <= 1; kx++) {
+                  final ix = xx + kx;
+                  if (ix < 0 || ix >= _kCnnW1) continue;
+                  s += _cnnPool1Scratch[inBase + iy * _kCnnW1 + ix] *
+                      net.w2[wBase + kRow + (kx + 1)];
+                }
+              }
+            }
+            if (s > best) best = s;
+          }
+        }
+        _cnnPool2Scratch[(oc * _kCnnH2 + py) * _kCnnW2 + px] = best;
       }
     }
-    return s / n;
   }
 
-  final midCenter = regionMean(5, 6, 6, 9);
-  final upperHole = regionMean(5, 6, 3, 5);
-  final lowerHole = regionMean(5, 6, 10, 12);
-  final topLeftWall = regionMean(0, 3, 3, 6);
-  final topRightWall = regionMean(8, 11, 3, 6);
-  final topRightCorner = regionMean(8, 11, 1, 4);
-  final botLeftWall = regionMean(0, 3, 9, 12);
-  final botRightWall = regionMean(8, 11, 9, 12);
-  final topBar = regionMean(2, 9, 0, 2);
-  final botBar = regionMean(2, 9, 13, 15);
-  final waistOuter = regionMean(0, 1, 6, 9) + regionMean(10, 11, 6, 9);
-  final bellyOuter = regionMean(0, 1, 3, 4) +
-      regionMean(10, 11, 3, 4) +
-      regionMean(0, 1, 11, 12) +
-      regionMean(10, 11, 11, 12);
+  // FC1 (480 -> 48) + ReLU
+  for (int i = 0; i < _kCnnHid; i++) {
+    var s = net.b3[i];
+    final wOff = i * _kCnnFlat;
+    for (int j = 0; j < _kCnnFlat; j++) {
+      s += _cnnPool2Scratch[j] * net.w3[wOff + j];
+    }
+    _cnnHidScratch[i] = s > 0 ? s : 0.0;
+  }
 
+  // FC2 (48 -> 10) Argmax
   var bestDigit = 0;
-  var bestScore = -1e9;
-
-  for (int d = 0; d <= 9; d++) {
-    if (d == 1 && aspect > 0.48) continue;
-    final t = _kTemplateVecs[d]!;
-    var meanT = 0.0;
-    for (int i = 0; i < 192; i++) {
-      meanT += t[i];
+  var bestLogit = -1e9;
+  for (int c = 0; c < _kCnnCls; c++) {
+    var s = net.b4[c];
+    final wOff = c * _kCnnHid;
+    for (int i = 0; i < _kCnnHid; i++) {
+      s += _cnnHidScratch[i] * net.w4[wOff + i];
     }
-    meanT /= 192.0;
-    var varT = 0.0;
-    var cov = 0.0;
-    for (int i = 0; i < 192; i++) {
-      final dt = t[i] - meanT;
-      varT += dt * dt;
-      cov += (grid[i] - meanG) * dt;
-    }
-    final stdT = varT > 0 ? math.sqrt(varT) : 1.0;
-    var score = cov / (stdG * stdT);
-
-    if (d == 0) {
-      score += (1 - midCenter) * 0.28 +
-          topLeftWall * 0.14 +
-          topRightCorner * 0.16 +
-          botLeftWall * 0.10;
-    }
-    if (d == 6) {
-      score += (midCenter - lowerHole) * 0.22 +
-          (0.25 - topRightCorner) * 0.45 +
-          botLeftWall * 0.10;
-    }
-    if (d == 8) {
-      score += (midCenter - 0.5 * (upperHole + lowerHole)) * 0.38 +
-          (0.5 * bellyOuter - waistOuter) * 0.12;
-    }
-    if (d == 9) {
-      score += (midCenter - upperHole) * 0.20 +
-          (0.25 - botLeftWall) * 0.40 +
-          topRightCorner * 0.12;
-    }
-    if (d == 3) {
-      score += (1 - topLeftWall) * 0.18 +
-          (1 - botLeftWall) * 0.18 +
-          botBar * 0.15 +
-          midCenter * 0.12;
-    }
-    if (d == 4) {
-      score += (1 - regionMean(0, 4, 13, 15)) * 0.20 +
-          (1 - regionMean(0, 2, 0, 3)) * 0.12 +
-          midCenter * 0.12;
-    }
-    if (d == 5) {
-      score += topLeftWall * 0.18 +
-          (1 - topRightWall) * 0.18 +
-          (1 - botLeftWall) * 0.15 +
-          botBar * 0.10;
-    }
-    if (d == 2) {
-      score += (1 - topLeftWall) * 0.15 +
-          botLeftWall * 0.18 +
-          (1 - botRightWall) * 0.15 +
-          botBar * 0.15;
-    }
-    if (d == 7) {
-      score += topBar * 0.20 +
-          (1 - botLeftWall) * 0.18 +
-          (1 - regionMean(7, 11, 12, 15)) * 0.15;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestDigit = d;
+    if (s > bestLogit) {
+      bestLogit = s;
+      bestDigit = c;
     }
   }
   return bestDigit;
 }
+
+int? readRgbaCellNumber(
+  Uint8List rgba,
+  int W,
+  int H,
+  int cropX0,
+  int cropY0,
+  int cropW,
+  int cropH, {
+  required bool yellowMode,
+}) =>
+    _readRgbaCellNumber(
+      rgba,
+      W,
+      H,
+      cropX0,
+      cropY0,
+      cropW,
+      cropH,
+      yellowMode: yellowMode,
+    );
 
 int? _readRgbaCellNumber(
   Uint8List rgba,
@@ -697,7 +738,7 @@ int? _readRgbaCellNumber(
     final g = rgba[idx + 1].toDouble();
     final b = rgba[idx + 2].toDouble();
     return yellowMode
-        ? math.max(0.0, 0.55 * r + 0.45 * g - 0.85 * b)
+        ? math.max(0.0, 0.52 * r + 0.48 * g - 0.18 * b)
         : (0.4 * r + 0.4 * g + 0.2 * b);
   }
 
@@ -710,7 +751,7 @@ int? _readRgbaCellNumber(
   vals.sort();
   final bg = vals[(vals.length * 0.25).floor()];
   final peak = vals.last;
-  if (peak - bg < (yellowMode ? 32.0 : 45.0)) return null;
+  if (peak - bg < (yellowMode ? 36.0 : 45.0)) return null;
 
   final cell = Float32List(cw * ch);
   for (int dy = 0; dy < ch; dy++) {
@@ -753,7 +794,7 @@ int? _readRgbaCellNumber(
   final bw = maxX - minX + 1;
   final bh = maxY - minY + 1;
   final xRanges = <(int, int)>[];
-  if (bw / bh > 0.82) {
+  if (bw / bh > 0.68) {
     final colSum = Float32List(bw);
     for (int x = 0; x < bw; x++) {
       for (int y = minY; y <= maxY; y++) {
@@ -762,13 +803,24 @@ int? _readRgbaCellNumber(
     }
     var bestSplit = -1;
     var bestVal = 1e9;
-    for (int x = (bw * 0.25).floor(); x <= (bw * 0.75).ceil(); x++) {
+    for (int x = (bw * 0.22).floor(); x <= (bw * 0.78).ceil(); x++) {
       if (colSum[x] < bestVal) {
         bestVal = colSum[x];
         bestSplit = x;
       }
     }
-    if (bestSplit > 0 && bestVal < bh * 0.18) {
+    var leftPeak = 0.0;
+    var rightPeak = 0.0;
+    for (int x = 0; x < bestSplit; x++) {
+      if (colSum[x] > leftPeak) leftPeak = colSum[x];
+    }
+    for (int x = bestSplit + 1; x < bw; x++) {
+      if (colSum[x] > rightPeak) rightPeak = colSum[x];
+    }
+    if (bestSplit > 0 &&
+        bestVal < bh * 0.32 &&
+        leftPeak > bestVal * 2.2 &&
+        rightPeak > bestVal * 2.2) {
       xRanges.add((minX, minX + bestSplit - 1));
       xRanges.add((minX + bestSplit + 1, maxX));
     } else {
@@ -779,6 +831,7 @@ int? _readRgbaCellNumber(
   }
 
   final digits = StringBuffer();
+  final glyphTensor = Float32List(_kCnnGw * _kCnnGh);
   for (final (gx0, gx1) in xRanges) {
     var x0 = gx1;
     var x1 = gx0;
@@ -798,17 +851,34 @@ int? _readRgbaCellNumber(
     final gh = math.max(1, y1 - y0 + 1);
     if (gh < ch * 0.20) continue;
 
-    final grid = Float32List(192);
-    for (int ny = 0; ny < 16; ny++) {
-      for (int nx = 0; nx < 12; nx++) {
-        final ix =
-            (x0 + (nx + 0.5) * (gw / 12)).round().clamp(0, cw - 1).toInt();
-        final iy =
-            (y0 + (ny + 0.5) * (gh / 16)).round().clamp(0, ch - 1).toInt();
-        grid[ny * 12 + nx] = cell[iy * cw + ix];
+    glyphTensor.fillRange(0, glyphTensor.length, 0.0);
+    const targetH = 16.0;
+    final targetW = (16.0 * (gw / gh)).clamp(2.0, 14.0);
+    final padX = (_kCnnGw - targetW) * 0.5;
+    const padY = (_kCnnGh - targetH) * 0.5;
+
+    for (int ty = 0; ty < _kCnnGh; ty++) {
+      final sy = y0 + ((ty + 0.5 - padY) / targetH) * gh;
+      if (sy < y0 - 1 || sy > y1 + 1) continue;
+      final cy0 = sy.floor().clamp(0, ch - 1).toInt();
+      final cy1 = (cy0 + 1).clamp(0, ch - 1).toInt();
+      final wy = (sy - sy.floor()).clamp(0.0, 1.0);
+
+      for (int tx = 0; tx < _kCnnGw; tx++) {
+        final sx = x0 + ((tx + 0.5 - padX) / targetW) * gw;
+        if (sx < x0 - 1 || sx > x1 + 1) continue;
+        final cx0 = sx.floor().clamp(0, cw - 1).toInt();
+        final cx1 = (cx0 + 1).clamp(0, cw - 1).toInt();
+        final wx = (sx - sx.floor()).clamp(0.0, 1.0);
+
+        glyphTensor[ty * _kCnnGw + tx] =
+            (cell[cy0 * cw + cx0] * (1 - wx) + cell[cy0 * cw + cx1] * wx) *
+                    (1 - wy) +
+                (cell[cy1 * cw + cx0] * (1 - wx) + cell[cy1 * cw + cx1] * wx) *
+                    wy;
       }
     }
-    digits.write(_classifyGlyph12x16(grid, gw / gh));
+    digits.write(_classifyGlyphCnn16x20(glyphTensor));
   }
 
   final str = digits.toString();
@@ -820,8 +890,7 @@ class _DetectedCard {
   final int rank;
   final int kills;
   final bool clipped;
-  final int y0;
-  final int y1;
+  final List<({int y0, int y1, double yc})> lines;
   final List<String> words = [];
 
   _DetectedCard({
@@ -829,8 +898,7 @@ class _DetectedCard {
     required this.rank,
     required this.kills,
     required this.clipped,
-    required this.y0,
-    required this.y1,
+    required this.lines,
   });
 }
 
@@ -839,16 +907,14 @@ class _DetectedGridResult {
   final Uint8List compositeRgba;
   final int compositeWidth;
   final int compositeHeight;
-  final double scale;
-  final List<({String side, int outX0, int outX1})> stripBounds;
+  final List<({int cardIndex, int y0, int y1})> rowMeta;
 
   const _DetectedGridResult({
     required this.cards,
     required this.compositeRgba,
     required this.compositeWidth,
     required this.compositeHeight,
-    required this.scale,
-    required this.stripBounds,
+    required this.rowMeta,
   });
 }
 
@@ -856,6 +922,9 @@ _DetectedGridResult? _detectFreeFireGridAndBuildComposite(
   Uint8List rgba,
   int W,
   int H,
+  Uint8List rawRgba,
+  int rawW,
+  int rawH,
 ) {
   final lookDist = math.max(5, (H * 0.015).round());
   final yellowScoreX = Float64List(W);
@@ -989,8 +1058,9 @@ _DetectedGridResult? _detectFreeFireGridAndBuildComposite(
 
   if (leftCards.isEmpty && rightCards.isEmpty) return null;
 
-  final halfCellW = math.max(8, (H * 0.02).round());
-  final padY = math.max(2, (H * 0.0065).round());
+  final leftCellW = math.max(8, (H * 0.023).round());
+  final rightCellW = math.max(5, (H * 0.011).round());
+  final padY = math.max(3, (H * 0.0085).round());
 
   var rightStartRank = 6;
   if (hasRightCol && rightCards.isNotEmpty) {
@@ -1036,9 +1106,9 @@ _DetectedGridResult? _detectFreeFireGridAndBuildComposite(
           rgba,
           W,
           H,
-          kx - halfCellW,
+          kx - leftCellW,
           ln.y0 - padY,
-          halfCellW * 2,
+          leftCellW + rightCellW,
           ln.y1 - ln.y0 + padY * 2,
           yellowMode: true,
         );
@@ -1051,8 +1121,7 @@ _DetectedGridResult? _detectFreeFireGridAndBuildComposite(
         rank: i + 1,
         kills: kills,
         clipped: c.clipped,
-        y0: c.lines.first.y0 - 6,
-        y1: c.lines.last.y1 + 6,
+        lines: c.lines,
       ),
     );
   }
@@ -1066,9 +1135,9 @@ _DetectedGridResult? _detectFreeFireGridAndBuildComposite(
           rgba,
           W,
           H,
-          kx - halfCellW,
+          kx - leftCellW,
           ln.y0 - padY,
-          halfCellW * 2,
+          leftCellW + rightCellW,
           ln.y1 - ln.y0 + padY * 2,
           yellowMode: true,
         );
@@ -1081,95 +1150,161 @@ _DetectedGridResult? _detectFreeFireGridAndBuildComposite(
         rank: rightStartRank + i,
         kills: kills,
         clipped: c.clipped,
-        y0: c.lines.first.y0 - 6,
-        y1: c.lines.last.y1 + 6,
+        lines: c.lines,
       ),
     );
   }
 
-  const scale = 3.5;
+  final rawRatioX = rawW / W;
+  final rawRatioY = rawH / H;
+  final targetScale = (1750.0 / rawH).clamp(2.0, 4.2);
+  final padRawY = math.max(3, (rawH * 0.009).round());
+
   final strips = <({String side, int x0, int x1})>[
     (
       side: 'L',
-      x0: math.max(0, (killX[0] - leftSpan * 0.575).round()),
-      x1: math.max(1, (killX[0] - leftSpan * 0.068).round()),
+      x0: math.max(0, ((killX[0] - leftSpan * 0.60) * rawRatioX).round()),
+      x1: math.max(1, ((killX[0] - leftSpan * 0.058) * rawRatioX).round()),
     ),
     (
       side: 'L',
-      x0: math.max(0, (killX[0] + leftSpan * 0.382).round()),
-      x1: math.max(1, (killX[1] - leftSpan * 0.068).round()),
+      x0: math.max(0, ((killX[0] + leftSpan * 0.34) * rawRatioX).round()),
+      x1: math.max(1, ((killX[1] - leftSpan * 0.058) * rawRatioX).round()),
     ),
   ];
   if (hasRightCol) {
     strips.addAll([
       (
         side: 'R',
-        x0: math.max(0, (killX[2] - rightSpan * 0.735).round()),
-        x1: math.max(1, (killX[2] - rightSpan * 0.085).round()),
+        x0: math.max(0, ((killX[2] - rightSpan * 0.78) * rawRatioX).round()),
+        x1: math.max(1, ((killX[2] - rightSpan * 0.072) * rawRatioX).round()),
       ),
       (
         side: 'R',
-        x0: math.max(0, (killX[2] + rightSpan * 0.39).round()),
-        x1: math.max(1, (killX[3] - rightSpan * 0.085).round()),
+        x0: math.max(0, ((killX[2] + rightSpan * 0.345) * rawRatioX).round()),
+        x1: math.max(1, ((killX[3] - rightSpan * 0.072) * rawRatioX).round()),
       ),
     ]);
   }
 
-  const gutter = 48;
-  final stripWidths = strips
-      .map((s) => math.max(8, ((s.x1 - s.x0) * scale).round()))
-      .toList();
-  final canvasW =
-      stripWidths.fold<int>(0, (a, b) => a + b) + gutter * (strips.length + 1);
-  final canvasH = (H * scale).round();
+  final slotRows = <({
+    int cardIndex,
+    int ry0,
+    int ry1,
+    ({String side, int x0, int x1}) s0,
+    ({String side, int x0, int x1}) s1,
+  })>[];
+
+  for (int ci = 0; ci < cards.length; ci++) {
+    final card = cards[ci];
+    final sideStrips = strips.where((s) => s.side == card.side).toList();
+    if (sideStrips.length < 2) continue;
+    for (final ln in card.lines) {
+      slotRows.add((
+        cardIndex: ci,
+        ry0: math.max(0, (ln.y0 * rawRatioY).round() - padRawY),
+        ry1: math.min(rawH - 1, (ln.y1 * rawRatioY).round() + padRawY),
+        s0: sideStrips[0],
+        s1: sideStrips[1],
+      ));
+    }
+  }
+
+  var maxStripW = 16;
+  for (final s in strips) {
+    final sw = ((s.x1 - s.x0) * targetScale).round();
+    if (sw > maxStripW) maxStripW = sw;
+  }
+  final rowPitchY = (rawH * 0.058 * targetScale).round() + 28;
+  const gutterX = 64;
+  final canvasW = gutterX * 3 + maxStripW * 2;
+  final canvasH = math.max(64, 32 + slotRows.length * rowPitchY);
 
   final dst = Uint8List(canvasW * canvasH * 4);
   dst.fillRange(0, dst.length, 255);
 
-  var curOutX = gutter;
-  final stripBounds = <({String side, int outX0, int outX1})>[];
+  double sampleRawLum(int px, int py) {
+    final idx = (py * rawW + px) * 4;
+    return 0.45 * rawRgba[idx] +
+        0.45 * rawRgba[idx + 1] +
+        0.10 * rawRgba[idx + 2];
+  }
 
-  for (int si = 0; si < strips.length; si++) {
-    final st = strips[si];
-    final dw = stripWidths[si];
-    stripBounds.add((side: st.side, outX0: curOutX, outX1: curOutX + dw));
+  int renderSlot(
+    int sx0,
+    int sx1,
+    int sy0,
+    int sy1,
+    int outX0,
+    int outY0,
+  ) {
+    final sw = sx1 - sx0;
+    final sh = sy1 - sy0 + 1;
+    if (sw < 4 || sh < 4) return 20;
 
-    final yMin = (H * 0.18 * scale).round();
-    final yMax = math.min(canvasH, (H * 0.89 * scale).round());
+    final lums = <double>[];
+    for (int y = sy0; y <= sy1; y++) {
+      for (int x = sx0; x < sx1; x++) {
+        lums.add(sampleRawLum(x, y));
+      }
+    }
+    lums.sort();
+    final bg = lums[(lums.length * 0.35).floor()];
+    final peak = lums[(lums.length * 0.99).floor()];
+    final dw = math.max(4, (sw * targetScale).round());
+    final dh = math.max(4, (sh * targetScale).round());
+    if (peak - bg < 28.0) return dh;
 
-    for (int dy = yMin; dy < yMax; dy++) {
-      final fy = dy / scale;
-      final y0 = fy.floor();
-      final y1 = math.min(H - 1, y0 + 1);
+    final lo = bg + (peak - bg) * 0.25;
+    final hi = math.max(lo + 32.0, peak - (peak - bg) * 0.08);
+
+    for (int dy = 0; dy < dh; dy++) {
+      final fy = sy0 + dy / targetScale;
+      final y0 = math.min<int>(rawH - 1, fy.floor());
+      final y1 = math.min<int>(rawH - 1, y0 + 1);
       final wy = fy - y0;
 
       for (int dx = 0; dx < dw; dx++) {
-        final fx = st.x0 + dx / scale;
-        final x0 = fx.floor().clamp(0, W - 1).toInt();
-        final x1 = math.min(W - 1, x0 + 1);
+        final fx = sx0 + dx / targetScale;
+        final x0 = fx.floor().clamp(0, rawW - 1).toInt();
+        final x1 = math.min<int>(rawW - 1, x0 + 1);
         final wx = fx - x0;
 
-        double sampleLum(int px, int py) {
-          final idx = (py * W + px) * 4;
-          return 0.45 * rgba[idx] +
-              0.45 * rgba[idx + 1] +
-              0.10 * rgba[idx + 2];
-        }
-
         final v =
-            (sampleLum(x0, y0) * (1 - wx) + sampleLum(x1, y0) * wx) *
+            (sampleRawLum(x0, y0) * (1 - wx) + sampleRawLum(x1, y0) * wx) *
                     (1 - wy) +
-                (sampleLum(x0, y1) * (1 - wx) + sampleLum(x1, y1) * wx) * wy;
-        final norm = ((v - 105.0) / (215.0 - 105.0)).clamp(0.0, 1.0);
+                (sampleRawLum(x0, y1) * (1 - wx) + sampleRawLum(x1, y1) * wx) *
+                    wy;
+        final norm = ((v - lo) / (hi - lo)).clamp(0.0, 1.0);
         final ink = (255.0 * (1.0 - norm)).round();
-        final outIdx = (dy * canvasW + (curOutX + dx)) * 4;
+        final outIdx = ((outY0 + dy) * canvasW + (outX0 + dx)) * 4;
         dst[outIdx] = ink;
         dst[outIdx + 1] = ink;
         dst[outIdx + 2] = ink;
         dst[outIdx + 3] = 255;
       }
     }
-    curOutX += dw + gutter;
+    return dh;
+  }
+
+  final rowMeta = <({int cardIndex, int y0, int y1})>[];
+  for (int ri = 0; ri < slotRows.length; ri++) {
+    final r = slotRows[ri];
+    final outY0 = 20 + ri * rowPitchY;
+    final dh0 = renderSlot(r.s0.x0, r.s0.x1, r.ry0, r.ry1, gutterX, outY0);
+    final dh1 = renderSlot(
+      r.s1.x0,
+      r.s1.x1,
+      r.ry0,
+      r.ry1,
+      gutterX * 2 + maxStripW,
+      outY0,
+    );
+    rowMeta.add((
+      cardIndex: r.cardIndex,
+      y0: outY0 - 8,
+      y1: outY0 + math.max<int>(dh0, dh1) + 8,
+    ));
   }
 
   return _DetectedGridResult(
@@ -1177,8 +1312,7 @@ _DetectedGridResult? _detectFreeFireGridAndBuildComposite(
     compositeRgba: dst,
     compositeWidth: canvasW,
     compositeHeight: canvasH,
-    scale: scale,
-    stripBounds: stripBounds,
+    rowMeta: rowMeta,
   );
 }
 
@@ -1518,42 +1652,191 @@ List<MatchedScanRow> matchScannedRowsToTeams(
   List<ScannedRankRow> rows,
   List<Team> teams,
 ) {
-  final pairs =
-      <({int rowIdx, String teamId, double score, String? keyword})>[];
-  for (int i = 0; i < rows.length; i++) {
-    for (final team in teams) {
-      final res = scoreSquadAgainstTokens(rows[i].normalizedTokens, team);
-      if (res.score >= 0.68) {
-        pairs.add((
-          rowIdx: i,
-          teamId: team.id,
-          score: res.score,
-          keyword: res.matchedKeyword,
-        ));
+  final R = rows.length;
+  final T = teams.length;
+  if (R == 0 || T == 0) {
+    return [
+      for (final row in rows)
+        MatchedScanRow(
+          rank: row.rank,
+          kills: row.kills,
+          rawPlayerText: row.rawPlayerText,
+          normalizedTokens: row.normalizedTokens,
+        ),
+    ];
+  }
+
+  final scoreMat = List<List<({double score, String? matchedKeyword})>>.generate(
+    R,
+    (rIdx) => [
+      for (final team in teams)
+        scoreSquadAgainstTokens(rows[rIdx].normalizedTokens, team),
+    ],
+  );
+
+  // Only allow edges that pass the confidence/margin gate, weighted by (1 + score^2)
+  // so Hungarian maximizes accepted match cardinality first and convex confidence second.
+  final validWeight = List<Float64List>.generate(R, (rIdx) {
+    final wRow = Float64List(T);
+    for (int tIdx = 0; tIdx < T; tIdx++) {
+      final s = scoreMat[rIdx][tIdx].score;
+      var runnerUp = 0.0;
+      for (int otherT = 0; otherT < T; otherT++) {
+        if (otherT != tIdx && scoreMat[rIdx][otherT].score > runnerUp) {
+          runnerUp = scoreMat[rIdx][otherT].score;
+        }
+      }
+      if (s >= 0.65 || (s >= 0.58 && s - runnerUp >= 0.12)) {
+        wRow[tIdx] = (s >= 0.92 ? 3.5 : 1.0) + s * s;
       }
     }
+    return wRow;
+  });
+
+  // Global maximum-weight bipartite matching (O(N^3) Hungarian algorithm)
+  final N = math.max(R, T);
+  final u = Float64List(N + 1);
+  final v = Float64List(N + 1);
+  final p = Int32List(N + 1);
+  final way = Int32List(N + 1);
+
+  for (int i = 1; i <= N; i++) {
+    p[0] = i;
+    var j0 = 0;
+    final minv = Float64List(N + 1);
+    for (int k = 0; k <= N; k++) {
+      minv[k] = 1e9;
+    }
+    final used = Uint8List(N + 1);
+
+    do {
+      used[j0] = 1;
+      final i0 = p[j0];
+      var delta = 1e9;
+      var j1 = 0;
+      for (int j = 1; j <= N; j++) {
+        if (used[j] != 0) continue;
+        final w =
+            (i0 - 1 < R && j - 1 < T) ? validWeight[i0 - 1][j - 1] : 0.0;
+        final cost = 5.0 - w; // strictly non-negative [0.5 .. 5.0]
+        final cur = cost - u[i0] - v[j];
+        if (cur < minv[j]) {
+          minv[j] = cur;
+          way[j] = j0;
+        }
+        if (minv[j] < delta) {
+          delta = minv[j];
+          j1 = j;
+        }
+      }
+      for (int j = 0; j <= N; j++) {
+        if (used[j] != 0) {
+          u[p[j]] += delta;
+          v[j] -= delta;
+        } else {
+          minv[j] -= delta;
+        }
+      }
+      j0 = j1;
+    } while (p[j0] != 0);
+
+    do {
+      const zero = 0;
+      final j1 = way[j0];
+      p[j0] = p[j1];
+      j0 = j1;
+      if (j0 == zero) break;
+    } while (true);
   }
-  pairs.sort((a, b) => b.score.compareTo(a.score));
 
   final usedRows = <int>{};
   final usedTeams = <String>{};
   final assigned = <int, ({String teamId, double score, String? keyword})>{};
 
-  for (final p in pairs) {
-    if (usedRows.contains(p.rowIdx) || usedTeams.contains(p.teamId)) continue;
-    usedRows.add(p.rowIdx);
-    usedTeams.add(p.teamId);
-    assigned[p.rowIdx] = (
-      teamId: p.teamId,
-      score: p.score,
-      keyword: p.keyword,
-    );
+  for (int j = 1; j <= T; j++) {
+    final rIdx = p[j] - 1;
+    final tIdx = j - 1;
+    if (rIdx >= 0 && rIdx < R && validWeight[rIdx][tIdx] > 0) {
+      final cell = scoreMat[rIdx][tIdx];
+      usedRows.add(rIdx);
+      usedTeams.add(teams[tIdx].id);
+      assigned[rIdx] = (
+        teamId: teams[tIdx].id,
+        score: cell.score,
+        keyword: cell.matchedKeyword,
+      );
+    }
   }
 
-  if (rows.length == teams.length &&
-      rows.length - usedRows.length == 1 &&
-      teams.length - usedTeams.length == 1) {
-    final leftIdx = List<int>.generate(rows.length, (i) => i)
+  // Stage 2: Iterative residual matching among remaining unmatched rows & teams
+  // (critical for single-screenshot #1-#11 mode where 12 teams are registered).
+  for (int pass = 0; pass < 3; pass++) {
+    final remRows = <int>[];
+    for (int r = 0; r < R; r++) {
+      if (!usedRows.contains(r)) remRows.add(r);
+    }
+    final remTeamIndices = <int>[];
+    for (int t = 0; t < T; t++) {
+      if (!usedTeams.contains(teams[t].id)) remTeamIndices.add(t);
+    }
+    if (remRows.isEmpty || remTeamIndices.isEmpty) break;
+
+    final cands = <({int rIdx, int tIdx, double score, String? kw})>[];
+    for (final rIdx in remRows) {
+      var bestT = -1;
+      var bestS = 0.0;
+      var secondS = 0.0;
+      for (final tIdx in remTeamIndices) {
+        final s = scoreMat[rIdx][tIdx].score;
+        if (s > bestS) {
+          secondS = bestS;
+          bestS = s;
+          bestT = tIdx;
+        } else if (s > secondS) {
+          secondS = s;
+        }
+      }
+      var secondRowS = 0.0;
+      if (bestT >= 0) {
+        for (final otherR in remRows) {
+          if (otherR != rIdx && scoreMat[otherR][bestT].score > secondRowS) {
+            secondRowS = scoreMat[otherR][bestT].score;
+          }
+        }
+      }
+      if (bestT >= 0 &&
+          bestS >= 0.54 &&
+          bestS - secondS >= 0.06 &&
+          bestS - secondRowS >= 0.03) {
+        cands.add((
+          rIdx: rIdx,
+          tIdx: bestT,
+          score: bestS,
+          kw: scoreMat[rIdx][bestT].matchedKeyword,
+        ));
+      }
+    }
+    if (cands.isEmpty) break;
+    cands.sort((a, b) => b.score.compareTo(a.score));
+    var added = 0;
+    for (final c in cands) {
+      if (usedRows.contains(c.rIdx) || usedTeams.contains(teams[c.tIdx].id)) {
+        continue;
+      }
+      usedRows.add(c.rIdx);
+      usedTeams.add(teams[c.tIdx].id);
+      assigned[c.rIdx] = (
+        teamId: teams[c.tIdx].id,
+        score: c.score,
+        keyword: c.kw,
+      );
+      added++;
+    }
+    if (added == 0) break;
+  }
+
+  if (R == T && R - usedRows.length == 1 && T - usedTeams.length == 1) {
+    final leftIdx = List<int>.generate(R, (i) => i)
         .firstWhere((i) => !usedRows.contains(i));
     final leftTeam = teams.firstWhere((t) => !usedTeams.contains(t.id));
     assigned[leftIdx] = (
@@ -1564,7 +1847,7 @@ List<MatchedScanRow> matchScannedRowsToTeams(
   }
 
   return [
-    for (int i = 0; i < rows.length; i++)
+    for (int i = 0; i < R; i++)
       MatchedScanRow(
         rank: rows[i].rank,
         kills: rows[i].kills,
@@ -1589,30 +1872,55 @@ List<String> extractLearnableTokens(List<String> normalizedTokens) {
       .toList();
 }
 
-Future<({Uint8List rgba, int width, int height, double rawWidth, double rawHeight})>
-    _decodeNormalizedRgba(String path) async {
+Future<
+    ({
+      Uint8List rgba,
+      int width,
+      int height,
+      Uint8List rawRgba,
+      int rawWidth,
+      int rawHeight,
+    })> _decodeNormalizedRgba(String path) async {
   final bytes = await File(path).readAsBytes();
-  final rawCodec = await ui.instantiateImageCodec(bytes);
-  final rawFrame = await rawCodec.getNextFrame();
-  final rawW = rawFrame.image.width;
-  final rawH = rawFrame.image.height;
+  final probeCodec = await ui.instantiateImageCodec(bytes);
+  final probeFrame = await probeCodec.getNextFrame();
+  final origH = probeFrame.image.height;
+
+  late final Uint8List rawRgba;
+  late final int rawW;
+  late final int rawH;
+
+  if (origH <= 1440) {
+    rawW = probeFrame.image.width;
+    rawH = origH;
+    final bd =
+        await probeFrame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    probeFrame.image.dispose();
+    rawRgba = bd!.buffer.asUint8List();
+  } else {
+    probeFrame.image.dispose();
+    final hiCodec = await ui.instantiateImageCodec(bytes, targetHeight: 1440);
+    final hiFrame = await hiCodec.getNextFrame();
+    rawW = hiFrame.image.width;
+    rawH = hiFrame.image.height;
+    final bd =
+        await hiFrame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    hiFrame.image.dispose();
+    rawRgba = bd!.buffer.asUint8List();
+  }
 
   if (rawH <= 640) {
-    final bd =
-        await rawFrame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    rawFrame.image.dispose();
     return (
-      rgba: bd!.buffer.asUint8List(),
+      rgba: rawRgba,
       width: rawW,
       height: rawH,
-      rawWidth: rawW.toDouble(),
-      rawHeight: rawH.toDouble(),
+      rawRgba: rawRgba,
+      rawWidth: rawW,
+      rawHeight: rawH,
     );
   }
 
-  rawFrame.image.dispose();
-  final scaledCodec =
-      await ui.instantiateImageCodec(bytes, targetHeight: 540);
+  final scaledCodec = await ui.instantiateImageCodec(bytes, targetHeight: 540);
   final scaledFrame = await scaledCodec.getNextFrame();
   final w = scaledFrame.image.width;
   final h = scaledFrame.image.height;
@@ -1624,8 +1932,9 @@ Future<({Uint8List rgba, int width, int height, double rawWidth, double rawHeigh
     rgba: bd!.buffer.asUint8List(),
     width: w,
     height: h,
-    rawWidth: rawW.toDouble(),
-    rawHeight: rawH.toDouble(),
+    rawRgba: rawRgba,
+    rawWidth: rawW,
+    rawHeight: rawH,
   );
 }
 
@@ -1647,6 +1956,9 @@ Future<List<MatchedScanRow>> scanMatchScreenshotsOffline({
         decoded.rgba,
         decoded.width,
         decoded.height,
+        decoded.rawRgba,
+        decoded.rawWidth,
+        decoded.rawHeight,
       );
 
       if (grid != null) {
@@ -1666,23 +1978,10 @@ Future<List<MatchedScanRow>> scanMatchScreenshotsOffline({
             for (final line in block.lines) {
               for (final el in line.elements) {
                 final rect = el.boundingBox;
-                final wcx = (rect.left + rect.right) / 2.0;
-                final origY = ((rect.top + rect.bottom) / 2.0) / grid.scale;
-
-                ({String side, int outX0, int outX1})? st;
-                for (final b in grid.stripBounds) {
-                  if (wcx >= b.outX0 - 15 && wcx <= b.outX1 + 15) {
-                    st = b;
-                    break;
-                  }
-                }
-                if (st == null) continue;
-
-                for (final card in grid.cards) {
-                  if (card.side == st.side &&
-                      origY >= card.y0 - 6 &&
-                      origY <= card.y1 + 6) {
-                    card.words.add(el.text);
+                final wy = (rect.top + rect.bottom) / 2.0;
+                for (final rm in grid.rowMeta) {
+                  if (wy >= rm.y0 && wy <= rm.y1) {
+                    grid.cards[rm.cardIndex].words.add(el.text);
                     break;
                   }
                 }
@@ -1738,8 +2037,8 @@ Future<List<MatchedScanRow>> scanMatchScreenshotsOffline({
         perImage.add(
           parseOcrElementsToRows(
             boxes,
-            decoded.rawWidth,
-            decoded.rawHeight,
+            decoded.rawWidth.toDouble(),
+            decoded.rawHeight.toDouble(),
             maxTeams: maxTeams,
             sourceImageIndex: i,
           ),

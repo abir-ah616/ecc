@@ -92,11 +92,11 @@ export const AppDownloadToast: React.FC<AppDownloadToastProps> = ({
           </button>
 
           <a
-            href="/esp-calc.apk?v=20261118c"
+            href="/esp-calc.apk?v=20261118h"
             download="ESP-CALC-v1.0.0.apk"
             className="glass-pill inline-flex items-center justify-center gap-1 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors cursor-pointer"
           >
-            <span>APK · 83.9 MB</span>
+            <span>APK · 84.1 MB</span>
             <ArrowUpRight className="h-3.5 w-3.5 text-slate-400" />
           </a>
         </div>

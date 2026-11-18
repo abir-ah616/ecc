@@ -112,6 +112,14 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                   usedTeams.add(r.teamId);
                 }
               }
+              final emptyRows =
+                  _rows.where((r) => r.teamId.isEmpty).toList();
+              final leftTeams = updatedTeams
+                  .where((t) => !usedTeams.contains(t.id))
+                  .toList();
+              if (emptyRows.length == 1 && leftTeams.length == 1) {
+                emptyRows.first.teamId = leftTeams.first.id;
+              }
             }
           });
         },
@@ -173,6 +181,18 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
             matchConfidence: hit?.matchConfidence ?? 0,
           ),
         );
+      }
+
+      // Auto-fill last remaining squad (e.g. #12 scrolled off-screen) if 11 of 12 matched cleanly
+      final assignedIds = built
+          .where((r) => r.teamId.isNotEmpty)
+          .map((r) => r.teamId)
+          .toSet();
+      final emptyRows = built.where((r) => r.teamId.isEmpty).toList();
+      final leftTeams =
+          _teams.where((t) => !assignedIds.contains(t.id)).toList();
+      if (emptyRows.length == 1 && leftTeams.length == 1) {
+        emptyRows.first.teamId = leftTeams.first.id;
       }
 
       if (!mounted) return;
