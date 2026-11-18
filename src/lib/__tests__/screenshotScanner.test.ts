@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractIgnTokens,
-  maskGeminiApiKey,
+  maskApiKey,
   matchScannedRowsToTeams,
   mergeAndDeduplicateScans,
   normalizeFreeFireIgn,
   ocrFuzzySimilarity,
-  parseGeminiStandingsJson,
-  sanitizeGeminiApiKey,
+  parseAiStandingsJson,
+  parseMultiApiKeyInput,
+  rankVisionModelsFromCatalog,
+  sanitizeApiKeyToken,
 } from '../screenshotScanner';
 import { buildAllowedUserRecord } from '../authValidation';
 import {
@@ -83,7 +85,7 @@ describe('Free Fire Screenshot Scanner & Roster Helpers', () => {
       ],
     });
 
-    const matched = parseGeminiStandingsJson(geminiJson, teams, 12);
+    const matched = parseAiStandingsJson(geminiJson, teams, 12);
     expect(matched).toHaveLength(3);
     expect(matched[0].rank).toBe(1);
     expect(matched[0].kills).toBe(16);
@@ -458,11 +460,33 @@ describe('Free Fire Screenshot Scanner & Roster Helpers', () => {
     }
   });
 
-  it('enforces admin-gated allowAiAuto records, masks Gemini API keys, and handles 2-digit kills & 3-player squads', () => {
-    expect(sanitizeGeminiApiKey('  "AIzaSyTestKey1234567890" \n')).toBe(
+  it('enforces admin-gated allowAiAuto + multi-key aiApiKeys pools, ranks 3.x Flash-Lite ahead of 3.8 Flash, and handles 2-digit kills & 3-player squads', () => {
+    expect(sanitizeApiKeyToken('  "AIzaSyTestKey1234567890" \n')).toBe(
       'AIzaSyTestKey1234567890'
     );
-    expect(maskGeminiApiKey('AIzaSyTestKey1234567890')).toBe('AIzaSy...7890');
+    expect(maskApiKey('AIzaSyTestKey1234567890')).toBe('AIzaSy...7890');
+    expect(
+      parseMultiApiKeyInput(
+        'AIzaSyPrimaryKey1234567890,\n"AIzaSyBackupKey0987654321" AIzaSyPrimaryKey1234567890'
+      )
+    ).toEqual(['AIzaSyPrimaryKey1234567890', 'AIzaSyBackupKey0987654321']);
+
+    const ranked = rankVisionModelsFromCatalog([
+      {
+        name: 'models/gemini-2.0-flash',
+        supportedGenerationMethods: ['generateContent'],
+      },
+      {
+        name: 'models/gemini-3.8-flash',
+        supportedGenerationMethods: ['generateContent'],
+      },
+      {
+        name: 'models/gemini-3.5-flash-lite',
+        supportedGenerationMethods: ['generateContent'],
+      },
+    ]);
+    expect(ranked.liteModels).toEqual(['gemini-3.5-flash-lite']);
+    expect(ranked.standardModels).toEqual(['gemini-3.8-flash']);
 
     const defaultUser = buildAllowedUserRecord({
       email: 'org@gmail.com',
@@ -477,9 +501,14 @@ describe('Free Fire Screenshot Scanner & Roster Helpers', () => {
       displayName: 'Org',
       role: 'user',
       allowAiAuto: true,
+      aiApiKeys: ['AIzaSyPrimaryKey1234567890', 'AIzaSyBackupKey0987654321'],
       currentUserEmail: 'johncenahzoppy@gmail.com',
     });
     expect(grantedUser.allowAiAuto).toBe(true);
+    expect(grantedUser.aiApiKeys).toEqual([
+      'AIzaSyPrimaryKey1234567890',
+      'AIzaSyBackupKey0987654321',
+    ]);
 
     const adminUser = buildAllowedUserRecord({
       email: 'mod@gmail.com',
@@ -494,7 +523,7 @@ describe('Free Fire Screenshot Scanner & Roster Helpers', () => {
       { id: 'sq_tge', name: 'Team TGE', player1: 'Akash' },
       { id: 'sq_ryx', name: 'RYX', player1: 'Emon' },
     ];
-    const parsed = parseGeminiStandingsJson(
+    const parsed = parseAiStandingsJson(
       JSON.stringify({
         rows: [
           {

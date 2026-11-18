@@ -94,11 +94,11 @@ export const SquadPlayersModal: React.FC<SquadPlayersModalProps> = ({
                   Squad Team Members &amp; AI Auto-Scan
                 </h3>
                 <span className="rounded-md border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                  Gemini AI
+                  Beta
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Add or edit team member IGNs anytime. Gemini Vision matches plain words to stylized symbols automatically.
+                Add or edit team member IGNs anytime. AI Vision matches plain words to stylized symbols automatically.
               </p>
             </div>
           </div>
@@ -143,12 +143,12 @@ export const SquadPlayersModal: React.FC<SquadPlayersModalProps> = ({
                     AI Auto Result from Screenshot
                   </span>
                   <span className="rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-amber-300">
-                    Gemini AI
+                    Beta
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5">
                   {autoEnabled
-                    ? 'Enabled — Gemini Vision automatically matches squads using the member names below.'
+                    ? 'Enabled — AI Vision automatically matches squads using the member names below.'
                     : 'Currently off — turn on to match squads automatically from post-match screenshots.'}
                 </p>
               </div>

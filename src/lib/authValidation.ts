@@ -16,12 +16,27 @@ export const sanitizeDisplayName = (displayName: string, email: string): string 
   return cleaned || 'USER';
 };
 
+export const sanitizeAiApiKeyList = (raw?: unknown): string[] => {
+  if (!Array.isArray(raw)) return [];
+  const unique = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const clean = item.trim().replace(/^["']+|["']+$/g, '').replace(/\s+/g, '');
+    if (clean.length >= 16 && clean.length <= 256) {
+      unique.add(clean);
+    }
+    if (unique.size >= 25) break;
+  }
+  return Array.from(unique);
+};
+
 export interface BuildAllowedUserInput {
   email: string;
   displayName: string;
   role: UserRole;
   status?: UserStatus;
   allowAiAuto?: boolean;
+  aiApiKeys?: string[];
   notes?: string;
   currentUserEmail: string;
   existingData?: Partial<AllowedUserRecord> | null;
@@ -37,6 +52,7 @@ export const buildAllowedUserRecord = ({
   role,
   status = 'active',
   allowAiAuto,
+  aiApiKeys,
   notes = '',
   currentUserEmail,
   existingData,
@@ -65,6 +81,10 @@ export const buildAllowedUserRecord = ({
       : typeof allowAiAuto === 'boolean'
       ? allowAiAuto
       : Boolean(existingData?.allowAiAuto);
+  const resolvedAiKeys =
+    aiApiKeys !== undefined
+      ? sanitizeAiApiKeyList(aiApiKeys)
+      : sanitizeAiApiKeyList(existingData?.aiApiKeys);
 
   return {
     email: cleanEmail,
@@ -72,6 +92,7 @@ export const buildAllowedUserRecord = ({
     role: effectiveRole,
     status: isSuper ? 'active' : status,
     allowAiAuto: resolvedAllowAiAuto,
+    ...(resolvedAiKeys.length > 0 ? { aiApiKeys: resolvedAiKeys } : {}),
     notes: notes.trim().slice(0, 1000),
     addedBy: (existingAddedBy || normalizeEmail(currentUserEmail)).slice(0, 254),
     createdAt: existingCreatedAt,

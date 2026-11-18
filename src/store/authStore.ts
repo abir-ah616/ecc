@@ -21,6 +21,7 @@ import {
   buildAllowedUserRecord,
   isValidEmailAddress,
   normalizeEmail,
+  sanitizeAiApiKeyList,
   sanitizeDisplayName,
 } from '../lib/authValidation';
 import type { AllowedUserRecord, UserRole, UserStatus } from '../types/auth';
@@ -38,10 +39,8 @@ interface AuthState {
   canUseAiAuto: boolean;
   authError: string | null;
   isAdminDashboardOpen: boolean;
-  requestOpenProfileSettings: boolean;
 
   setAdminDashboardOpen: (open: boolean) => void;
-  setRequestOpenProfileSettings: (open: boolean) => void;
   clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -49,6 +48,10 @@ interface AuthState {
   setAllowTempLogin: (enabled: boolean) => Promise<void>;
   promoteTempToUser: (u: AllowedUserRecord) => Promise<void>;
   toggleUserAiAuto: (u: AllowedUserRecord, enabled: boolean) => Promise<void>;
+  setUserAiConfig: (
+    email: string,
+    config: { allowAiAuto?: boolean; aiApiKeys?: string[] }
+  ) => Promise<void>;
 
   addAllowedUser: (input: {
     email: string;
@@ -56,6 +59,7 @@ interface AuthState {
     role: UserRole;
     status?: UserStatus;
     allowAiAuto?: boolean;
+    aiApiKeys?: string[];
     notes?: string;
   }) => Promise<void>;
 
@@ -66,6 +70,7 @@ interface AuthState {
       role: UserRole;
       status: UserStatus;
       allowAiAuto?: boolean;
+      aiApiKeys?: string[];
       notes?: string;
     }
   ) => Promise<void>;
@@ -110,11 +115,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   canUseAiAuto: false,
   authError: null,
   isAdminDashboardOpen: false,
-  requestOpenProfileSettings: false,
 
   setAdminDashboardOpen: (open) => set({ isAdminDashboardOpen: open }),
-  setRequestOpenProfileSettings: (open) =>
-    set({ requestOpenProfileSettings: open }),
   clearAuthError: () => set({ authError: null }),
 
   signInWithGoogle: async () => {
@@ -170,7 +172,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAdmin: false,
       canUseAiAuto: false,
       isAdminDashboardOpen: false,
-      requestOpenProfileSettings: false,
       isLoading: false,
       authError: null,
     });
@@ -208,13 +209,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   toggleUserAiAuto: async (u, enabled) => {
-    await get().updateAllowedUser(u.email, {
-      displayName: u.displayName,
-      role: u.role,
-      status: u.status,
-      allowAiAuto: enabled,
-      notes: u.notes || '',
-    });
+    await get().setUserAiConfig(u.email, { allowAiAuto: enabled });
+  },
+
+  setUserAiConfig: async (email, { allowAiAuto, aiApiKeys }) => {
+    const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
+    if (!currentUserEmail || !get().isAdmin) {
+      throw new Error('Admin authentication required.');
+    }
+    const cleanEmail = normalizeEmail(email);
+    const isSuper = cleanEmail === SUPER_ADMIN_EMAIL;
+    const userRef = doc(db, 'allowed_users', cleanEmail);
+    const payload: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    };
+    if (isSuper) {
+      payload.allowAiAuto = true;
+    } else if (typeof allowAiAuto === 'boolean') {
+      payload.allowAiAuto = allowAiAuto;
+    }
+    if (aiApiKeys !== undefined) {
+      payload.aiApiKeys = sanitizeAiApiKeyList(aiApiKeys);
+    }
+
+    try {
+      await updateDoc(userRef, payload);
+    } catch (err) {
+      throw formatAllowedUserError(err, currentUserEmail);
+    }
   },
 
   addAllowedUser: async ({
@@ -223,6 +245,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     role,
     status = 'active',
     allowAiAuto = false,
+    aiApiKeys,
     notes = '',
   }) => {
     const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
@@ -244,6 +267,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         role,
         status,
         allowAiAuto,
+        aiApiKeys,
         notes,
         currentUserEmail,
         existingData: existing.exists()
@@ -258,7 +282,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   updateAllowedUser: async (
     email,
-    { displayName, role, status, allowAiAuto, notes = '' }
+    { displayName, role, status, allowAiAuto, aiApiKeys, notes = '' }
   ) => {
     const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
     if (!currentUserEmail || !get().isAdmin) {
@@ -280,6 +304,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       payload.allowAiAuto = true;
     } else if (typeof allowAiAuto === 'boolean') {
       payload.allowAiAuto = allowAiAuto;
+    }
+    if (aiApiKeys !== undefined) {
+      payload.aiApiKeys = sanitizeAiApiKeyList(aiApiKeys);
     }
 
     try {

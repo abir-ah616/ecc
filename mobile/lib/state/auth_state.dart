@@ -41,6 +41,7 @@ class AuthStore extends ChangeNotifier {
   bool get isAdmin => _isAdmin;
   bool get canUseAiAuto =>
       _isAdmin || (_isAllowed && (_allowedRecord?.allowAiAuto ?? false));
+  List<String> get userAiApiKeys => _allowedRecord?.aiApiKeys ?? const [];
   bool get integrityTrusted => _integrityTrusted;
   String? get integrityError => _integrityError;
   String? get authError => _authError;
@@ -458,6 +459,32 @@ class AuthStore extends ChangeNotifier {
     );
   }
 
+  Future<void> setUserAiConfig({
+    required String email,
+    bool? allowAiAuto,
+    List<String>? aiApiKeys,
+  }) async {
+    if (!_isAdmin) {
+      throw Exception('Admin authentication required.');
+    }
+    final cleanEmail = normalizeEmail(email);
+    final isSuper = cleanEmail == AppFirebaseConfig.superAdminEmail;
+    final ref =
+        FirebaseFirestore.instance.collection('allowed_users').doc(cleanEmail);
+    final payload = <String, dynamic>{
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    };
+    if (isSuper) {
+      payload['allowAiAuto'] = true;
+    } else if (allowAiAuto != null) {
+      payload['allowAiAuto'] = allowAiAuto;
+    }
+    if (aiApiKeys != null) {
+      payload['aiApiKeys'] = sanitizeAiApiKeyList(aiApiKeys);
+    }
+    await ref.update(payload);
+  }
+
   Future<void> signInWithGoogle() async {
     if (!await _verifyAppIntegrity()) {
       return;
@@ -552,6 +579,7 @@ class AuthStore extends ChangeNotifier {
     required UserRole role,
     UserStatus status = UserStatus.active,
     bool allowAiAuto = false,
+    List<String>? aiApiKeys,
     String notes = '',
   }) async {
     if (!_isAdmin) {
@@ -571,8 +599,11 @@ class AuthStore extends ChangeNotifier {
     final isSuper = cleanEmail == AppFirebaseConfig.superAdminEmail;
     final effectiveRole = isSuper ? UserRole.admin : role;
     final data = existing.data();
+    final cleanedKeys = aiApiKeys != null
+        ? sanitizeAiApiKeyList(aiApiKeys)
+        : sanitizeAiApiKeyList(data?['aiApiKeys']);
 
-    await ref.set({
+    final payload = <String, dynamic>{
       'email': cleanEmail,
       'displayName': displayName.trim().isNotEmpty
           ? displayName.trim()
@@ -586,7 +617,12 @@ class AuthStore extends ChangeNotifier {
       'addedBy': (data?['addedBy'] as String?) ?? currentEmail,
       'createdAt': (data?['createdAt'] as num?)?.toInt() ?? now,
       'updatedAt': now,
-    }, SetOptions(merge: true));
+    };
+    if (cleanedKeys.isNotEmpty || aiApiKeys != null) {
+      payload['aiApiKeys'] = cleanedKeys;
+    }
+
+    await ref.set(payload, SetOptions(merge: true));
   }
 
   Future<void> updateAllowedUser({
@@ -595,6 +631,7 @@ class AuthStore extends ChangeNotifier {
     required UserRole role,
     required UserStatus status,
     bool? allowAiAuto,
+    List<String>? aiApiKeys,
     String notes = '',
   }) async {
     if (!_isAdmin) {
@@ -621,6 +658,9 @@ class AuthStore extends ChangeNotifier {
       payload['allowAiAuto'] = true;
     } else if (allowAiAuto != null) {
       payload['allowAiAuto'] = allowAiAuto;
+    }
+    if (aiApiKeys != null) {
+      payload['aiApiKeys'] = sanitizeAiApiKeyList(aiApiKeys);
     }
 
     await ref.update(payload);

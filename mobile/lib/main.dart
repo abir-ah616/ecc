@@ -465,10 +465,6 @@ class _OrganizerShellState extends State<OrganizerShell> {
                           onEditEvent: () {
                             if (active != null) _openCreate(editing: active);
                           },
-                          onOpenAccountSheet: () {
-                            setState(() => _tab = _AppTab.home);
-                            _openAccountSheet();
-                          },
                         ),
                       ),
                       RepaintBoundary(

@@ -10,19 +10,14 @@ import {
   Minus,
   Trash2,
   Users,
-  KeyRound,
 } from 'lucide-react';
 import type { Team } from '../../types/tournament';
 import { useAuthStore } from '../../store/authStore';
-import { useTournamentStore } from '../../store/tournamentStore';
 import { resolveSquadPlayers } from '../../lib/rosterHelpers';
 import {
   extractLearnableTokens,
-  GeminiScannerError,
-  getStoredGeminiApiKey,
-  maskGeminiApiKey,
   matchScannedRowsToTeams,
-  scanMatchScreenshotsWithGemini,
+  scanMatchScreenshotsWithAi,
   type MatchedScanRow,
   type ScannedRankRow,
 } from '../../lib/screenshotScanner';
@@ -60,21 +55,18 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
   onUpdatePlayers,
   onApply,
 }) => {
-  const { firebaseUser, setRequestOpenProfileSettings } = useAuthStore();
-  const { setCurrentTab } = useTournamentStore();
+  const { allowedRecord, isAdmin, setAdminDashboardOpen } = useAuthStore();
 
   const [files, setFiles] = useState<File[]>([]);
   const [scanning, setScanning] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
   const [progressVal, setProgressVal] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [needsApiKeyAction, setNeedsApiKeyAction] = useState(false);
   const [draftRows, setDraftRows] = useState<ReviewRankDraft[] | null>(null);
   const [isPlayersOpen, setIsPlayersOpen] = useState(false);
 
-  const userEmail = firebaseUser?.email || null;
-  const savedApiKey = getStoredGeminiApiKey(userEmail);
-  const hasApiKey = Boolean(savedApiKey);
+  const assignedKeys = allowedRecord?.aiApiKeys || [];
+  const hasQuotaConfigured = assignedKeys.length > 0;
 
   const squadsWithPlayersCount = useMemo(
     () => teams.filter((t) => resolveSquadPlayers(t).length > 0).length,
@@ -96,12 +88,6 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleOpenHomeProfileApiSetup = () => {
-    onClose();
-    setCurrentTab('home');
-    setRequestOpenProfileSettings(true);
-  };
-
   const handleSelectFiles = (fileList: FileList | null) => {
     if (!fileList) return;
     const picked = Array.from(fileList)
@@ -110,30 +96,21 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
     if (picked.length === 0) return;
     setFiles((prev) => [...prev, ...picked].slice(0, 3));
     setError(null);
-    setNeedsApiKeyAction(false);
   };
 
   const handleRunScan = async () => {
     if (files.length === 0 || scanning) return;
-    if (!hasApiKey) {
-      setNeedsApiKeyAction(true);
-      setError(
-        'Add your personal Gemini API key in Home -> User Profile (top-right PFP) before scanning.'
-      );
-      return;
-    }
 
     setScanning(true);
     setError(null);
-    setNeedsApiKeyAction(false);
     setProgressVal(0.1);
-    setProgressMsg('Connecting to Gemini Vision AI...');
+    setProgressMsg('Connecting to AI Vision (Beta)...');
 
     try {
-      const scanned: MatchedScanRow[] = await scanMatchScreenshotsWithGemini(
+      const scanned: MatchedScanRow[] = await scanMatchScreenshotsWithAi(
         files,
         teams,
-        userEmail,
+        assignedKeys,
         (msg, frac) => {
           setProgressMsg(msg);
           setProgressVal(frac);
@@ -179,16 +156,10 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
         );
       }
     } catch (err) {
-      if (
-        err instanceof GeminiScannerError &&
-        (err.code === 'MISSING_API_KEY' || err.code === 'INVALID_API_KEY')
-      ) {
-        setNeedsApiKeyAction(true);
-      }
       setError(
         err instanceof Error
           ? err.message
-          : 'Gemini AI scan failed. Please try again.'
+          : 'AI scan could not complete right now. Please try again.'
       );
     } finally {
       setScanning(false);
@@ -245,7 +216,7 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
                   AI Auto Standings · Match {matchNumber}
                 </h3>
                 <span className="rounded-md border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                  Gemini Mode
+                  Beta
                 </span>
               </div>
               <p className="text-xs text-slate-400">
@@ -279,40 +250,28 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {!hasApiKey ? (
+          {!hasQuotaConfigured && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-400/45 bg-amber-500/10 p-4">
-              <div className="flex items-start gap-3">
-                <KeyRound className="h-5 w-5 shrink-0 text-amber-400 mt-0.5" />
-                <div className="space-y-1 text-xs leading-relaxed">
-                  <div className="font-bold text-white">
-                    Gemini API Key Required
-                  </div>
-                  <p className="text-slate-300">
-                    Open the <span className="font-semibold text-amber-300">Home page User Profile (top-right PFP)</span> and paste your free Google AI Studio API key to activate Gemini AI Auto Standings.
-                  </p>
-                </div>
+              <div className="text-xs text-slate-200 leading-relaxed">
+                <span className="font-bold text-amber-300">
+                  AI Auto Standings (Beta) Setup Pending:{' '}
+                </span>
+                {isAdmin
+                  ? 'Assign one or more AI API keys to your account in Admin Dashboard -> AI / API Management.'
+                  : 'Your AI scan quota has not been activated yet. Please contact an administrator.'}
               </div>
-              <button
-                type="button"
-                onClick={handleOpenHomeProfileApiSetup}
-                className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-3.5 py-2 text-xs font-bold text-zinc-950 transition-colors cursor-pointer"
-              >
-                <KeyRound className="h-3.5 w-3.5" />
-                <span>Open Home Profile API Setup</span>
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3.5 py-2 text-xs">
-              <span className="text-emerald-200">
-                Gemini API connected ({maskGeminiApiKey(savedApiKey)})
-              </span>
-              <button
-                type="button"
-                onClick={handleOpenHomeProfileApiSetup}
-                className="font-semibold text-amber-300 hover:text-amber-200 underline cursor-pointer"
-              >
-                Manage Key in Home Profile
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    setAdminDashboardOpen(true);
+                  }}
+                  className="shrink-0 rounded-xl bg-amber-500 hover:bg-amber-400 px-3.5 py-2 text-xs font-bold text-zinc-950 transition-colors cursor-pointer"
+                >
+                  Open AI Management
+                </button>
+              )}
             </div>
           )}
 
@@ -324,7 +283,7 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
                     ? 'Auto-Match is currently off: '
                     : 'No player IGNs added yet: '}
                 </span>
-                Add 1 or more team member IGNs per squad so Gemini assigns ranks automatically (or assign once in Match 1 to auto-learn for next matches).
+                Add 1 or more team member IGNs per squad so AI assigns ranks automatically (or assign once in Match 1 to auto-learn for next matches).
               </div>
               <button
                 type="button"
@@ -398,7 +357,7 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
 
               <button
                 type="button"
-                disabled={files.length === 0 || scanning || !hasApiKey}
+                disabled={files.length === 0 || scanning || !hasQuotaConfigured}
                 onClick={handleRunScan}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 px-4 py-2 text-xs font-bold text-zinc-950 transition-colors cursor-pointer"
               >
@@ -435,20 +394,9 @@ export const ScanScreenshotModal: React.FC<ScanScreenshotModalProps> = ({
           )}
 
           {error && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-                <span>{error}</span>
-              </div>
-              {needsApiKeyAction && (
-                <button
-                  type="button"
-                  onClick={handleOpenHomeProfileApiSetup}
-                  className="shrink-0 rounded-lg bg-amber-500 hover:bg-amber-400 px-3 py-1.5 text-xs font-bold text-zinc-950 cursor-pointer"
-                >
-                  Open Profile API Setup
-                </button>
-              )}
+            <div className="flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 

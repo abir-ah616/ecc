@@ -7,6 +7,7 @@ export interface AllowedUserRecord {
   role: UserRole;
   status: UserStatus;
   allowAiAuto?: boolean;
+  aiApiKeys?: string[];
   notes?: string;
   addedBy?: string;
   createdAt: number;

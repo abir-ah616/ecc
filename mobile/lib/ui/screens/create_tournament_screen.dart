@@ -1392,7 +1392,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                               ),
                               SizedBox(width: 6),
                               StatusPill(
-                                label: 'GEMINI AI',
+                                label: 'BETA',
                                 backgroundColor: AppColors.accentSurface,
                                 borderColor: AppColors.accentBorder,
                                 textColor: AppColors.accentBright,
@@ -1401,7 +1401,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                           ),
                           SizedBox(height: 2),
                           Text(
-                            'Powered by your Gemini API key (configured in Home Profile). Add 1-5 squad member IGNs anytime.',
+                            'AI Vision auto-standings (Beta). Add 1-5 squad member IGNs anytime.',
                             style: TextStyle(
                               color: AppColors.textMuted,
                               fontSize: 11,

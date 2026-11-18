@@ -630,11 +630,34 @@ Slot 01 - EVOS DIVINE (Confirmed)
     });
 
     test(
-        'parses Gemini Vision structured JSON, sums per-player kills deterministically, and enforces allowAiAuto',
+        'parses AI Vision structured JSON, sums per-player kills deterministically, ranks active 3.x Flash-Lite ahead of 3.8 Flash, and enforces multi-key pools',
         () {
-      expect(sanitizeGeminiApiKey(' "AIzaSyTestKey1234567890" '),
+      expect(sanitizeApiKeyToken(' "AIzaSyTestKey1234567890" '),
           'AIzaSyTestKey1234567890');
-      expect(maskGeminiApiKey('AIzaSyTestKey1234567890'), 'AIzaSy...7890');
+      expect(maskApiKey('AIzaSyTestKey1234567890'), 'AIzaSy...7890');
+      expect(
+        parseMultiApiKeyInput(
+          'AIzaSyPrimaryKey1234567890,\n"AIzaSyBackupKey0987654321" AIzaSyPrimaryKey1234567890',
+        ),
+        ['AIzaSyPrimaryKey1234567890', 'AIzaSyBackupKey0987654321'],
+      );
+
+      final ranked = rankVisionModelsFromCatalog([
+        {
+          'name': 'models/gemini-2.0-flash',
+          'supportedGenerationMethods': ['generateContent'],
+        },
+        {
+          'name': 'models/gemini-3.8-flash',
+          'supportedGenerationMethods': ['generateContent'],
+        },
+        {
+          'name': 'models/gemini-3.5-flash-lite',
+          'supportedGenerationMethods': ['generateContent'],
+        },
+      ]);
+      expect(ranked.liteModels, ['gemini-3.5-flash-lite']);
+      expect(ranked.standardModels, ['gemini-3.8-flash']);
 
       final recUser = AllowedUserRecord.fromMap({
         'email': 'org@gmail.com',
@@ -642,11 +665,17 @@ Slot 01 - EVOS DIVINE (Confirmed)
         'role': 'user',
         'status': 'active',
         'allowAiAuto': true,
+        'aiApiKeys': ['AIzaSyPrimaryKey1234567890', 'AIzaSyBackupKey0987654321'],
         'createdAt': 100,
         'updatedAt': 200,
       });
       expect(recUser.allowAiAuto, isTrue);
+      expect(recUser.aiApiKeys.length, 2);
       expect(recUser.toMap()['allowAiAuto'], isTrue);
+      expect(recUser.toMap()['aiApiKeys'], [
+        'AIzaSyPrimaryKey1234567890',
+        'AIzaSyBackupKey0987654321',
+      ]);
 
       const teams = [
         Team(id: 't1', name: 'Team TGE', player1: 'Akash'),
@@ -680,7 +709,7 @@ Slot 01 - EVOS DIVINE (Confirmed)
         ],
       });
 
-      final matched = parseGeminiStandingsJson(rawJson, teams, maxTeams: 12);
+      final matched = parseAiStandingsJson(rawJson, teams, maxTeams: 12);
       expect(matched.length, 2);
       expect(matched[0].rank, 1);
       expect(matched[0].kills, 23);

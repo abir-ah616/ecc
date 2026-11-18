@@ -23,190 +23,263 @@ export interface MatchedScanRow extends ScannedRankRow {
   matchedKeyword?: string;
 }
 
-export type GeminiErrorCode =
-  | 'MISSING_API_KEY'
-  | 'INVALID_API_KEY'
+export type AiScannerErrorCode =
+  | 'NO_QUOTA_ASSIGNED'
+  | 'INVALID_CONFIG'
   | 'RATE_LIMITED'
   | 'NETWORK_ERROR'
   | 'PARSE_ERROR';
 
-export class GeminiScannerError extends Error {
-  readonly code: GeminiErrorCode;
+export class AiScannerError extends Error {
+  readonly code: AiScannerErrorCode;
 
-  constructor(code: GeminiErrorCode, message: string) {
+  constructor(code: AiScannerErrorCode, message: string) {
     super(message);
-    this.name = 'GeminiScannerError';
+    this.name = 'AiScannerError';
     this.code = code;
   }
 }
 
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const PREFERRED_FLASH_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash',
+const VISION_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_ACTIVE_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
 ] as const;
 
-function storageKeyForEmail(prefix: string, userEmail?: string | null): string {
-  const clean = (userEmail || '').trim().toLowerCase() || 'default';
-  return `${prefix}_${clean}`;
-}
-
-export function sanitizeGeminiApiKey(raw: string): string {
+export function sanitizeApiKeyToken(raw: string): string {
   return raw.trim().replace(/^["']+|["']+$/g, '').replace(/\s+/g, '');
 }
 
-export function getStoredGeminiApiKey(userEmail?: string | null): string {
-  if (typeof window === 'undefined' || !window.localStorage) return '';
-  try {
-    return sanitizeGeminiApiKey(
-      window.localStorage.getItem(
-        storageKeyForEmail('esp_calc_gemini_api_key', userEmail)
-      ) || ''
-    );
-  } catch {
-    return '';
-  }
+/**
+ * Parses one or multiple API keys pasted by an Admin (newline, comma, or space separated).
+ */
+export function parseMultiApiKeyInput(rawText: string): string[] {
+  if (!rawText.trim()) return [];
+  const parts = rawText
+    .split(/[\r\n,;|\s]+/)
+    .map((s) => sanitizeApiKeyToken(s))
+    .filter((s) => s.length >= 16 && s.length <= 256);
+  return Array.from(new Set(parts)).slice(0, 25);
 }
 
-export function getStoredGeminiModel(userEmail?: string | null): string {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return PREFERRED_FLASH_MODELS[0];
-  }
-  try {
-    return (
-      window.localStorage.getItem(
-        storageKeyForEmail('esp_calc_gemini_model', userEmail)
-      ) || PREFERRED_FLASH_MODELS[0]
-    );
-  } catch {
-    return PREFERRED_FLASH_MODELS[0];
-  }
-}
-
-export function setStoredGeminiApiKey(
-  userEmail: string | null | undefined,
-  apiKey: string,
-  verifiedModel?: string
-): void {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  const clean = sanitizeGeminiApiKey(apiKey);
-  try {
-    const keyName = storageKeyForEmail('esp_calc_gemini_api_key', userEmail);
-    const modelName = storageKeyForEmail('esp_calc_gemini_model', userEmail);
-    if (!clean) {
-      window.localStorage.removeItem(keyName);
-      window.localStorage.removeItem(modelName);
-      return;
-    }
-    window.localStorage.setItem(keyName, clean);
-    if (verifiedModel) {
-      window.localStorage.setItem(modelName, verifiedModel);
-    }
-  } catch {
-    // Ignore storage quota errors
-  }
-}
-
-export function clearStoredGeminiApiKey(userEmail?: string | null): void {
-  setStoredGeminiApiKey(userEmail, '');
-}
-
-export function maskGeminiApiKey(apiKey: string): string {
-  const clean = sanitizeGeminiApiKey(apiKey);
+export function maskApiKey(apiKey: string): string {
+  const clean = sanitizeApiKeyToken(apiKey);
   if (!clean) return '';
   if (clean.length <= 10) return `${clean.slice(0, 4)}...`;
   return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
 }
 
-interface GeminiModelListEntry {
+interface ModelListEntry {
   name?: string;
   supportedGenerationMethods?: string[];
 }
 
-function selectVisionFlashModels(entries: GeminiModelListEntry[]): string[] {
-  const available = new Set<string>();
+function parseModelVersionScore(id: string): number {
+  const m = id.match(/^gemini-(\d+)(?:\.(\d+))?/i);
+  if (!m) return id === 'gemini-flash-latest' ? 3.79 : 3.0;
+  const major = Number(m[1] || 0);
+  const minor = Number(m[2] || 0);
+  return major + minor / 10;
+}
+
+/**
+ * Selects active multimodal Flash-Lite (Tier 1: highest daily quota & lowest cost)
+ * followed by standard Flash (Tier 2: e.g. 3.8-flash / flash-latest), strictly
+ * excluding retired 1.x / 2.0 / 2.5 models unless no 3.x+ models exist.
+ */
+export function rankVisionModelsFromCatalog(entries: ModelListEntry[]): {
+  liteModels: string[];
+  standardModels: string[];
+} {
+  const lite: string[] = [];
+  const standard: string[] = [];
+  const legacyFallback: string[] = [];
+
   for (const m of entries) {
     const id = (m.name || '').replace(/^models\//, '').trim();
     const methods = m.supportedGenerationMethods || [];
     if (!id || !methods.includes('generateContent')) continue;
     const lower = id.toLowerCase();
+    if (!lower.includes('gemini') || !lower.includes('flash')) continue;
+
+    // Exclude non-vision / specialized modalities & retired 1.x / 2.0 endpoints
     if (
       lower.includes('tts') ||
       lower.includes('embedding') ||
       lower.includes('imagen') ||
-      lower.includes('image-generation') ||
+      lower.includes('image') ||
       lower.includes('audio') ||
-      lower.includes('veo')
+      lower.includes('veo') ||
+      lower.includes('live') ||
+      lower.includes('thinking') ||
+      lower.includes('computer-use') ||
+      lower.includes('robotics') ||
+      lower.startsWith('gemini-1.') ||
+      lower.startsWith('gemini-2.0')
     ) {
       continue;
     }
-    if (lower.includes('gemini') && lower.includes('flash')) {
-      available.add(id);
+
+    const ver = parseModelVersionScore(lower);
+    if (ver < 3.0) {
+      legacyFallback.push(id);
+      continue;
+    }
+
+    if (lower.includes('lite')) {
+      lite.push(id);
+    } else {
+      standard.push(id);
     }
   }
 
-  const ordered: string[] = [];
-  for (const pref of PREFERRED_FLASH_MODELS) {
-    if (available.has(pref)) ordered.push(pref);
-  }
-  for (const id of Array.from(available).sort().reverse()) {
-    if (!ordered.includes(id)) ordered.push(id);
-  }
-  return ordered.length > 0 ? ordered : [...PREFERRED_FLASH_MODELS];
-}
+  const sortDesc = (arr: string[]) =>
+    Array.from(new Set(arr)).sort((a, b) => {
+      // Prefer stable release names over -exp / -001 snapshots of same version
+      const scoreDiff = parseModelVersionScore(b) - parseModelVersionScore(a);
+      if (Math.abs(scoreDiff) > 0.001) return scoreDiff;
+      const aPreview = a.includes('exp') || a.includes('preview') ? 1 : 0;
+      const bPreview = b.includes('exp') || b.includes('preview') ? 1 : 0;
+      if (aPreview !== bPreview) return aPreview - bPreview;
+      return b.localeCompare(a);
+    });
 
-export async function verifyGeminiApiKey(rawKey: string): Promise<{
-  valid: boolean;
-  model?: string;
-  error?: string;
-}> {
-  const cleanKey = sanitizeGeminiApiKey(rawKey);
-  if (cleanKey.length < 20) {
+  const sortedLite = sortDesc(lite);
+  const sortedStd = sortDesc(standard);
+
+  if (sortedLite.length === 0 && sortedStd.length === 0) {
+    if (legacyFallback.length > 0) {
+      return { liteModels: [], standardModels: sortDesc(legacyFallback) };
+    }
     return {
-      valid: false,
-      error:
-        'Paste a complete Google AI Studio API key (starts with AIza...).',
+      liteModels: ['gemini-3.5-flash-lite'],
+      standardModels: ['gemini-3.8-flash', 'gemini-flash-latest'],
     };
   }
 
-  let candidateModels: string[] = [...PREFERRED_FLASH_MODELS];
+  return {
+    liteModels: sortedLite.slice(0, 3),
+    standardModels: sortedStd.slice(0, 3),
+  };
+}
+
+const MODEL_CATALOG_CACHE = new Map<
+  string,
+  { fetchedAt: number; liteModels: string[]; standardModels: string[] }
+>();
+
+async function resolveActiveModelsForKey(apiKey: string): Promise<{
+  liteModels: string[];
+  standardModels: string[];
+}> {
+  const cacheHit = MODEL_CATALOG_CACHE.get(apiKey);
+  if (cacheHit && Date.now() - cacheHit.fetchedAt < 6 * 3600 * 1000) {
+    return cacheHit;
+  }
+
   try {
-    const res = await fetch(`${GEMINI_API_BASE}/models`, {
+    const res = await fetch(`${VISION_API_BASE}/models`, {
       method: 'GET',
-      headers: {
-        'x-goog-api-key': cleanKey,
-      },
+      headers: { 'x-goog-api-key': apiKey },
     });
-
-    if (res.status === 400 || res.status === 401 || res.status === 403) {
-      return {
-        valid: false,
-        error:
-          'Invalid Gemini API key. Copy the exact key from Google AI Studio (aistudio.google.com/apikey).',
-      };
-    }
-
     if (res.ok) {
-      const json = (await res.json()) as { models?: GeminiModelListEntry[] };
+      const data = (await res.json()) as { models?: ModelListEntry[] };
+      if (Array.isArray(data.models) && data.models.length > 0) {
+        const ranked = rankVisionModelsFromCatalog(data.models);
+        const entry = { fetchedAt: Date.now(), ...ranked };
+        MODEL_CATALOG_CACHE.set(apiKey, entry);
+        return entry;
+      }
+    }
+  } catch {
+    // Fall back to default active Gemini 3.x models
+  }
+
+  return {
+    liteModels: [DEFAULT_ACTIVE_MODELS[0]],
+    standardModels: [DEFAULT_ACTIVE_MODELS[1], DEFAULT_ACTIVE_MODELS[2]],
+  };
+}
+
+function currentPacificDayKey(): string {
+  try {
+    return new Date().toLocaleDateString('en-CA', {
+      timeZone: 'America/Los_Angeles',
+    });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+let exhaustedDayStamp = '';
+const exhaustedKeyModelsToday = new Set<string>();
+
+function isMarkedExhaustedToday(apiKey: string, model: string): boolean {
+  const today = currentPacificDayKey();
+  if (exhaustedDayStamp !== today) {
+    exhaustedDayStamp = today;
+    exhaustedKeyModelsToday.clear();
+    return false;
+  }
+  return exhaustedKeyModelsToday.has(`${apiKey.slice(-8)}::${model}`);
+}
+
+function markExhaustedToday(apiKey: string, model: string): void {
+  const today = currentPacificDayKey();
+  if (exhaustedDayStamp !== today) {
+    exhaustedDayStamp = today;
+    exhaustedKeyModelsToday.clear();
+  }
+  exhaustedKeyModelsToday.add(`${apiKey.slice(-8)}::${model}`);
+}
+
+/**
+ * Admin-only helper to verify an API key in Admin Dashboard -> AI / API Management.
+ */
+export async function verifyAdminAiApiKey(rawKey: string): Promise<{
+  valid: boolean;
+  primaryModel?: string;
+  error?: string;
+}> {
+  const cleanKey = sanitizeApiKeyToken(rawKey);
+  if (cleanKey.length < 16) {
+    return { valid: false, error: 'Paste a complete API key.' };
+  }
+
+  let modelsToTest: string[] = [...DEFAULT_ACTIVE_MODELS];
+  try {
+    const res = await fetch(`${VISION_API_BASE}/models`, {
+      method: 'GET',
+      headers: { 'x-goog-api-key': cleanKey },
+    });
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      return { valid: false, error: 'Invalid or unauthorized API key.' };
+    }
+    if (res.ok) {
+      const json = (await res.json()) as { models?: ModelListEntry[] };
       if (Array.isArray(json.models) && json.models.length > 0) {
-        candidateModels = selectVisionFlashModels(json.models);
+        const ranked = rankVisionModelsFromCatalog(json.models);
+        MODEL_CATALOG_CACHE.set(cleanKey, {
+          fetchedAt: Date.now(),
+          ...ranked,
+        });
+        modelsToTest = [...ranked.liteModels, ...ranked.standardModels];
       }
     }
   } catch {
     return {
       valid: false,
-      error:
-        'Could not reach Google Gemini servers. Check your internet connection and try again.',
+      error: 'Network error while verifying key. Check connection.',
     };
   }
 
-  // Live ping to confirm generateContent works on at least one Flash model
   let sawRateLimit = false;
-  for (const model of candidateModels.slice(0, 3)) {
+  let lastMsg = '';
+  for (const model of modelsToTest.slice(0, 5)) {
     try {
       const ping = await fetch(
-        `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`,
+        `${VISION_API_BASE}/models/${encodeURIComponent(model)}:generateContent`,
         {
           method: 'POST',
           headers: {
@@ -215,44 +288,38 @@ export async function verifyGeminiApiKey(rawKey: string): Promise<{
           },
           body: JSON.stringify({
             contents: [{ parts: [{ text: 'Return {"ok":true}' }] }],
-            generationConfig: {
-              temperature: 0,
-              maxOutputTokens: 16,
-            },
+            generationConfig: { temperature: 0, maxOutputTokens: 16 },
           }),
         }
       );
-
       if (ping.ok) {
-        return { valid: true, model };
+        return { valid: true, primaryModel: model };
       }
       if (ping.status === 429) {
         sawRateLimit = true;
         continue;
       }
-      if (ping.status === 400 || ping.status === 401 || ping.status === 403) {
-        const errBody = await ping.json().catch(() => null);
-        const msg =
-          errBody?.error?.message ||
-          'API key rejected by Google AI Studio. Check key permissions.';
-        if (/api.?key/i.test(msg) || ping.status !== 400) {
-          return { valid: false, error: msg };
-        }
+      const errBody = await ping.json().catch(() => null);
+      const msg = String(errBody?.error?.message || '');
+      lastMsg = msg;
+      if (
+        ping.status === 401 ||
+        ping.status === 403 ||
+        (ping.status === 400 && /api.?key/i.test(msg))
+      ) {
+        return { valid: false, error: msg || 'API key rejected.' };
       }
     } catch {
-      // Try next fallback model
+      // Try next active model
     }
   }
 
   if (sawRateLimit) {
-    // Key is authentic; currently rate-limited for this minute
-    return { valid: true, model: candidateModels[0] };
+    return { valid: true, primaryModel: modelsToTest[0] };
   }
-
   return {
     valid: false,
-    error:
-      'Could not verify generateContent access for this key. Generate a fresh key at aistudio.google.com/apikey.',
+    error: lastMsg || 'No active vision model responded for this API key.',
   };
 }
 
@@ -739,7 +806,7 @@ export function mergeAndDeduplicateScans(
 
 /**
  * Global maximum-weight bipartite matching (O(N^3) Hungarian algorithm) combining
- * deterministic Unicode/leet roster scoring + Gemini visual squad matching.
+ * deterministic Unicode/leet roster scoring + AI visual squad matching.
  */
 export function matchScannedRowsToTeams(
   rows: ScannedRankRow[],
@@ -759,7 +826,6 @@ export function matchScannedRowsToTeams(
     teams.map((team) => {
       const det = scoreSquadAgainstTokens(row.normalizedTokens, team);
       if (row.aiMatchedTeamId && row.aiMatchedTeamId === team.id) {
-        // Boost when Gemini Vision directly matched this registered squad
         const boosted = Math.max(det.score, 0.88);
         return {
           score: det.score >= 0.65 ? Math.min(1, det.score + 0.08) : boosted,
@@ -965,10 +1031,10 @@ export function extractLearnableTokens(
 }
 
 // ============================================================================
-// Gemini Multimodal Free Fire Post-Match Scoreboard Engine
+// Multimodal AI Free Fire Post-Match Scoreboard Engine (Multi-Key Failover)
 // ============================================================================
 
-const GEMINI_RESPONSE_SCHEMA = {
+const SCOREBOARD_RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
     rows: {
@@ -1028,7 +1094,7 @@ const GEMINI_RESPONSE_SCHEMA = {
   required: ['rows'],
 };
 
-function buildFreeFireGeminiPrompt(teams: Team[], imageCount: number): string {
+function buildFreeFireVisionPrompt(teams: Team[], imageCount: number): string {
   const rosterPayload = teams.map((t) => {
     const knownPlayers = Array.from(
       new Set(
@@ -1082,7 +1148,7 @@ function cleanExtractedIgn(raw: string): string {
     .trim();
 }
 
-export interface RawGeminiRankPayload {
+export interface RawAiRankPayload {
   rank?: unknown;
   isBottomClipped?: unknown;
   matchedTeamId?: unknown;
@@ -1090,7 +1156,7 @@ export interface RawGeminiRankPayload {
   totalKills?: unknown;
 }
 
-export function parseGeminiStandingsJson(
+export function parseAiStandingsJson(
   rawJsonText: string,
   teams: Team[],
   maxTeams = 24
@@ -1101,17 +1167,17 @@ export function parseGeminiStandingsJson(
     .replace(/\s*```$/i, '')
     .trim();
 
-  let parsed: { rows?: RawGeminiRankPayload[] } | RawGeminiRankPayload[];
+  let parsed: { rows?: RawAiRankPayload[] } | RawAiRankPayload[];
   try {
     parsed = JSON.parse(cleanedText);
   } catch {
-    throw new GeminiScannerError(
+    throw new AiScannerError(
       'PARSE_ERROR',
-      'Gemini returned an unreadable response. Please click Re-Scan.'
+      'AI returned an unreadable scoreboard response. Please click Re-Scan.'
     );
   }
 
-  const rawRows: RawGeminiRankPayload[] = Array.isArray(parsed)
+  const rawRows: RawAiRankPayload[] = Array.isArray(parsed)
     ? parsed
     : Array.isArray(parsed?.rows)
     ? parsed.rows
@@ -1179,7 +1245,6 @@ export function parseGeminiStandingsJson(
 async function fileToInlineImagePart(
   file: File
 ): Promise<{ inlineData: { mimeType: string; data: string } }> {
-  // Send crisp native screenshot bytes directly when <= 2.5 MB supported raster
   const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
   if (file.size <= 2_500_000 && supportedTypes.has(file.type)) {
     const base64 = await new Promise<string>((resolve, reject) => {
@@ -1201,7 +1266,6 @@ async function fileToInlineImagePart(
     };
   }
 
-  // Downscale oversized screenshots cleanly to 1800px max dimension JPEG 0.90
   const bitmapUrl = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -1234,49 +1298,87 @@ async function fileToInlineImagePart(
   }
 }
 
-export async function scanMatchScreenshotsWithGemini(
+/**
+ * Scans 1-3 match screenshots using the user's admin-assigned pool of AI keys.
+ * Automatically rotates across multiple keys & active Flash-Lite / Flash models
+ * when one key hits its daily or per-minute limit.
+ */
+export async function scanMatchScreenshotsWithAi(
   files: File[],
   teams: Team[],
-  userEmail: string | null | undefined,
+  assignedApiKeys: string[],
   onProgress?: (statusText: string, progressFraction: number) => void
 ): Promise<MatchedScanRow[]> {
   if (files.length === 0) return [];
 
-  const apiKey = getStoredGeminiApiKey(userEmail);
-  if (!apiKey) {
-    throw new GeminiScannerError(
-      'MISSING_API_KEY',
-      'Add your personal Gemini API key in Home -> User Profile (top-right PFP) before using AI Auto Standings.'
+  const cleanKeys = Array.from(
+    new Set(
+      (assignedApiKeys || [])
+        .map((k) => sanitizeApiKeyToken(k))
+        .filter((k) => k.length >= 16)
+    )
+  );
+
+  if (cleanKeys.length === 0) {
+    throw new AiScannerError(
+      'NO_QUOTA_ASSIGNED',
+      'AI Auto Standings (Beta) is not yet activated on your account. Please ask an administrator to enable your AI scan quota.'
     );
   }
 
-  onProgress?.('Preparing match screenshots...', 0.18);
+  onProgress?.('Preparing match screenshots...', 0.16);
   const imageParts = await Promise.all(
     files.slice(0, 3).map((f) => fileToInlineImagePart(f))
   );
 
-  const preferredModel = getStoredGeminiModel(userEmail);
-  const modelsToTry = Array.from(
-    new Set([preferredModel, ...PREFERRED_FLASH_MODELS])
+  onProgress?.('Connecting to AI Vision...', 0.34);
+  const resolvedPerKey = await Promise.all(
+    cleanKeys.map(async (key) => ({
+      key,
+      ...(await resolveActiveModelsForKey(key)),
+    }))
   );
-  const maxTeams = Math.max(12, teams.length);
-  const promptText = buildFreeFireGeminiPrompt(teams, imageParts.length);
 
-  onProgress?.('Analyzing scoreboard with Gemini Vision AI...', 0.52);
+  // Build rotation schedule:
+  // 1) All keys' Flash-Lite models (highest free daily quota & fastest)
+  // 2) All keys' Standard Flash models (e.g. 3.8-flash / flash-latest)
+  const allAttempts: Array<{ key: string; model: string }> = [];
+  for (const item of resolvedPerKey) {
+    for (const m of item.liteModels) {
+      allAttempts.push({ key: item.key, model: m });
+    }
+  }
+  for (const item of resolvedPerKey) {
+    for (const m of item.standardModels) {
+      allAttempts.push({ key: item.key, model: m });
+    }
+  }
+
+  const freshAttempts = allAttempts.filter(
+    (a) => !isMarkedExhaustedToday(a.key, a.model)
+  );
+  const schedule = freshAttempts.length > 0 ? freshAttempts : allAttempts;
+
+  const maxTeams = Math.max(12, teams.length);
+  const promptText = buildFreeFireVisionPrompt(teams, imageParts.length);
+
+  onProgress?.('Analyzing scoreboard with AI Vision (Beta)...', 0.56);
 
   let sawRateLimit = false;
-  let lastErrorMsg = '';
+  let sawInvalidKey = false;
 
-  for (const model of modelsToTry) {
+  for (const attempt of schedule) {
     let response: Response;
     try {
       response = await fetch(
-        `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`,
+        `${VISION_API_BASE}/models/${encodeURIComponent(
+          attempt.model
+        )}:generateContent`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey,
+            'x-goog-api-key': attempt.key,
           },
           body: JSON.stringify({
             contents: [
@@ -1287,15 +1389,15 @@ export async function scanMatchScreenshotsWithGemini(
             generationConfig: {
               temperature: 0,
               responseMimeType: 'application/json',
-              responseSchema: GEMINI_RESPONSE_SCHEMA,
+              responseSchema: SCOREBOARD_RESPONSE_SCHEMA,
             },
           }),
         }
       );
     } catch {
-      throw new GeminiScannerError(
+      throw new AiScannerError(
         'NETWORK_ERROR',
-        'Network error while contacting Google Gemini AI. Check your internet connection and retry.'
+        'Network error while contacting AI Vision. Check your internet connection and retry.'
       );
     }
 
@@ -1311,49 +1413,60 @@ export async function scanMatchScreenshotsWithGemini(
           ?.map((pt) => pt.text || '')
           .join('') || '';
       if (!rawText.trim()) {
-        throw new GeminiScannerError(
+        throw new AiScannerError(
           'PARSE_ERROR',
-          'Gemini returned an empty scoreboard response. Try clearer full-screen match screenshots.'
+          'AI returned an empty scoreboard response. Try clearer full-screen match screenshots.'
         );
       }
-      const matched = parseGeminiStandingsJson(rawText, teams, maxTeams);
-      setStoredGeminiApiKey(userEmail, apiKey, model);
+      const matched = parseAiStandingsJson(rawText, teams, maxTeams);
       onProgress?.('AI standings ready', 1);
       return matched;
     }
 
     if (response.status === 429) {
       sawRateLimit = true;
+      const errBody = await response.json().catch(() => null);
+      const msg = String(errBody?.error?.message || '');
+      if (/per.?day|daily|rpd|quota/i.test(msg)) {
+        markExhaustedToday(attempt.key, attempt.model);
+      }
+      // Immediately fail over to the next API key / model in the pool!
       continue;
     }
 
-    const errJson = await response.json().catch(() => null);
-    const apiMessage = String(errJson?.error?.message || '');
-    lastErrorMsg = apiMessage;
-
-    if (
-      response.status === 401 ||
-      response.status === 403 ||
-      (response.status === 400 && /api.?key/i.test(apiMessage))
-    ) {
-      throw new GeminiScannerError(
-        'INVALID_API_KEY',
-        'Your Gemini API key was rejected by Google AI Studio. Open Home -> User Profile (top-right PFP) to update your API key.'
-      );
+    if (response.status === 401 || response.status === 403) {
+      sawInvalidKey = true;
+      continue;
     }
 
-    // 404 or unsupported model -> try next Flash model in fallback list
+    if (response.status === 400) {
+      const errBody = await response.json().catch(() => null);
+      const msg = String(errBody?.error?.message || '');
+      if (/api.?key/i.test(msg)) {
+        sawInvalidKey = true;
+      }
+      continue;
+    }
+
+    // 404 or retired model -> continue to next discovered model/key
   }
 
   if (sawRateLimit) {
-    throw new GeminiScannerError(
+    throw new AiScannerError(
       'RATE_LIMITED',
-      'Gemini free-tier rate limit reached. Wait ~30 seconds and click Re-Scan, or switch to another Google AI Studio API key.'
+      'Daily AI scan limit reached across your account quota for today. Please try again later or use Rapid #1-#12 mode.'
     );
   }
 
-  throw new GeminiScannerError(
+  if (sawInvalidKey) {
+    throw new AiScannerError(
+      'INVALID_CONFIG',
+      'AI scan quota configuration needs attention. Please contact an administrator.'
+    );
+  }
+
+  throw new AiScannerError(
     'PARSE_ERROR',
-    lastErrorMsg || 'Gemini AI scan failed. Please try again.'
+    'AI scan could not complete right now. Please try again.'
   );
 }

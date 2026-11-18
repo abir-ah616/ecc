@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/tournament_models.dart';
 
 class ScannedPlayerSlot {
@@ -63,92 +62,76 @@ class MatchedScanRow {
   });
 }
 
-enum GeminiErrorCode {
-  missingApiKey,
-  invalidApiKey,
+enum AiScannerErrorCode {
+  noQuotaAssigned,
+  invalidConfig,
   rateLimited,
   networkError,
   parseError,
 }
 
-class GeminiScannerException implements Exception {
-  final GeminiErrorCode code;
+class AiScannerException implements Exception {
+  final AiScannerErrorCode code;
   final String message;
 
-  const GeminiScannerException(this.code, this.message);
+  const AiScannerException(this.code, this.message);
 
   @override
   String toString() => message;
 }
 
-const String _kGeminiApiBase =
+const String _kVisionApiBase =
     'https://generativelanguage.googleapis.com/v1beta';
-const List<String> _kPreferredFlashModels = <String>[
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash',
+const List<String> _kDefaultActiveModels = <String>[
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
 ];
 
-String _storageKeyForEmail(String prefix, String? userEmail) {
-  final clean = (userEmail ?? '').trim().toLowerCase();
-  return '${prefix}_${clean.isEmpty ? 'default' : clean}';
-}
-
-String sanitizeGeminiApiKey(String raw) {
+String sanitizeApiKeyToken(String raw) {
   return raw
       .trim()
       .replaceAll(RegExp(r'''^["']+|["']+$'''), '')
       .replaceAll(RegExp(r'\s+'), '');
 }
 
-String maskGeminiApiKey(String rawKey) {
-  final clean = sanitizeGeminiApiKey(rawKey);
+List<String> parseMultiApiKeyInput(String rawText) {
+  if (rawText.trim().isEmpty) return const [];
+  final unique = <String>{};
+  for (final part in rawText.split(RegExp(r'[\r\n,;|\s]+'))) {
+    final clean = sanitizeApiKeyToken(part);
+    if (clean.length >= 16 && clean.length <= 256) {
+      unique.add(clean);
+    }
+    if (unique.length >= 25) break;
+  }
+  return unique.toList(growable: false);
+}
+
+String maskApiKey(String rawKey) {
+  final clean = sanitizeApiKeyToken(rawKey);
   if (clean.isEmpty) return '';
   if (clean.length <= 10) return '${clean.substring(0, 4)}...';
   return '${clean.substring(0, 6)}...${clean.substring(clean.length - 4)}';
 }
 
-Future<String> getStoredGeminiApiKey(String? userEmail) async {
-  final prefs = await SharedPreferences.getInstance();
-  final raw =
-      prefs.getString(_storageKeyForEmail('esp_calc_gemini_api_key', userEmail)) ??
-          '';
-  return sanitizeGeminiApiKey(raw);
-}
-
-Future<String> getStoredGeminiModel(String? userEmail) async {
-  final prefs = await SharedPreferences.getInstance();
-  return prefs.getString(
-          _storageKeyForEmail('esp_calc_gemini_model', userEmail)) ??
-      _kPreferredFlashModels.first;
-}
-
-Future<void> setStoredGeminiApiKey({
-  required String? userEmail,
-  required String apiKey,
-  String? verifiedModel,
-}) async {
-  final prefs = await SharedPreferences.getInstance();
-  final clean = sanitizeGeminiApiKey(apiKey);
-  final keyName = _storageKeyForEmail('esp_calc_gemini_api_key', userEmail);
-  final modelName = _storageKeyForEmail('esp_calc_gemini_model', userEmail);
-  if (clean.isEmpty) {
-    await prefs.remove(keyName);
-    await prefs.remove(modelName);
-    return;
+double _parseModelVersionScore(String id) {
+  final m = RegExp(r'^gemini-(\d+)(?:\.(\d+))?', caseSensitive: false)
+      .firstMatch(id);
+  if (m == null) {
+    return id == 'gemini-flash-latest' ? 3.79 : 3.0;
   }
-  await prefs.setString(keyName, clean);
-  if (verifiedModel != null && verifiedModel.isNotEmpty) {
-    await prefs.setString(modelName, verifiedModel);
-  }
+  final major = int.tryParse(m.group(1) ?? '0') ?? 0;
+  final minor = int.tryParse(m.group(2) ?? '0') ?? 0;
+  return major + (minor / 10.0);
 }
 
-Future<void> clearStoredGeminiApiKey(String? userEmail) async {
-  await setStoredGeminiApiKey(userEmail: userEmail, apiKey: '');
-}
+({List<String> liteModels, List<String> standardModels})
+    rankVisionModelsFromCatalog(List<dynamic> entries) {
+  final lite = <String>[];
+  final standard = <String>[];
+  final legacyFallback = <String>[];
 
-List<String> _selectVisionFlashModels(List<dynamic> entries) {
-  final available = <String>{};
   for (final raw in entries) {
     if (raw is! Map) continue;
     final id = ((raw['name'] as String?) ?? '')
@@ -160,31 +143,83 @@ List<String> _selectVisionFlashModels(List<dynamic> entries) {
         const <String>[];
     if (id.isEmpty || !methods.contains('generateContent')) continue;
     final lower = id.toLowerCase();
+    if (!lower.contains('gemini') || !lower.contains('flash')) continue;
+
     if (lower.contains('tts') ||
         lower.contains('embedding') ||
         lower.contains('imagen') ||
-        lower.contains('image-generation') ||
+        lower.contains('image') ||
         lower.contains('audio') ||
-        lower.contains('veo')) {
+        lower.contains('veo') ||
+        lower.contains('live') ||
+        lower.contains('thinking') ||
+        lower.contains('computer-use') ||
+        lower.contains('robotics') ||
+        lower.startsWith('gemini-1.') ||
+        lower.startsWith('gemini-2.0')) {
       continue;
     }
-    if (lower.contains('gemini') && lower.contains('flash')) {
-      available.add(id);
+
+    final ver = _parseModelVersionScore(lower);
+    if (ver < 3.0) {
+      legacyFallback.add(id);
+      continue;
+    }
+
+    if (lower.contains('lite')) {
+      lite.add(id);
+    } else {
+      standard.add(id);
     }
   }
 
-  final ordered = <String>[];
-  for (final pref in _kPreferredFlashModels) {
-    if (available.contains(pref)) ordered.add(pref);
+  List<String> sortDesc(List<String> arr) {
+    final list = arr.toSet().toList();
+    list.sort((a, b) {
+      final diff = _parseModelVersionScore(b) - _parseModelVersionScore(a);
+      if (diff.abs() > 0.001) return diff > 0 ? 1 : -1;
+      final aPrev = (a.contains('exp') || a.contains('preview')) ? 1 : 0;
+      final bPrev = (b.contains('exp') || b.contains('preview')) ? 1 : 0;
+      if (aPrev != bPrev) return aPrev.compareTo(bPrev);
+      return b.compareTo(a);
+    });
+    return list;
   }
-  final sortedRest = available.toList()..sort((a, b) => b.compareTo(a));
-  for (final id in sortedRest) {
-    if (!ordered.contains(id)) ordered.add(id);
+
+  final sortedLite = sortDesc(lite);
+  final sortedStd = sortDesc(standard);
+
+  if (sortedLite.isEmpty && sortedStd.isEmpty) {
+    if (legacyFallback.isNotEmpty) {
+      return (
+        liteModels: const <String>[],
+        standardModels: sortDesc(legacyFallback).take(3).toList(),
+      );
+    }
+    return (
+      liteModels: const <String>['gemini-3.5-flash-lite'],
+      standardModels: const <String>[
+        'gemini-3.8-flash',
+        'gemini-flash-latest',
+      ],
+    );
   }
-  return ordered.isNotEmpty ? ordered : List<String>.from(_kPreferredFlashModels);
+
+  return (
+    liteModels: sortedLite.take(3).toList(),
+    standardModels: sortedStd.take(3).toList(),
+  );
 }
 
-Future<({ int statusCode, String body })> _geminiHttpRequest({
+final Map<
+    String,
+    ({
+      DateTime fetchedAt,
+      List<String> liteModels,
+      List<String> standardModels,
+    })> _kModelCatalogCache = {};
+
+Future<({int statusCode, String body})> _visionHttpRequest({
   required String method,
   required String url,
   required String apiKey,
@@ -209,59 +244,133 @@ Future<({ int statusCode, String body })> _geminiHttpRequest({
   }
 }
 
-Future<({ bool valid, String? model, String? error })> verifyGeminiApiKey(
-  String rawKey,
-) async {
-  final cleanKey = sanitizeGeminiApiKey(rawKey);
-  if (cleanKey.length < 20) {
+Future<({List<String> liteModels, List<String> standardModels})>
+    _resolveActiveModelsForKey(String apiKey) async {
+  final hit = _kModelCatalogCache[apiKey];
+  if (hit != null &&
+      DateTime.now().difference(hit.fetchedAt).inHours < 6) {
+    return (liteModels: hit.liteModels, standardModels: hit.standardModels);
+  }
+
+  try {
+    final res = await _visionHttpRequest(
+      method: 'GET',
+      url: '$_kVisionApiBase/models',
+      apiKey: apiKey,
+    );
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map && decoded['models'] is List) {
+        final ranked = rankVisionModelsFromCatalog(decoded['models'] as List);
+        _kModelCatalogCache[apiKey] = (
+          fetchedAt: DateTime.now(),
+          liteModels: ranked.liteModels,
+          standardModels: ranked.standardModels,
+        );
+        return ranked;
+      }
+    }
+  } catch (_) {}
+
+  return (
+    liteModels: <String>[_kDefaultActiveModels[0]],
+    standardModels: <String>[
+      _kDefaultActiveModels[1],
+      _kDefaultActiveModels[2],
+    ],
+  );
+}
+
+String _currentPacificDayKey() {
+  final pt = DateTime.now().toUtc().subtract(const Duration(hours: 8));
+  return '${pt.year}-${pt.month.toString().padLeft(2, '0')}-${pt.day.toString().padLeft(2, '0')}';
+}
+
+String _exhaustedDayStamp = '';
+final Set<String> _exhaustedKeyModelsToday = <String>{};
+
+bool _isMarkedExhaustedToday(String apiKey, String model) {
+  final today = _currentPacificDayKey();
+  if (_exhaustedDayStamp != today) {
+    _exhaustedDayStamp = today;
+    _exhaustedKeyModelsToday.clear();
+    return false;
+  }
+  final tail =
+      apiKey.length > 8 ? apiKey.substring(apiKey.length - 8) : apiKey;
+  return _exhaustedKeyModelsToday.contains('$tail::$model');
+}
+
+void _markExhaustedToday(String apiKey, String model) {
+  final today = _currentPacificDayKey();
+  if (_exhaustedDayStamp != today) {
+    _exhaustedDayStamp = today;
+    _exhaustedKeyModelsToday.clear();
+  }
+  final tail =
+      apiKey.length > 8 ? apiKey.substring(apiKey.length - 8) : apiKey;
+  _exhaustedKeyModelsToday.add('$tail::$model');
+}
+
+/// Admin-only helper to verify an API key in Admin Dashboard -> AI / API Management.
+Future<({bool valid, String? primaryModel, String? error})>
+    verifyAdminAiApiKey(String rawKey) async {
+  final cleanKey = sanitizeApiKeyToken(rawKey);
+  if (cleanKey.length < 16) {
     return (
       valid: false,
-      model: null,
-      error: 'Paste a complete Google AI Studio API key (starts with AIza...).',
+      primaryModel: null,
+      error: 'Paste a complete API key.',
     );
   }
 
-  var candidateModels = List<String>.from(_kPreferredFlashModels);
+  var modelsToTest = List<String>.from(_kDefaultActiveModels);
   try {
-    final res = await _geminiHttpRequest(
+    final res = await _visionHttpRequest(
       method: 'GET',
-      url: '$_kGeminiApiBase/models',
+      url: '$_kVisionApiBase/models',
       apiKey: cleanKey,
     );
-
     if (res.statusCode == 400 ||
         res.statusCode == 401 ||
         res.statusCode == 403) {
       return (
         valid: false,
-        model: null,
-        error:
-            'Invalid Gemini API key. Copy the exact key from Google AI Studio (aistudio.google.com/apikey).',
+        primaryModel: null,
+        error: 'Invalid or unauthorized API key.',
       );
     }
-
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final decoded = jsonDecode(res.body);
       if (decoded is Map && decoded['models'] is List) {
-        candidateModels = _selectVisionFlashModels(decoded['models'] as List);
+        final ranked = rankVisionModelsFromCatalog(decoded['models'] as List);
+        _kModelCatalogCache[cleanKey] = (
+          fetchedAt: DateTime.now(),
+          liteModels: ranked.liteModels,
+          standardModels: ranked.standardModels,
+        );
+        modelsToTest = <String>[
+          ...ranked.liteModels,
+          ...ranked.standardModels,
+        ];
       }
     }
   } catch (_) {
     return (
       valid: false,
-      model: null,
-      error:
-          'Could not reach Google Gemini servers. Check your internet connection and try again.',
+      primaryModel: null,
+      error: 'Network error while verifying key. Check connection.',
     );
   }
 
   var sawRateLimit = false;
-  for (final model in candidateModels.take(3)) {
+  var lastMsg = '';
+  for (final model in modelsToTest.take(5)) {
     try {
-      final ping = await _geminiHttpRequest(
+      final ping = await _visionHttpRequest(
         method: 'POST',
         url:
-            '$_kGeminiApiBase/models/${Uri.encodeComponent(model)}:generateContent',
+            '$_kVisionApiBase/models/${Uri.encodeComponent(model)}:generateContent',
         apiKey: cleanKey,
         jsonBody: jsonEncode({
           'contents': [
@@ -277,46 +386,43 @@ Future<({ bool valid, String? model, String? error })> verifyGeminiApiKey(
           },
         }),
       );
-
       if (ping.statusCode >= 200 && ping.statusCode < 300) {
-        return (valid: true, model: model, error: null);
+        return (valid: true, primaryModel: model, error: null);
       }
       if (ping.statusCode == 429) {
         sawRateLimit = true;
         continue;
       }
-      if (ping.statusCode == 400 ||
-          ping.statusCode == 401 ||
-          ping.statusCode == 403) {
-        String msg =
-            'API key rejected by Google AI Studio. Check key permissions.';
-        try {
-          final errMap = jsonDecode(ping.body);
-          if (errMap is Map &&
-              errMap['error'] is Map &&
-              errMap['error']['message'] is String) {
-            msg = errMap['error']['message'] as String;
-          }
-        } catch (_) {}
-        if (RegExp(r'api.?key', caseSensitive: false).hasMatch(msg) ||
-            ping.statusCode != 400) {
-          return (valid: false, model: null, error: msg);
+      try {
+        final errMap = jsonDecode(ping.body);
+        if (errMap is Map &&
+            errMap['error'] is Map &&
+            errMap['error']['message'] is String) {
+          lastMsg = errMap['error']['message'] as String;
         }
+      } catch (_) {}
+      if (ping.statusCode == 401 ||
+          ping.statusCode == 403 ||
+          (ping.statusCode == 400 &&
+              RegExp(r'api.?key', caseSensitive: false).hasMatch(lastMsg))) {
+        return (
+          valid: false,
+          primaryModel: null,
+          error: lastMsg.isNotEmpty ? lastMsg : 'API key rejected.',
+        );
       }
-    } catch (_) {
-      // Try next fallback model
-    }
+    } catch (_) {}
   }
 
   if (sawRateLimit) {
-    return (valid: true, model: candidateModels.first, error: null);
+    return (valid: true, primaryModel: modelsToTest.first, error: null);
   }
-
   return (
     valid: false,
-    model: null,
-    error:
-        'Could not verify generateContent access for this key. Generate a fresh key at aistudio.google.com/apikey.',
+    primaryModel: null,
+    error: lastMsg.isNotEmpty
+        ? lastMsg
+        : 'No active vision model responded for this API key.',
   );
 }
 
@@ -815,7 +921,8 @@ List<ScannedRankRow> mergeAndDeduplicateScans(
         confidence: math.max(existing.confidence, row.confidence),
         isEdgeClipped: existing.isEdgeClipped && row.isEdgeClipped,
         sourceImageIndex: primary.sourceImageIndex,
-        players: primary.players.isNotEmpty ? primary.players : secondary.players,
+        players:
+            primary.players.isNotEmpty ? primary.players : secondary.players,
         aiMatchedTeamId: primary.aiMatchedTeamId ?? secondary.aiMatchedTeamId,
       );
     }
@@ -1060,10 +1167,10 @@ List<String> extractLearnableTokens(List<String> normalizedTokens) {
 }
 
 // ============================================================================
-// Gemini Multimodal Free Fire Post-Match Scoreboard Engine
+// Multimodal AI Free Fire Post-Match Scoreboard Engine (Multi-Key Failover)
 // ============================================================================
 
-const Map<String, dynamic> _kGeminiResponseSchema = {
+const Map<String, dynamic> _kScoreboardResponseSchema = {
   'type': 'OBJECT',
   'properties': {
     'rows': {
@@ -1122,7 +1229,7 @@ const Map<String, dynamic> _kGeminiResponseSchema = {
   'required': ['rows'],
 };
 
-String _buildFreeFireGeminiPrompt(List<Team> teams, int imageCount) {
+String _buildFreeFireVisionPrompt(List<Team> teams, int imageCount) {
   final rosterPayload = teams.map((t) {
     final knownPlayers = <String>{
       ...t.players.map((s) => s.trim()).where((s) => s.isNotEmpty),
@@ -1173,7 +1280,7 @@ String _cleanExtractedIgn(String raw) {
       .trim();
 }
 
-List<MatchedScanRow> parseGeminiStandingsJson(
+List<MatchedScanRow> parseAiStandingsJson(
   String rawJsonText,
   List<Team> teams, {
   int maxTeams = 24,
@@ -1188,9 +1295,9 @@ List<MatchedScanRow> parseGeminiStandingsJson(
   try {
     decoded = jsonDecode(cleanedText);
   } catch (_) {
-    throw const GeminiScannerException(
-      GeminiErrorCode.parseError,
-      'Gemini returned an unreadable response. Please tap Re-Scan.',
+    throw const AiScannerException(
+      AiScannerErrorCode.parseError,
+      'AI returned an unreadable scoreboard response. Please tap Re-Scan.',
     );
   }
 
@@ -1217,9 +1324,7 @@ List<MatchedScanRow> parseGeminiStandingsJson(
       if (p is! Map) continue;
       final ign = _cleanExtractedIgn('${p['ign'] ?? ''}');
       final kRaw = p['kills'];
-      final kVal = kRaw is num
-          ? kRaw.round()
-          : (int.tryParse('$kRaw') ?? 0);
+      final kVal = kRaw is num ? kRaw.round() : (int.tryParse('$kRaw') ?? 0);
       final kills = kVal.clamp(0, 99);
       if (ign.isNotEmpty || kills > 0) {
         players.add(ScannedPlayerSlot(ign: ign, kills: kills));
@@ -1259,7 +1364,8 @@ List<MatchedScanRow> parseGeminiStandingsJson(
     );
   }
 
-  final deduplicated = mergeAndDeduplicateScans([converted], maxTeams: maxTeams);
+  final deduplicated =
+      mergeAndDeduplicateScans([converted], maxTeams: maxTeams);
   return matchScannedRowsToTeams(deduplicated, teams);
 }
 
@@ -1299,7 +1405,6 @@ Future<Map<String, dynamic>> _fileToInlineImagePart(String path) async {
     };
   }
 
-  // Downscale oversized > 2.5 MB screenshots cleanly while keeping crisp text
   final codec = await ui.instantiateImageCodec(rawBytes, targetWidth: 1600);
   final frame = await codec.getNextFrame();
   final pngData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
@@ -1320,18 +1425,25 @@ Future<Map<String, dynamic>> _fileToInlineImagePart(String path) async {
   };
 }
 
-Future<List<MatchedScanRow>> scanMatchScreenshotsWithGemini({
+/// Scans 1-3 match screenshots using the user's admin-assigned pool of AI keys,
+/// automatically failing over across multiple keys & active Flash-Lite / Flash models.
+Future<List<MatchedScanRow>> scanMatchScreenshotsWithAi({
   required List<String> filePaths,
   required List<Team> teams,
-  required String? userEmail,
+  required List<String> assignedApiKeys,
 }) async {
   if (filePaths.isEmpty) return const [];
 
-  final apiKey = await getStoredGeminiApiKey(userEmail);
-  if (apiKey.isEmpty) {
-    throw const GeminiScannerException(
-      GeminiErrorCode.missingApiKey,
-      'Add your personal Gemini API key in Home -> User Profile (top-right PFP) before using AI Auto Standings.',
+  final cleanKeys = assignedApiKeys
+      .map(sanitizeApiKeyToken)
+      .where((k) => k.length >= 16)
+      .toSet()
+      .toList();
+
+  if (cleanKeys.isEmpty) {
+    throw const AiScannerException(
+      AiScannerErrorCode.noQuotaAssigned,
+      'AI Auto Standings (Beta) is not yet activated on your account. Please ask an administrator to enable your AI scan quota.',
     );
   }
 
@@ -1340,25 +1452,48 @@ Future<List<MatchedScanRow>> scanMatchScreenshotsWithGemini({
     imageParts.add(await _fileToInlineImagePart(p));
   }
 
-  final preferredModel = await getStoredGeminiModel(userEmail);
-  final modelsToTry = <String>{
-    preferredModel,
-    ..._kPreferredFlashModels,
-  }.toList();
+  final resolvedPerKey = await Future.wait(
+    cleanKeys.map((k) async {
+      final r = await _resolveActiveModelsForKey(k);
+      return (
+        key: k,
+        liteModels: r.liteModels,
+        standardModels: r.standardModels,
+      );
+    }),
+  );
+
+  final allAttempts = <({String key, String model})>[];
+  for (final item in resolvedPerKey) {
+    for (final m in item.liteModels) {
+      allAttempts.add((key: item.key, model: m));
+    }
+  }
+  for (final item in resolvedPerKey) {
+    for (final m in item.standardModels) {
+      allAttempts.add((key: item.key, model: m));
+    }
+  }
+
+  final freshAttempts = allAttempts
+      .where((a) => !_isMarkedExhaustedToday(a.key, a.model))
+      .toList();
+  final schedule = freshAttempts.isNotEmpty ? freshAttempts : allAttempts;
+
   final maxTeams = math.max(12, teams.length);
-  final promptText = _buildFreeFireGeminiPrompt(teams, imageParts.length);
+  final promptText = _buildFreeFireVisionPrompt(teams, imageParts.length);
 
   var sawRateLimit = false;
-  var lastErrorMsg = '';
+  var sawInvalidKey = false;
 
-  for (final model in modelsToTry) {
+  for (final attempt in schedule) {
     late final ({int statusCode, String body}) response;
     try {
-      response = await _geminiHttpRequest(
+      response = await _visionHttpRequest(
         method: 'POST',
         url:
-            '$_kGeminiApiBase/models/${Uri.encodeComponent(model)}:generateContent',
-        apiKey: apiKey,
+            '$_kVisionApiBase/models/${Uri.encodeComponent(attempt.model)}:generateContent',
+        apiKey: attempt.key,
         jsonBody: jsonEncode({
           'contents': [
             {
@@ -1371,14 +1506,14 @@ Future<List<MatchedScanRow>> scanMatchScreenshotsWithGemini({
           'generationConfig': {
             'temperature': 0,
             'responseMimeType': 'application/json',
-            'responseSchema': _kGeminiResponseSchema,
+            'responseSchema': _kScoreboardResponseSchema,
           },
         }),
       );
     } catch (_) {
-      throw const GeminiScannerException(
-        GeminiErrorCode.networkError,
-        'Network error while contacting Google Gemini AI. Check your internet connection and retry.',
+      throw const AiScannerException(
+        AiScannerErrorCode.networkError,
+        'Network error while contacting AI Vision. Check your internet connection and retry.',
       );
     }
 
@@ -1399,62 +1534,68 @@ Future<List<MatchedScanRow>> scanMatchScreenshotsWithGemini({
         }
       }
       if (rawText.trim().isEmpty) {
-        throw const GeminiScannerException(
-          GeminiErrorCode.parseError,
-          'Gemini returned an empty scoreboard response. Try clearer full-screen match screenshots.',
+        throw const AiScannerException(
+          AiScannerErrorCode.parseError,
+          'AI returned an empty scoreboard response. Try clearer full-screen match screenshots.',
         );
       }
-      final matched = parseGeminiStandingsJson(
-        rawText,
-        teams,
-        maxTeams: maxTeams,
-      );
-      await setStoredGeminiApiKey(
-        userEmail: userEmail,
-        apiKey: apiKey,
-        verifiedModel: model,
-      );
-      return matched;
+      return parseAiStandingsJson(rawText, teams, maxTeams: maxTeams);
     }
 
     if (response.statusCode == 429) {
       sawRateLimit = true;
+      try {
+        final errMap = jsonDecode(response.body);
+        final msg = (errMap is Map &&
+                errMap['error'] is Map &&
+                errMap['error']['message'] is String)
+            ? errMap['error']['message'] as String
+            : '';
+        if (RegExp(r'per.?day|daily|rpd|quota', caseSensitive: false)
+            .hasMatch(msg)) {
+          _markExhaustedToday(attempt.key, attempt.model);
+        }
+      } catch (_) {}
       continue;
     }
 
-    String apiMessage = '';
-    try {
-      final errMap = jsonDecode(response.body);
-      if (errMap is Map &&
-          errMap['error'] is Map &&
-          errMap['error']['message'] is String) {
-        apiMessage = errMap['error']['message'] as String;
-      }
-    } catch (_) {}
-    lastErrorMsg = apiMessage;
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      sawInvalidKey = true;
+      continue;
+    }
 
-    if (response.statusCode == 401 ||
-        response.statusCode == 403 ||
-        (response.statusCode == 400 &&
-            RegExp(r'api.?key', caseSensitive: false).hasMatch(apiMessage))) {
-      throw const GeminiScannerException(
-        GeminiErrorCode.invalidApiKey,
-        'Your Gemini API key was rejected by Google AI Studio. Open Home -> User Profile (top-right PFP) to update your API key.',
-      );
+    if (response.statusCode == 400) {
+      try {
+        final errMap = jsonDecode(response.body);
+        final msg = (errMap is Map &&
+                errMap['error'] is Map &&
+                errMap['error']['message'] is String)
+            ? errMap['error']['message'] as String
+            : '';
+        if (RegExp(r'api.?key', caseSensitive: false).hasMatch(msg)) {
+          sawInvalidKey = true;
+        }
+      } catch (_) {}
+      continue;
     }
   }
 
   if (sawRateLimit) {
-    throw const GeminiScannerException(
-      GeminiErrorCode.rateLimited,
-      'Gemini free-tier rate limit reached. Wait ~30 seconds and tap Re-Scan, or switch to another Google AI Studio API key.',
+    throw const AiScannerException(
+      AiScannerErrorCode.rateLimited,
+      'Daily AI scan limit reached across your account quota for today. Please try again later or use Rapid #1-#12 mode.',
     );
   }
 
-  throw GeminiScannerException(
-    GeminiErrorCode.parseError,
-    lastErrorMsg.isNotEmpty
-        ? lastErrorMsg
-        : 'Gemini AI scan failed. Please try again.',
+  if (sawInvalidKey) {
+    throw const AiScannerException(
+      AiScannerErrorCode.invalidConfig,
+      'AI scan quota configuration needs attention. Please contact an administrator.',
+    );
+  }
+
+  throw const AiScannerException(
+    AiScannerErrorCode.parseError,
+    'AI scan could not complete right now. Please try again.',
   );
 }

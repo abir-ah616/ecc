@@ -120,9 +120,9 @@ class _SquadPlayersSheetState extends State<SquadPlayersSheet> {
             child: Column(
               children: [
                 SheetHeader(
-                  title: 'Squad Team Members (Gemini AI)',
+                  title: 'Squad Team Members (Beta)',
                   subtitle:
-                      'Add or edit player IGNs anytime · Gemini matches stylish symbols',
+                      'Add or edit player IGNs anytime · AI Vision matches stylish symbols',
                   trailing: IconButton(
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(
@@ -171,7 +171,7 @@ class _SquadPlayersSheetState extends State<SquadPlayersSheet> {
                                       ),
                                       SizedBox(width: 6),
                                       StatusPill(
-                                        label: 'GEMINI AI',
+                                        label: 'BETA',
                                         backgroundColor: AppColors.accentSurface,
                                         borderColor: AppColors.accentBorder,
                                         textColor: AppColors.accentBright,

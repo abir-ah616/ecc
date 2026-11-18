@@ -177,7 +177,7 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
         </div>
       </div>
 
-      {/* Gemini AI Screenshot Auto-Result Toggle */}
+      {/* AI Screenshot Auto-Result Toggle */}
       {onAutoResultFromScreenshotChange && (
         <div className="pt-1 space-y-2">
           <button
@@ -209,11 +209,11 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
                     AI Auto Result from Screenshot
                   </span>
                   <span className="rounded-md border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                    Gemini AI
+                    Beta
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-                  Powered by your Gemini API key (configured in Home Profile). Add 1-5 squad member IGNs now or anytime later.
+                  AI Vision auto-standings (Beta). Add 1-5 squad member IGNs now or anytime later.
                 </p>
               </div>
             </div>

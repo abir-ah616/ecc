@@ -16,7 +16,6 @@ class MatchScreen extends StatefulWidget {
   final VoidCallback onOpenPoster;
   final VoidCallback onCreateTournament;
   final VoidCallback onEditEvent;
-  final VoidCallback? onOpenAccountSheet;
   final String? preferredMatchId;
   final int matchFocusNonce;
 
@@ -27,7 +26,6 @@ class MatchScreen extends StatefulWidget {
     required this.onOpenPoster,
     required this.onCreateTournament,
     required this.onEditEvent,
-    this.onOpenAccountSheet,
     this.preferredMatchId,
     this.matchFocusNonce = 0,
   });
@@ -72,8 +70,6 @@ class _MatchScreenState extends State<MatchScreen> {
     TournamentRecord tournament,
     MatchRecord match,
   ) async {
-    final userEmail = widget.authStore?.firebaseUser?.email ??
-        widget.authStore?.allowedRecord?.email;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -82,8 +78,8 @@ class _MatchScreenState extends State<MatchScreen> {
         matchNumber: match.matchNumber,
         teams: tournament.teams,
         autoResultEnabled: tournament.settings.autoResultFromScreenshot,
-        userEmail: userEmail,
-        onOpenAccountSheet: widget.onOpenAccountSheet,
+        assignedApiKeys: widget.authStore?.userAiApiKeys ?? const [],
+        isAdmin: widget.authStore?.isAdmin ?? false,
         onUpdatePlayers: (updatedTeams, autoResultEnabled) {
           widget.store.updateTournament(
             tournament.id,
@@ -770,7 +766,7 @@ class _MatchScreenState extends State<MatchScreen> {
                                   ),
                                   SizedBox(width: 4),
                                   Text(
-                                    'AI Scan',
+                                    'AI Scan (Beta)',
                                     style: TextStyle(
                                       color: AppColors.accentBright,
                                       fontSize: 11.5,

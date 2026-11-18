@@ -419,7 +419,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                             : 'border border-amber-400/40 bg-amber-500/15 text-amber-300'
                         }`}
                       >
-                        Gemini
+                        Beta
                       </span>
                     </button>
 

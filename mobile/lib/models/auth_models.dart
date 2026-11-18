@@ -24,12 +24,30 @@ String userRoleToString(UserRole role) {
   }
 }
 
+List<String> sanitizeAiApiKeyList(dynamic raw) {
+  if (raw is! List) return const <String>[];
+  final unique = <String>{};
+  for (final item in raw) {
+    if (item is! String) continue;
+    final clean = item
+        .trim()
+        .replaceAll(RegExp(r'''^["']+|["']+$'''), '')
+        .replaceAll(RegExp(r'\s+'), '');
+    if (clean.length >= 16 && clean.length <= 256) {
+      unique.add(clean);
+    }
+    if (unique.length >= 25) break;
+  }
+  return unique.toList(growable: false);
+}
+
 class AllowedUserRecord {
   final String email;
   final String displayName;
   final UserRole role;
   final UserStatus status;
   final bool allowAiAuto;
+  final List<String> aiApiKeys;
   final String notes;
   final String? addedBy;
   final int createdAt;
@@ -44,6 +62,7 @@ class AllowedUserRecord {
     required this.role,
     required this.status,
     this.allowAiAuto = false,
+    this.aiApiKeys = const [],
     this.notes = '',
     this.addedBy,
     required this.createdAt,
@@ -62,6 +81,7 @@ class AllowedUserRecord {
             ? UserStatus.disabled
             : UserStatus.active,
         allowAiAuto: (data['allowAiAuto'] as bool?) ?? false,
+        aiApiKeys: sanitizeAiApiKeyList(data['aiApiKeys']),
         notes: (data['notes'] as String?) ?? '',
         addedBy: data['addedBy'] as String?,
         createdAt: (data['createdAt'] as num?)?.toInt() ?? 0,
@@ -77,6 +97,7 @@ class AllowedUserRecord {
         'role': userRoleToString(role),
         'status': status == UserStatus.disabled ? 'disabled' : 'active',
         'allowAiAuto': allowAiAuto,
+        if (aiApiKeys.isNotEmpty) 'aiApiKeys': aiApiKeys,
         'notes': notes,
         if (addedBy != null) 'addedBy': addedBy,
         'createdAt': createdAt,
