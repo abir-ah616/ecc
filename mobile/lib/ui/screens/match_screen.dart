@@ -564,6 +564,9 @@ class _MatchScreenState extends State<MatchScreen> {
                     case 'edit':
                       widget.onEditEvent();
                       break;
+                    case 'players':
+                      _openPlayersSheet(tournament);
+                      break;
                     case 'toggleEnd':
                       if (tournament.isEnded ||
                           tournament.settings.isManuallyEnded) {
@@ -586,8 +589,13 @@ class _MatchScreenState extends State<MatchScreen> {
                 itemBuilder: (_) => [
                   const PopupMenuItem(
                     value: 'edit',
-                    child: Text('Edit Teams & Settings'),
+                    child: Text('Squads & Settings'),
                   ),
+                  if (widget.authStore?.canUseAiAuto ?? false)
+                    const PopupMenuItem(
+                      value: 'players',
+                      child: Text('Squad Players (AI Scan)'),
+                    ),
                   PopupMenuItem(
                     value: 'toggleEnd',
                     child: Text(
@@ -750,6 +758,12 @@ class _MatchScreenState extends State<MatchScreen> {
                 )
               : _buildStandings(tournament, activeMatch, standingsResult),
         ),
+        _buildMatchBottomActionBar(
+          tournament: tournament,
+          activeMatch: activeMatch,
+          duplicateRanks: duplicateRanks,
+          standingsResult: standingsResult,
+        ),
       ],
     );
   }
@@ -760,7 +774,6 @@ class _MatchScreenState extends State<MatchScreen> {
     int unrankedCount,
     List<String> duplicateRanks,
   ) {
-    final completedReady = !activeMatch.isCompleted && duplicateRanks.isEmpty;
     final teamCount = tournament.teams.length;
     final rankedCount = (teamCount - unrankedCount).clamp(0, teamCount);
     final totalKills = tournament.teams.fold<int>(
@@ -768,10 +781,12 @@ class _MatchScreenState extends State<MatchScreen> {
       (sum, tm) => sum + (activeMatch.entries[tm.id]?.kills ?? 0),
     );
     final allPlacedCleanly = rankedCount == teamCount && duplicateRanks.isEmpty;
+    final showAiScan =
+        (widget.authStore?.canUseAiAuto ?? false) && !activeMatch.isCompleted;
 
     return Column(
       children: [
-        // Clean Scorecard Action Bar (Team List + Launch Full-Screen Rapid Overlay)
+        // Single Clean Scorecard Action Bar (Progress + Optional AI Scan + Rapid)
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
           child: Column(
@@ -779,24 +794,60 @@ class _MatchScreenState extends State<MatchScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$rankedCount/$teamCount Ranked · ${totalKills}K',
-                          style: kTabularNumbers.copyWith(
-                            color: duplicateRanks.isNotEmpty
-                                ? AppColors.crimson
-                                : allPlacedCleanly
-                                    ? AppColors.emerald
-                                    : AppColors.textPrimary,
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      '$rankedCount/$teamCount Ranked · ${totalKills}K',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: kTabularNumbers.copyWith(
+                        color: duplicateRanks.isNotEmpty
+                            ? AppColors.crimson
+                            : allPlacedCleanly
+                                ? AppColors.emerald
+                                : AppColors.textPrimary,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
+                  if (showAiScan) ...[
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        _openScannerSheet(tournament, activeMatch);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 11,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentSurface,
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(color: AppColors.accentBorder),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.document_scanner_rounded,
+                              size: 14,
+                              color: AppColors.accentBright,
+                            ),
+                            SizedBox(width: 5),
+                            Text(
+                              'AI Scan',
+                              style: TextStyle(
+                                color: AppColors.accentBright,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   if (!activeMatch.isCompleted)
                     FilledButton.icon(
                       onPressed: () async {
@@ -867,89 +918,6 @@ class _MatchScreenState extends State<MatchScreen> {
                       ),
                     ],
                   ),
-                ),
-              ],
-              if (widget.authStore?.canUseAiAuto ?? false) ...[
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          _openPlayersSheet(tournament);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.borderSubtle),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.group_outlined,
-                                size: 13.5,
-                                color: AppColors.accentBright,
-                              ),
-                              SizedBox(width: 5),
-                              Text(
-                                'Players',
-                                style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (!activeMatch.isCompleted) ...[
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            _openScannerSheet(tournament, activeMatch);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.accentSurface,
-                              borderRadius: BorderRadius.circular(10),
-                              border:
-                                  Border.all(color: AppColors.accentBorder),
-                            ),
-                            alignment: Alignment.center,
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.document_scanner_rounded,
-                                  size: 13.5,
-                                  color: AppColors.accentBright,
-                                ),
-                                SizedBox(width: 5),
-                                Text(
-                                  'AI Scan (Beta)',
-                                  style: TextStyle(
-                                    color: AppColors.accentBright,
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
                 ),
               ],
             ],
@@ -1199,55 +1167,108 @@ class _MatchScreenState extends State<MatchScreen> {
                   ),
                 ),
         ),
-
-        // Match Completion Bar (cleanly anchored above bottom nav bar)
-        Container(
-          decoration: const BoxDecoration(
-            color: AppColors.canvas,
-            border: Border(
-              top: BorderSide(color: AppColors.borderSubtle),
-            ),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
-          child: activeMatch.isCompleted
-              ? Row(
-                  children: [
-                    Expanded(
-                      child: SecondaryPillButton(
-                        label: 'Reopen Match ${activeMatch.matchNumber}',
-                        icon: Icons.lock_open_rounded,
-                        onPressed: () {
-                          HapticFeedback.mediumImpact();
-                          widget.store.reopenMatch(activeMatch.id);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: PrimaryPillButton(
-                        label: 'Export Poster',
-                        icon: Icons.photo_library_rounded,
-                        onPressed: widget.onOpenPoster,
-                      ),
-                    ),
-                  ],
-                )
-              : PrimaryPillButton(
-                  label: duplicateRanks.isNotEmpty
-                      ? 'Fix Duplicate Ranks First'
-                      : 'Complete Match ${activeMatch.matchNumber}',
-                  icon: Icons.check_circle_rounded,
-                  expand: true,
-                  onPressed: completedReady
-                      ? () {
-                          HapticFeedback.heavyImpact();
-                          widget.store.completeMatch(activeMatch.id);
-                          setState(() => _tab = 1);
-                        }
-                      : null,
-                ),
-        ),
       ],
+    );
+  }
+
+  Widget _buildMatchBottomActionBar({
+    required TournamentRecord tournament,
+    required MatchRecord activeMatch,
+    required List<String> duplicateRanks,
+    required StandingsResult standingsResult,
+  }) {
+    final completedReady = !activeMatch.isCompleted && duplicateRanks.isEmpty;
+    final matchIndex =
+        tournament.matches.indexWhere((m) => m.id == activeMatch.id);
+    final nextExistingMatch =
+        (matchIndex >= 0 && matchIndex < tournament.matches.length - 1)
+            ? tournament.matches[matchIndex + 1]
+            : null;
+    final maxAllowed = tournament.settings.mode == TournamentMode.championRush
+        ? tournament.settings.championRush.maxMatches
+        : tournament.settings.totalMatchesPlanned;
+    final canCreateNext = !standingsResult.tournamentConcluded &&
+        !tournament.isEnded &&
+        nextExistingMatch == null &&
+        tournament.matches.length < maxAllowed;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.canvas,
+        border: Border(
+          top: BorderSide(color: AppColors.borderSubtle),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+      child: activeMatch.isCompleted
+          ? Row(
+              children: [
+                Expanded(
+                  child: SecondaryPillButton(
+                    label: 'Reopen Match ${activeMatch.matchNumber}',
+                    icon: Icons.lock_open_rounded,
+                    onPressed: () {
+                      HapticFeedback.mediumImpact();
+                      widget.store.reopenMatch(activeMatch.id);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                if (nextExistingMatch != null)
+                  Expanded(
+                    child: PrimaryPillButton(
+                      label: 'Match ${nextExistingMatch.matchNumber}',
+                      icon: Icons.arrow_forward_rounded,
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          _selectedMatchId = nextExistingMatch.id;
+                          _tab = 0;
+                        });
+                      },
+                    ),
+                  )
+                else if (canCreateNext)
+                  Expanded(
+                    child: PrimaryPillButton(
+                      label: 'Start Match ${tournament.matches.length + 1}',
+                      icon: Icons.add_rounded,
+                      onPressed: () {
+                        HapticFeedback.mediumImpact();
+                        final nextId = widget.store.createMatch();
+                        if (nextId.isNotEmpty) {
+                          setState(() {
+                            _selectedMatchId = nextId;
+                            _tab = 0;
+                          });
+                        }
+                      },
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: PrimaryPillButton(
+                      label: 'Poster Studio',
+                      icon: Icons.photo_library_rounded,
+                      onPressed: widget.onOpenPoster,
+                    ),
+                  ),
+              ],
+            )
+          : PrimaryPillButton(
+              label: duplicateRanks.isNotEmpty
+                  ? 'Fix Duplicate Ranks First'
+                  : 'Complete Match ${activeMatch.matchNumber}',
+              icon: Icons.check_circle_rounded,
+              expand: true,
+              onPressed: completedReady
+                  ? () {
+                      HapticFeedback.heavyImpact();
+                      widget.store.completeMatch(activeMatch.id);
+                      setState(() => _tab = 1);
+                    }
+                  : null,
+            ),
     );
   }
 

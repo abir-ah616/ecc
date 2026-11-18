@@ -114,7 +114,7 @@ class _TactileCardState extends State<TactileCard> {
       },
       child: AnimatedScale(
         scale: _pressed ? 0.985 : 1.0,
-        duration: const Duration(milliseconds: 95),
+        duration: const Duration(milliseconds: 75),
         curve: Curves.easeOut,
         child: content,
       ),

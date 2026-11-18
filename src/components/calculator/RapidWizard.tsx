@@ -156,7 +156,7 @@ export const RapidWizard: React.FC<RapidWizardProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Rapid Entry"
-      className="fixed inset-0 z-[80] flex flex-col bg-[#06080D]/78 backdrop-blur-2xl select-none"
+      className="fixed inset-0 z-[80] flex flex-col bg-[#06080D]/80 backdrop-blur-xl transform-gpu select-none"
     >
       {/* Minimal Top Bar: Close left, Reverse & Redo right */}
       <div className="shrink-0 mx-auto flex w-full max-w-3xl items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 sm:px-6 sm:pt-5 [@media(max-height:520px)]:py-2">

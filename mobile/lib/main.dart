@@ -51,6 +51,7 @@ class EspCalcApp extends StatefulWidget {
 class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
   late final AuthStore _authStore;
   late final TournamentStore _tournamentStore;
+  late bool _hydratedSnapshot;
 
   @override
   void initState() {
@@ -58,12 +59,20 @@ class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _authStore = widget.authStoreOverride ?? AuthStore();
     _tournamentStore = widget.tournamentStoreOverride ?? TournamentStore();
+    _hydratedSnapshot = _tournamentStore.isHydrated;
     _authStore.addListener(_syncCloudBinding);
-    _tournamentStore.addListener(_syncCloudBinding);
+    _tournamentStore.addListener(_onRootStoreSignal);
     if (!widget.skipAutoInit) {
       _authStore.initialize();
       _tournamentStore.hydrate();
     }
+  }
+
+  void _onRootStoreSignal() {
+    if (_tournamentStore.isHydrated != _hydratedSnapshot && mounted) {
+      setState(() => _hydratedSnapshot = _tournamentStore.isHydrated);
+    }
+    _syncCloudBinding();
   }
 
   void _syncCloudBinding() {
@@ -84,6 +93,11 @@ class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !widget.skipAutoInit) {
       _authStore.onAppResumed();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _tournamentStore.flushPendingPersist();
     }
   }
 
@@ -91,10 +105,11 @@ class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _authStore.removeListener(_syncCloudBinding);
-    _tournamentStore.removeListener(_syncCloudBinding);
+    _tournamentStore.removeListener(_onRootStoreSignal);
     if (!widget.skipAutoInit) {
       CloudSyncService.instance.stop(_tournamentStore);
     }
+    _tournamentStore.flushPendingPersist();
     if (widget.authStoreOverride == null) _authStore.dispose();
     if (widget.tournamentStoreOverride == null) _tournamentStore.dispose();
     super.dispose();
@@ -107,7 +122,7 @@ class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
       home: AnimatedBuilder(
-        animation: Listenable.merge([_authStore, _tournamentStore]),
+        animation: _authStore,
         builder: (context, _) {
           final Widget child;
           if (_authStore.isLoading || !_tournamentStore.isHydrated) {
@@ -128,7 +143,7 @@ class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
           }
 
           return AnimatedSwitcher(
-            duration: const Duration(milliseconds: 240),
+            duration: const Duration(milliseconds: 220),
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeIn,
             child: child,
@@ -370,7 +385,7 @@ class _OrganizerShellState extends State<OrganizerShell> {
       _SlideUpPageRoute<void>(
         builder: (_) => Scaffold(
           backgroundColor: AppColors.canvas,
-          appBar: AppBar(title: const Text('Scoring Matrix')),
+          appBar: AppBar(title: const Text('Scoring Rules')),
           body: SafeArea(
             child: AnimatedBuilder(
               animation: widget.tournamentStore,
@@ -413,10 +428,6 @@ class _OrganizerShellState extends State<OrganizerShell> {
 
   @override
   Widget build(BuildContext context) {
-    final active = widget.tournamentStore.activeTournament;
-    final eventAccent = active != null
-        ? themePaletteFor(active.settings.theme).primary
-        : AppColors.accent;
     final dockAlignX = -1.0 + (2.0 * _tab.index / (_AppTab.values.length - 1));
 
     return Scaffold(
@@ -424,7 +435,19 @@ class _OrganizerShellState extends State<OrganizerShell> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: AmbientBackdrop(accentColor: eventAccent, intensity: 0.085),
+            child: AnimatedBuilder(
+              animation: widget.tournamentStore,
+              builder: (_, __) {
+                final active = widget.tournamentStore.activeTournament;
+                final eventAccent = active != null
+                    ? themePaletteFor(active.settings.theme).primary
+                    : AppColors.accent;
+                return AmbientBackdrop(
+                  accentColor: eventAccent,
+                  intensity: 0.085,
+                );
+              },
+            ),
           ),
           Column(
             children: [
@@ -434,8 +457,10 @@ class _OrganizerShellState extends State<OrganizerShell> {
                   child: IndexedStack(
                     index: _tab.index,
                     children: [
-                      RepaintBoundary(
-                        child: HomeScreen(
+                      _ScopedTabRebuild(
+                        store: widget.tournamentStore,
+                        isActive: _tab == _AppTab.home,
+                        childBuilder: () => HomeScreen(
                           store: widget.tournamentStore,
                           authStore: widget.authStore,
                           onCreateTournament: () => _openCreate(),
@@ -453,8 +478,10 @@ class _OrganizerShellState extends State<OrganizerShell> {
                           onOpenAccountSheet: _openAccountSheet,
                         ),
                       ),
-                      RepaintBoundary(
-                        child: MatchScreen(
+                      _ScopedTabRebuild(
+                        store: widget.tournamentStore,
+                        isActive: _tab == _AppTab.matches,
+                        childBuilder: () => MatchScreen(
                           store: widget.tournamentStore,
                           authStore: widget.authStore,
                           preferredMatchId: _focusedMatchId,
@@ -463,6 +490,8 @@ class _OrganizerShellState extends State<OrganizerShell> {
                               setState(() => _tab = _AppTab.poster),
                           onCreateTournament: () => _openCreate(),
                           onEditEvent: () {
+                            final active =
+                                widget.tournamentStore.activeTournament;
                             if (active != null) _openCreate(editing: active);
                           },
                         ),
@@ -470,11 +499,14 @@ class _OrganizerShellState extends State<OrganizerShell> {
                       RepaintBoundary(
                         child: PosterScreen(
                           store: widget.tournamentStore,
+                          isActive: _tab == _AppTab.poster,
                           onCreateTournament: () => _openCreate(),
                         ),
                       ),
-                      RepaintBoundary(
-                        child: HistoryScreen(
+                      _ScopedTabRebuild(
+                        store: widget.tournamentStore,
+                        isActive: _tab == _AppTab.history,
+                        childBuilder: () => HistoryScreen(
                           store: widget.tournamentStore,
                           onOpenMatches: () =>
                               setState(() => _tab = _AppTab.matches),
@@ -586,6 +618,69 @@ class _OrganizerShellState extends State<OrganizerShell> {
     if (_tab == next) return;
     HapticFeedback.selectionClick();
     setState(() => _tab = next);
+  }
+}
+
+/// Only rebuilds the currently active IndexedStack tab when [store] changes,
+/// deferring offscreen tab catch-up until that tab becomes visible.
+class _ScopedTabRebuild extends StatefulWidget {
+  final TournamentStore store;
+  final bool isActive;
+  final Widget Function() childBuilder;
+
+  const _ScopedTabRebuild({
+    required this.store,
+    required this.isActive,
+    required this.childBuilder,
+  });
+
+  @override
+  State<_ScopedTabRebuild> createState() => _ScopedTabRebuildState();
+}
+
+class _ScopedTabRebuildState extends State<_ScopedTabRebuild> {
+  Widget? _cachedChild;
+  bool _dirty = true;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.store.addListener(_onStoreChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ScopedTabRebuild oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.store != widget.store) {
+      oldWidget.store.removeListener(_onStoreChanged);
+      widget.store.addListener(_onStoreChanged);
+      _dirty = true;
+    }
+    if (widget.isActive && !oldWidget.isActive && _dirty) {
+      setState(() {});
+    }
+  }
+
+  void _onStoreChanged() {
+    _dirty = true;
+    if (widget.isActive && mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.store.removeListener(_onStoreChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.isActive || _cachedChild == null) {
+      _dirty = false;
+      _cachedChild = RepaintBoundary(child: widget.childBuilder());
+    }
+    return _cachedChild!;
   }
 }
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { toPng, toBlob } from 'html-to-image';
 import {
   Download,
@@ -14,7 +15,10 @@ import {
   FileText,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
-import { calculateSingleMatchStandings } from '../../lib/scoring';
+import {
+  calculateSingleMatchStandings,
+  calculateTournamentStandings,
+} from '../../lib/scoring';
 import { formatStandingsTextSummary } from '../../lib/rosterHelpers';
 import { ResultGraphic } from './ResultGraphic';
 import { GRAPHIC_THEMES, resolveThemePreset } from '../../lib/theme';
@@ -29,12 +33,22 @@ export const ResultView: React.FC = () => {
     matches,
     settings,
     setSettings,
-    getStandings,
     getActiveTournament,
     setCurrentTab,
     endTournament,
     reopenTournament,
-  } = useTournamentStore();
+  } = useTournamentStore(
+    useShallow((s) => ({
+      teams: s.teams,
+      matches: s.matches,
+      settings: s.settings,
+      setSettings: s.setSettings,
+      getActiveTournament: s.getActiveTournament,
+      setCurrentTab: s.setCurrentTab,
+      endTournament: s.endTournament,
+      reopenTournament: s.reopenTournament,
+    }))
+  );
 
   const activeTournament = getActiveTournament();
   const [viewMode, setViewMode] = useState<StandingsViewMode>('OVERALL');
@@ -80,7 +94,13 @@ export const ResultView: React.FC = () => {
     [matches]
   );
 
-  const overallResult = getStandings();
+  const overallResult = useMemo(
+    () =>
+      activeTournament
+        ? calculateTournamentStandings(teams, matches, settings)
+        : { standings: [], tournamentConcluded: false },
+    [activeTournament, teams, matches, settings]
+  );
   const singleMatchStandings = useMemo(() => {
     if (!selectedMatch) return overallResult.standings;
     return calculateSingleMatchStandings(
@@ -448,7 +468,7 @@ export const ResultView: React.FC = () => {
       <div className="glass-panel rounded-2xl p-3 sm:p-5">
         <div ref={previewStageRef} className="w-full flex justify-center">
           <div
-            className="relative overflow-hidden rounded-xl border border-white/[0.12] bg-black"
+            className="relative overflow-hidden rounded-xl border border-white/[0.12] bg-black will-change-transform"
             style={{
               width: `${scaledWidth}px`,
               height: `${scaledHeight}px`,
@@ -484,6 +504,33 @@ export const ResultView: React.FC = () => {
           </span>{' '}
           resolution
         </div>
+      </div>
+
+      {/* Sticky Quick Export Bar on Mobile/Tablet Screens */}
+      <div className="lg:hidden sticky bottom-[76px] [@media(max-height:539px)]:bottom-3 z-20 rounded-2xl border border-white/[0.12] bg-[#10141D]/95 p-2.5 flex items-center gap-2 shadow-[0_12px_28px_rgba(0,0,0,0.55)]">
+        <button
+          type="button"
+          onClick={handleCopyPng}
+          disabled={isExporting}
+          className="glass-pill inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-200 disabled:opacity-50 transition-colors cursor-pointer"
+        >
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-emerald-400" />
+          ) : (
+            <Copy className="h-3.5 w-3.5 text-slate-400" />
+          )}
+          <span>{copied ? 'Copied' : 'Copy PNG'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleDownloadPng}
+          disabled={isExporting}
+          className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2.5 text-xs font-extrabold text-zinc-950 disabled:opacity-50 transition-colors cursor-pointer"
+        >
+          <Download className="h-4 w-4" />
+          <span>{isExporting ? 'Rendering...' : 'Download PNG'}</span>
+        </button>
       </div>
 
       {/* Off-Screen Full-Resolution Export Target (Untouched Theme Engine) */}

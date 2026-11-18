@@ -55,17 +55,30 @@ class HomeScreen extends StatelessWidget {
       ),
       slivers: [
         SliverToBoxAdapter(
-          child: _HeroBackdropSection(
-            initial: initial,
-            photoUrl: user?.photoURL,
-            onOpenAccountSheet: onOpenAccountSheet,
+          child: RepaintBoundary(
+            child: _HeroBackdropSection(
+              initial: initial,
+              photoUrl: user?.photoURL,
+              onOpenAccountSheet: onOpenAccountSheet,
+            ),
           ),
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 2, 16, 114),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              _CreateTournamentBanner(onTap: onCreateTournament),
+              if (active != null) ...[
+                RepaintBoundary(
+                  child: _LiveTournamentBannerCard(
+                    active: active,
+                    onTap: onOpenMatches,
+                    onOpenPoster: onOpenPoster,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _CreateTournamentBanner(onTap: onCreateTournament),
+              ] else
+                _CreateTournamentBanner(onTap: onCreateTournament),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -110,11 +123,15 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              _LiveTournamentBannerCard(
-                active: active,
-                onTap: active != null ? onOpenMatches : onCreateTournament,
-              ),
+              if (active == null) ...[
+                const SizedBox(height: 12),
+                RepaintBoundary(
+                  child: _LiveTournamentBannerCard(
+                    active: null,
+                    onTap: onCreateTournament,
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -757,10 +774,12 @@ class _FeatureStudioTile extends StatelessWidget {
 class _LiveTournamentBannerCard extends StatelessWidget {
   final TournamentRecord? active;
   final VoidCallback onTap;
+  final VoidCallback? onOpenPoster;
 
   const _LiveTournamentBannerCard({
     required this.active,
     required this.onTap,
+    this.onOpenPoster,
   });
 
   @override
@@ -958,6 +977,47 @@ class _LiveTournamentBannerCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
+                      if (hasActive && onOpenPoster != null) ...[
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            onOpenPoster!();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xCC121622),
+                              borderRadius: BorderRadius.circular(11),
+                              border: Border.all(
+                                color: AppColors.accent.withValues(alpha: 0.45),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.photo_library_outlined,
+                                  size: 14,
+                                  color: AppColors.accentBright,
+                                ),
+                                SizedBox(width: 5),
+                                Text(
+                                  'Poster',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       const Icon(
                         Icons.chevron_right_rounded,
                         color: Color(0xFFCBD5E1),

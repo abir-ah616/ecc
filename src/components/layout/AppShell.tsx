@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   LayoutDashboard,
   PlusCircle,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 import { useAuthStore } from '../../store/authStore';
+import { calculateTournamentStandings } from '../../lib/scoring';
 import { Footer } from './Footer';
 import { EspCalcLogoMark, OrganizerAvatar } from '../ui/BrandLogo';
 import { AppDownloadToast } from '../download/AppDownloadToast';
@@ -43,32 +45,66 @@ export const AppShell: React.FC<AppShellProps> = ({
     getActiveTournament,
     currentTab,
     setCurrentTab,
+    teams,
     matches,
     settings,
     createMatch,
-    getStandings,
     endTournament,
     reopenTournament,
     undo,
-    history,
+    historyCount,
     cloudSyncStatus,
-  } = useTournamentStore();
+  } = useTournamentStore(
+    useShallow((s) => ({
+      tournaments: s.tournaments,
+      activeTournamentId: s.activeTournamentId,
+      getActiveTournament: s.getActiveTournament,
+      currentTab: s.currentTab,
+      setCurrentTab: s.setCurrentTab,
+      teams: s.teams,
+      matches: s.matches,
+      settings: s.settings,
+      createMatch: s.createMatch,
+      endTournament: s.endTournament,
+      reopenTournament: s.reopenTournament,
+      undo: s.undo,
+      historyCount: s.history.length,
+      cloudSyncStatus: s.cloudSyncStatus,
+    }))
+  );
 
   const {
     firebaseUser,
     isAdmin,
-    allUsers,
+    allUsersCount,
     setAdminDashboardOpen,
     logout,
-  } = useAuthStore();
+  } = useAuthStore(
+    useShallow((s) => ({
+      firebaseUser: s.firebaseUser,
+      isAdmin: s.isAdmin,
+      allUsersCount: s.allUsers.length,
+      setAdminDashboardOpen: s.setAdminDashboardOpen,
+      logout: s.logout,
+    }))
+  );
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const activeTournament = getActiveTournament();
   const hasActiveTournament = Boolean(activeTournament && activeTournamentId);
 
-  const standings = hasActiveTournament ? getStandings() : null;
-  const completedCount = matches.filter((m) => m.isCompleted).length;
+  const standings = useMemo(
+    () =>
+      hasActiveTournament
+        ? calculateTournamentStandings(teams, matches, settings)
+        : null,
+    [hasActiveTournament, teams, matches, settings]
+  );
+  const completedCount = useMemo(
+    () => matches.filter((m) => m.isCompleted).length,
+    [matches]
+  );
 
   const maxMatchesReached =
     settings.mode === 'CHAMPION_RUSH'
@@ -150,13 +186,13 @@ export const AppShell: React.FC<AppShellProps> = ({
       if (currentTab === 'results') {
         return {
           title: settings.name,
-          subtitle: 'Standing Graphic Studio',
+          subtitle: 'Poster Studio',
         };
       }
       if (currentTab === 'edit') {
         return {
           title: settings.name,
-          subtitle: 'Squads & Event Settings',
+          subtitle: 'Squads & Settings',
         };
       }
     }
@@ -395,7 +431,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                       currentTab === 'results' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
                     }`}
                   />
-                  <span>Standing Poster</span>
+                  <span>Poster Studio</span>
                 </span>
               </button>
 
@@ -410,7 +446,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                       currentTab === 'edit' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
                     }`}
                   />
-                  <span>Squads & Info</span>
+                  <span>Squads & Settings</span>
                 </span>
               </button>
             </div>
@@ -460,7 +496,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               <span>Team Access</span>
             </span>
             <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-300 tabular-nums">
-              {allUsers.length}
+              {allUsersCount}
             </span>
           </button>
         )}
@@ -509,14 +545,14 @@ export const AppShell: React.FC<AppShellProps> = ({
         }}
       />
 
-      {/* Desktop Left Broadcast Navigation Rail */}
-      <aside className="relative z-20 hidden md:flex md:w-64 shrink-0 flex-col border-r border-amber-500/[0.14] sticky top-0 h-screen">
+      {/* Desktop Left Broadcast Navigation Rail (hidden on phones & short landscape viewports) */}
+      <aside className="relative z-20 hidden [@media(min-width:768px)_and_(min-height:540px)]:flex md:w-64 shrink-0 flex-col border-r border-amber-500/[0.14] sticky top-0 h-screen">
         {renderSidebarContent()}
       </aside>
 
       {/* Mobile Slide-over Frosted Drawer */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
+        <div className="fixed inset-0 z-50 [@media(min-width:768px)_and_(min-height:540px)]:hidden flex">
           <div
             className="fixed inset-0 bg-black/65"
             onClick={() => setMobileMenuOpen(false)}
@@ -546,7 +582,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               type="button"
               onClick={() => setMobileMenuOpen(true)}
               aria-label="Open menu"
-              className="glass-pill flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:text-white md:hidden"
+              className="glass-pill flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:text-white [@media(min-width:768px)_and_(min-height:540px)]:hidden"
             >
               <Menu className="h-4.5 w-4.5" />
             </button>
@@ -563,17 +599,17 @@ export const AppShell: React.FC<AppShellProps> = ({
 
           {/* Right Contextual Controls */}
           <div className="flex items-center gap-2 shrink-0">
-            {history.length > 0 && (
+            {historyCount > 0 && (
               <button
                 type="button"
                 onClick={undo}
-                title={`Undo last action (${history.length})`}
+                title={`Undo last action (${historyCount})`}
                 className="glass-pill inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
                 <span>Undo</span>
                 <span className="rounded bg-white/[0.1] px-1.5 py-0.5 text-[10px] font-semibold text-slate-200 tabular-nums">
-                  {history.length}
+                  {historyCount}
                 </span>
               </button>
             )}
@@ -609,7 +645,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </header>
 
         {/* Scrollable Workspace Content */}
-        <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8 pb-24 md:pb-8">
+        <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8 pb-24 [@media(min-width:768px)_and_(min-height:540px)]:pb-8 [@media(max-height:539px)]:pb-6">
           <div className="mx-auto max-w-6xl">
             {children}
             <Footer />
@@ -617,10 +653,10 @@ export const AppShell: React.FC<AppShellProps> = ({
         </main>
       </div>
 
-      {/* Mobile Bottom Broadcast Navigation Bar */}
+      {/* Mobile Bottom Broadcast Navigation Bar (hidden on desktop/tall tablets & ultra-short landscape phones) */}
       <nav
         aria-label="Mobile navigation"
-        className="glass-chrome fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.09] px-2.5 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] md:hidden select-none"
+        className="glass-chrome fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.09] px-2.5 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] [@media(min-width:768px)_and_(min-height:540px)]:hidden [@media(max-height:539px)]:hidden select-none"
       >
         <div className="grid grid-cols-4 gap-1.5">
           <button

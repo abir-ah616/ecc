@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
 import type {
   Match,
   PointSystemConfig,
@@ -299,6 +299,85 @@ export interface TournamentStoreState {
   loadFullDemoTournament: () => void;
 }
 
+const pendingStorageWrites = new Map<string, string>();
+const pendingStorageTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function flushPendingLocalStorage() {
+  if (typeof window === 'undefined') return;
+  for (const [key, value] of pendingStorageWrites.entries()) {
+    const t = pendingStorageTimers.get(key);
+    if (t !== undefined) {
+      clearTimeout(t);
+      pendingStorageTimers.delete(key);
+    }
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      // Ignore quota / privacy storage failures
+    }
+  }
+  pendingStorageWrites.clear();
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('pagehide', flushPendingLocalStorage);
+  window.addEventListener('beforeunload', flushPendingLocalStorage);
+}
+
+const debouncedLocalStorage: StateStorage = {
+  getItem: (name) => {
+    if (pendingStorageWrites.has(name)) {
+      return pendingStorageWrites.get(name) ?? null;
+    }
+    if (typeof window === 'undefined') return null;
+    try {
+      return window.localStorage.getItem(name);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (name, value) => {
+    pendingStorageWrites.set(name, value);
+    const prev = pendingStorageTimers.get(name);
+    if (prev !== undefined) clearTimeout(prev);
+    const timer = setTimeout(() => {
+      pendingStorageTimers.delete(name);
+      const latest = pendingStorageWrites.get(name);
+      if (latest !== undefined && typeof window !== 'undefined') {
+        pendingStorageWrites.delete(name);
+        try {
+          window.localStorage.setItem(name, latest);
+        } catch {
+          // Ignore quota / privacy storage failures
+        }
+      }
+    }, 180);
+    pendingStorageTimers.set(name, timer);
+  },
+  removeItem: (name) => {
+    pendingStorageWrites.delete(name);
+    const prev = pendingStorageTimers.get(name);
+    if (prev !== undefined) {
+      clearTimeout(prev);
+      pendingStorageTimers.delete(name);
+    }
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(name);
+    } catch {
+      // Ignore storage failures
+    }
+  },
+};
+
+let cachedStandingsKey: {
+  id: string;
+  teams: Team[];
+  matches: Match[];
+  settings: TournamentSettings;
+  result: StandingsResult;
+} | null = null;
+
 function resolveActive(tournaments: TournamentRecord[], activeId: string | null) {
   const active = (activeId ? tournaments.find((t) => t.id === activeId) : null) || tournaments[0] || null;
   return {
@@ -342,7 +421,28 @@ export const useTournamentStore = create<TournamentStoreState>()(
             tournamentConcluded: false,
           };
         }
-        return calculateTournamentStandings(active.teams, active.matches, active.settings);
+        if (
+          cachedStandingsKey &&
+          cachedStandingsKey.id === active.id &&
+          cachedStandingsKey.teams === active.teams &&
+          cachedStandingsKey.matches === active.matches &&
+          cachedStandingsKey.settings === active.settings
+        ) {
+          return cachedStandingsKey.result;
+        }
+        const computed = calculateTournamentStandings(
+          active.teams,
+          active.matches,
+          active.settings
+        );
+        cachedStandingsKey = {
+          id: active.id,
+          teams: active.teams,
+          matches: active.matches,
+          settings: active.settings,
+          result: computed,
+        };
+        return computed;
       },
 
       setCurrentTab: (tab: string) =>
@@ -1576,7 +1676,7 @@ export const useTournamentStore = create<TournamentStoreState>()(
     }),
     {
       name: 'freefire_multi_tournament_store_v2',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => debouncedLocalStorage),
       partialize: (state) => ({
         tournaments: state.tournaments,
         activeTournamentId: state.activeTournamentId,

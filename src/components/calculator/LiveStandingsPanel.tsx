@@ -1,14 +1,29 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Trophy, Crown, Flame, Image as ImageIcon } from 'lucide-react';
 import {
   useTournamentStore,
   generateInitials,
 } from '../../store/tournamentStore';
+import { calculateTournamentStandings } from '../../lib/scoring';
 
-export const LiveStandingsPanel: React.FC = () => {
-  const { getStandings, settings, matches, setCurrentTab } = useTournamentStore();
-  const { standings, tournamentConcluded, conclusionReason } = getStandings();
-  const hasDraftMatch = matches.some((m) => !m.isCompleted);
+export const LiveStandingsPanel: React.FC = React.memo(() => {
+  const { teams, settings, matches, setCurrentTab } = useTournamentStore(
+    useShallow((s) => ({
+      teams: s.teams,
+      settings: s.settings,
+      matches: s.matches,
+      setCurrentTab: s.setCurrentTab,
+    }))
+  );
+  const { standings, tournamentConcluded, conclusionReason } = useMemo(
+    () => calculateTournamentStandings(teams, matches, settings),
+    [teams, matches, settings]
+  );
+  const hasDraftMatch = useMemo(
+    () => matches.some((m) => !m.isCompleted),
+    [matches]
+  );
 
   const isRush = settings.mode === 'CHAMPION_RUSH';
   const targetPts = settings.championRush.targetPoints;
@@ -31,10 +46,10 @@ export const LiveStandingsPanel: React.FC = () => {
         <button
           type="button"
           onClick={() => setCurrentTab('results')}
-          className="glass-pill inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors"
+          className="glass-pill inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors cursor-pointer"
         >
           <ImageIcon className="h-3.5 w-3.5 text-amber-400" />
-          <span>Poster</span>
+          <span>Poster Studio</span>
         </button>
       </div>
 
@@ -190,4 +205,4 @@ export const LiveStandingsPanel: React.FC = () => {
       </div>
     </div>
   );
-};
+});

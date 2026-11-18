@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
@@ -39,6 +40,16 @@ class TournamentStore extends ChangeNotifier {
   bool _isHydrated = false;
   CloudSyncStatus _cloudSyncStatus = CloudSyncStatus.idle;
   MobileCloudSyncHooks _cloudHooks = const MobileCloudSyncHooks();
+
+  SharedPreferences? _prefsCache;
+  int _revision = 0;
+  String? _cachedStandingsTournamentId;
+  int _cachedStandingsRevision = -1;
+  StandingsResult? _cachedStandingsResult;
+  bool _persistScheduled = false;
+  bool _persistInFlight = false;
+  bool _persistDirty = false;
+  bool _disposed = false;
 
   List<TournamentRecord> get tournaments => _tournaments;
   List<SavedSquadRecord> get savedSquads => _savedSquads;
@@ -92,16 +103,25 @@ class TournamentStore extends ChangeNotifier {
     if (active == null) {
       return const StandingsResult(standings: [], tournamentConcluded: false);
     }
-    return calculateTournamentStandings(
+    if (_cachedStandingsResult != null &&
+        _cachedStandingsTournamentId == active.id &&
+        _cachedStandingsRevision == _revision) {
+      return _cachedStandingsResult!;
+    }
+    final computed = calculateTournamentStandings(
       active.teams,
       active.matches,
       active.settings,
     );
+    _cachedStandingsTournamentId = active.id;
+    _cachedStandingsRevision = _revision;
+    _cachedStandingsResult = computed;
+    return computed;
   }
 
   Future<void> hydrate() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefsCache ??= await SharedPreferences.getInstance();
       final raw = prefs.getString(_kStorageKey);
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
@@ -139,25 +159,56 @@ class TournamentStore extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
+    if (_disposed) return;
+    if (_persistInFlight) {
+      _persistDirty = true;
+      return;
+    }
+    _persistInFlight = true;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final payload = jsonEncode({
-        'tournaments': _tournaments.map((t) => t.toJson()).toList(),
-        'savedSquads': _savedSquads.map((s) => s.toJson()).toList(),
-        'organizerDefaults': _organizerDefaults.toJson(),
-        'activeTournamentId': _activeTournamentId,
-        'defaultPointSystem': _defaultPointSystem.toJson(),
-      });
-      await prefs.setString(_kStorageKey, payload);
+      do {
+        _persistDirty = false;
+        final prefs = _prefsCache ??= await SharedPreferences.getInstance();
+        final payload = jsonEncode({
+          'tournaments': _tournaments.map((t) => t.toJson()).toList(),
+          'savedSquads': _savedSquads.map((s) => s.toJson()).toList(),
+          'organizerDefaults': _organizerDefaults.toJson(),
+          'activeTournamentId': _activeTournamentId,
+          'defaultPointSystem': _defaultPointSystem.toJson(),
+        });
+        await prefs.setString(_kStorageKey, payload);
+      } while (_persistDirty && !_disposed);
     } catch (_) {
       // Non-fatal persistence failure
+    } finally {
+      _persistInFlight = false;
     }
   }
 
+  void _schedulePersist() {
+    if (_persistScheduled || _disposed) return;
+    _persistScheduled = true;
+    scheduleMicrotask(() {
+      _persistScheduled = false;
+      if (!_disposed) {
+        unawaited(_persist());
+      }
+    });
+  }
+
+  Future<void> flushPendingPersist() => _persist();
+
   void _commit(void Function() mutate) {
     mutate();
+    _revision++;
     notifyListeners();
-    _persist();
+    _schedulePersist();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   String _formatDateTime(DateTime dt) {

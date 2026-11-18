@@ -464,6 +464,9 @@ void main() {
     expect(finalEntries[store.activeTournament!.teams[2].id]?.placement, 3);
     expect(finalEntries[store.activeTournament!.teams[2].id]?.kills, 3);
 
+    // Standings view after Rapid also exposes Complete Match 1 without switching back
+    expect(find.text('Complete Match 1'), findsOneWidget);
+
     // Switch back to Scorecard tab and confirm normal Team List is still editable
     await tester.tap(find.text('Scorecard'));
     await tester.pumpAndSettle();

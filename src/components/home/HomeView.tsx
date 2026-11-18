@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   Plus,
   Image as ImageIcon,
@@ -72,14 +73,33 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
     setCurrentTab,
     openCreateWithTemplate,
     defaultPointSystem,
-  } = useTournamentStore();
+  } = useTournamentStore(
+    useShallow((s) => ({
+      tournaments: s.tournaments,
+      activeTournamentId: s.activeTournamentId,
+      getActiveTournament: s.getActiveTournament,
+      switchActiveTournament: s.switchActiveTournament,
+      duplicateTournament: s.duplicateTournament,
+      deleteTournament: s.deleteTournament,
+      setCurrentTab: s.setCurrentTab,
+      openCreateWithTemplate: s.openCreateWithTemplate,
+      defaultPointSystem: s.defaultPointSystem,
+    }))
+  );
 
   const {
     firebaseUser,
     isAdmin,
     setAdminDashboardOpen,
     logout,
-  } = useAuthStore();
+  } = useAuthStore(
+    useShallow((s) => ({
+      firebaseUser: s.firebaseUser,
+      isAdmin: s.isAdmin,
+      setAdminDashboardOpen: s.setAdminDashboardOpen,
+      logout: s.logout,
+    }))
+  );
 
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -153,6 +173,304 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
   };
 
   const topRankPts = defaultPointSystem.placementPoints[0] ?? 12;
+  const hasLiveSpotlight = Boolean(featuredTournament && featuredInfo);
+
+  const renderLiveBanner = () =>
+    featuredTournament && featuredInfo ? (
+      <div className="space-y-2.5">
+        <div className="studio-live-banner relative overflow-hidden rounded-2xl min-h-[146px] flex items-center justify-between p-4 sm:p-5">
+          {/* Crystal Trophy Artwork Smoothly Masked Right */}
+          <img
+            src="/assets/web-crystal-trophy.webp"
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+            draggable={false}
+            className="pointer-events-none absolute right-0 top-0 h-full w-44 sm:w-52 object-cover opacity-90"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#11131A] via-[#11131A]/92 to-transparent"
+          />
+
+          <div className="relative z-10 min-w-0 flex-1 pr-6 space-y-2.5">
+            <div className="flex items-center gap-2.5">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
+                  featuredTournament.isEnded
+                    ? 'border-amber-500/50 bg-[#282012] text-amber-300'
+                    : 'border-red-500/70 bg-[#4C1418] text-white'
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    featuredTournament.isEnded ? 'bg-amber-400' : 'bg-red-500'
+                  }`}
+                />
+                {featuredTournament.isEnded ? 'FINAL' : 'LIVE'}
+              </span>
+              <span className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                {featuredTournament.settings.roundOrDay || 'GRAND FINALS'}
+              </span>
+            </div>
+
+            <h2 className="text-lg sm:text-xl font-black italic tracking-tight truncate">
+              <span className="text-white">{featuredInfo.titleParts.lead}</span>
+              {featuredInfo.titleParts.tail && (
+                <span className="text-amber-400">
+                  {' '}
+                  {featuredInfo.titleParts.tail}
+                </span>
+              )}
+            </h2>
+
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-300">
+              <span>
+                {featuredTournament.settings.mode === 'CHAMPION_RUSH'
+                  ? 'Champion Rush'
+                  : 'Scrim Series'}
+              </span>
+              <span className="text-slate-600">·</span>
+              <span>{featuredTournament.teams.length} Squads</span>
+              <span className="text-slate-600">·</span>
+              <span className="tabular-nums">
+                {featuredInfo.completedCount}/{featuredInfo.plannedCount}{' '}
+                Matches
+              </span>
+              {featuredInfo.leader && (
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-amber-300 font-semibold truncate max-w-[160px]">
+                    #1 {featuredInfo.leader.teamName} (
+                    {featuredInfo.leader.totalPoints} pts)
+                  </span>
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  switchActiveTournament(
+                    featuredTournament.id,
+                    featuredInfo.nextMatch?.id || 'results'
+                  );
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-3.5 py-2 text-xs font-bold text-zinc-950 transition-colors cursor-pointer"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" />
+                <span>
+                  {featuredInfo.nextMatch
+                    ? `Open Match ${featuredInfo.nextMatch.matchNumber}`
+                    : 'Open Lobby'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  switchActiveTournament(featuredTournament.id, 'results');
+                }}
+                className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+              >
+                <ImageIcon className="h-3.5 w-3.5 text-amber-400" />
+                <span>Poster Studio</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => duplicateTournament(featuredTournament.id)}
+                title="Duplicate roster & logos into Next Day"
+                className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+              >
+                <CopyPlus className="h-3.5 w-3.5 text-emerald-400" />
+                <span>Next Day</span>
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            aria-label="Open featured tournament"
+            onClick={() => {
+              switchActiveTournament(
+                featuredTournament.id,
+                featuredInfo.nextMatch?.id || 'results'
+              );
+            }}
+            className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-[#0B0D14]/80 text-slate-200 hover:border-amber-400/50 hover:text-amber-300 transition-colors cursor-pointer"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
+
+        {otherLiveTournaments.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Also Live:
+            </span>
+            {otherLiveTournaments.map((t) => {
+              const next =
+                t.matches.find((m) => !m.isCompleted) ||
+                t.matches[t.matches.length - 1];
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() =>
+                    switchActiveTournament(t.id, next?.id || 'results')
+                  }
+                  className="glass-pill inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-200 hover:border-amber-400/50 cursor-pointer"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span className="truncate max-w-[160px]">
+                    {t.settings.name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    ) : null;
+
+  const renderCreateBanner = () => (
+    <section className="studio-hero-banner relative overflow-hidden rounded-2xl transition-colors">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-6 -right-4 h-24 w-48 rounded-full"
+        style={{
+          background:
+            'radial-gradient(circle, rgba(245,158,11,0.34) 0%, transparent 70%)',
+        }}
+      />
+
+      <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
+        <button
+          type="button"
+          onClick={() => openCreateWithTemplate()}
+          className="flex flex-1 items-center gap-3.5 text-left cursor-pointer group"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-orange-600 text-[#090B0F] shadow-[0_4px_14px_rgba(245,158,11,0.35)]">
+            <Plus className="h-6 w-6 stroke-[2.5]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-base sm:text-lg font-bold text-white tracking-tight group-hover:text-amber-200 transition-colors">
+              Create Tournament
+            </div>
+            <div className="text-xs text-slate-300">
+              Start a new Classic Scrim or Champion Rush event
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 group-hover:text-amber-300 sm:hidden" />
+        </button>
+
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          {onOpenJson && (
+            <button
+              type="button"
+              onClick={onOpenJson}
+              className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+            >
+              <Database className="h-3.5 w-3.5 text-amber-400" />
+              <span>Import JSON</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => openCreateWithTemplate()}
+            aria-label="Open tournament creator"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-400/35 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition-colors cursor-pointer"
+          >
+            <ChevronRight className="h-4.5 w-4.5" />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderFeatureTiles = (fourColumns: boolean) => (
+    <div
+      className={
+        fourColumns
+          ? 'grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3'
+          : 'grid grid-cols-2 gap-2.5 sm:gap-3'
+      }
+    >
+      <button
+        type="button"
+        onClick={handleOpenPosterStudio}
+        className="studio-feature-tile relative overflow-hidden rounded-2xl p-3 sm:p-4 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3"
+      >
+        <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-[#231A10] text-amber-400">
+          <ImageIcon className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-xs sm:text-sm font-bold text-white truncate">
+            Poster Studio
+          </div>
+          <div className="mt-0.5 text-[10.5px] sm:text-[11px] text-slate-400 leading-tight">
+            Standings &amp; match graphics
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setCurrentTab('rules')}
+        className="studio-feature-tile relative overflow-hidden rounded-2xl p-3 sm:p-4 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3"
+      >
+        <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-[#231A10] text-amber-400">
+          <Trophy className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-xs sm:text-sm font-bold text-white truncate">
+            Score System
+          </div>
+          <div className="mt-0.5 text-[10.5px] sm:text-[11px] text-slate-400 leading-tight">
+            #1 = {topRankPts} pts · {defaultPointSystem.killPoints} pt/kill
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setTemplatesOpen(true)}
+        className="studio-feature-tile relative overflow-hidden rounded-2xl p-3 sm:p-4 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3"
+      >
+        <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-[#231A10] text-amber-400">
+          <Layers className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-xs sm:text-sm font-bold text-white truncate">
+            Templates
+          </div>
+          <div className="mt-0.5 text-[10.5px] sm:text-[11px] text-slate-400 leading-tight">
+            Tournament format presets
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(true)}
+        className="studio-feature-tile relative overflow-hidden rounded-2xl p-3 sm:p-4 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3"
+      >
+        <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-[#231A10] text-amber-400">
+          <SlidersHorizontal className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-xs sm:text-sm font-bold text-white truncate">
+            Settings
+          </div>
+          <div className="mt-0.5 text-[10.5px] sm:text-[11px] text-slate-400 leading-tight">
+            Preferences &amp; JSON backup
+          </div>
+        </div>
+      </button>
+    </div>
+  );
 
   return (
     <div
@@ -249,342 +567,63 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
         </div>
       </section>
 
-      {/* PRIMARY CTA BANNER: CREATE TOURNAMENT */}
-      <section className="studio-hero-banner relative overflow-hidden rounded-2xl transition-colors">
-        {/* Bottom-right ember radial corner highlight matching mobile banner */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-6 -right-4 h-24 w-48 rounded-full"
-          style={{
-            background:
-              'radial-gradient(circle, rgba(245,158,11,0.34) 0%, transparent 70%)',
-          }}
-        />
-
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
-          <button
-            type="button"
-            onClick={() => openCreateWithTemplate()}
-            className="flex flex-1 items-center gap-3.5 text-left cursor-pointer group"
-          >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-orange-600 text-[#090B0F] shadow-[0_4px_14px_rgba(245,158,11,0.35)]">
-              <Plus className="h-6 w-6 stroke-[2.5]" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="text-base sm:text-lg font-bold text-white tracking-tight group-hover:text-amber-200 transition-colors">
-                Create Tournament
-              </div>
-              <div className="text-xs text-slate-300">
-                Start a new Classic Scrim or Champion Rush event
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 group-hover:text-amber-300 sm:hidden" />
-          </button>
-
-          <div className="hidden sm:flex items-center gap-2 shrink-0">
-            {onOpenJson && (
+      {/* ACTIVE SPOTLIGHT FIRST (when tournament exists) -> CREATE -> STUDIO TILES */}
+      {hasLiveSpotlight ? (
+        <>
+          {renderLiveBanner()}
+          {renderCreateBanner()}
+          {renderFeatureTiles(true)}
+        </>
+      ) : (
+        <>
+          {renderCreateBanner()}
+          <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+            <div className="lg:col-span-6">{renderFeatureTiles(false)}</div>
+            <div className="lg:col-span-6 flex flex-col gap-2.5">
               <button
                 type="button"
-                onClick={onOpenJson}
-                className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+                onClick={() => openCreateWithTemplate()}
+                className="studio-live-banner relative flex-1 overflow-hidden rounded-2xl min-h-[152px] flex items-center justify-between p-4 sm:p-5 text-left cursor-pointer group"
               >
-                <Database className="h-3.5 w-3.5 text-amber-400" />
-                <span>Import JSON</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => openCreateWithTemplate()}
-              aria-label="Open tournament creator"
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-400/35 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition-colors cursor-pointer"
-            >
-              <ChevronRight className="h-4.5 w-4.5" />
-            </button>
-          </div>
-        </div>
-      </section>
+                <img
+                  src="/assets/web-crystal-trophy.webp"
+                  alt=""
+                  aria-hidden="true"
+                  decoding="async"
+                  draggable={false}
+                  className="pointer-events-none absolute right-0 top-0 h-full w-44 sm:w-52 object-cover opacity-85"
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#11131A] via-[#11131A]/90 to-transparent"
+                />
 
-      {/* STUDIO DECK: 2x2 FEATURE TILES + LIVE CRYSTAL TROPHY BANNER */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-        {/* Left: 2x2 Studio Action Tiles */}
-        <div className="lg:col-span-6 grid grid-cols-2 gap-2.5 sm:gap-3">
-          <button
-            type="button"
-            onClick={handleOpenPosterStudio}
-            className="studio-feature-tile relative overflow-hidden rounded-2xl p-3 sm:p-4 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3"
-          >
-            <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-[#231A10] text-amber-400">
-              <ImageIcon className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-bold text-white truncate">
-                Poster Studio
-              </div>
-              <div className="mt-0.5 text-[10.5px] sm:text-[11px] text-slate-400 leading-tight">
-                Standings &amp; match graphics
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCurrentTab('rules')}
-            className="studio-feature-tile relative overflow-hidden rounded-2xl p-3 sm:p-4 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3"
-          >
-            <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-[#231A10] text-amber-400">
-              <Trophy className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-bold text-white truncate">
-                Score System
-              </div>
-              <div className="mt-0.5 text-[10.5px] sm:text-[11px] text-slate-400 leading-tight">
-                #1 = {topRankPts} pts · {defaultPointSystem.killPoints} pt/kill
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setTemplatesOpen(true)}
-            className="studio-feature-tile relative overflow-hidden rounded-2xl p-3 sm:p-4 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3"
-          >
-            <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-[#231A10] text-amber-400">
-              <Layers className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-bold text-white truncate">
-                Templates
-              </div>
-              <div className="mt-0.5 text-[10.5px] sm:text-[11px] text-slate-400 leading-tight">
-                Tournament format presets
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="studio-feature-tile relative overflow-hidden rounded-2xl p-3 sm:p-4 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3"
-          >
-            <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-[#231A10] text-amber-400">
-              <SlidersHorizontal className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-bold text-white truncate">
-                Settings
-              </div>
-              <div className="mt-0.5 text-[10.5px] sm:text-[11px] text-slate-400 leading-tight">
-                Preferences &amp; JSON backup
-              </div>
-            </div>
-          </button>
-        </div>
-
-        {/* Right: Featured Live / Standby Tournament Crystal Trophy Card */}
-        <div className="lg:col-span-6 flex flex-col gap-2.5">
-          {featuredTournament && featuredInfo ? (
-            <div className="studio-live-banner relative flex-1 overflow-hidden rounded-2xl min-h-[152px] flex items-center justify-between p-4 sm:p-5">
-              {/* Crystal Trophy Artwork Smoothly Masked Right */}
-              <img
-                src="/assets/web-crystal-trophy.webp"
-                alt=""
-                aria-hidden="true"
-                decoding="async"
-                draggable={false}
-                className="pointer-events-none absolute right-0 top-0 h-full w-44 sm:w-52 object-cover opacity-90"
-              />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#11131A] via-[#11131A]/92 to-transparent"
-              />
-
-              <div className="relative z-10 min-w-0 flex-1 pr-6 space-y-2.5">
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
-                      featuredTournament.isEnded
-                        ? 'border-amber-500/50 bg-[#282012] text-amber-300'
-                        : 'border-red-500/70 bg-[#4C1418] text-white'
-                    }`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        featuredTournament.isEnded
-                          ? 'bg-amber-400'
-                          : 'bg-red-500'
-                      }`}
-                    />
-                    {featuredTournament.isEnded ? 'FINAL' : 'LIVE'}
-                  </span>
-                  <span className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">
-                    {featuredTournament.settings.roundOrDay || 'GRAND FINALS'}
-                  </span>
-                </div>
-
-                <h2 className="text-lg sm:text-xl font-black italic tracking-tight truncate">
-                  <span className="text-white">{featuredInfo.titleParts.lead}</span>
-                  {featuredInfo.titleParts.tail && (
-                    <span className="text-amber-400">
-                      {' '}
-                      {featuredInfo.titleParts.tail}
+                <div className="relative z-10 min-w-0 flex-1 pr-6 space-y-1.5">
+                  <div className="flex items-center gap-2.5">
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/45 bg-[#282012] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      STANDBY
                     </span>
-                  )}
-                </h2>
-
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-300">
-                  <span>
-                    {featuredTournament.settings.mode === 'CHAMPION_RUSH'
-                      ? 'Champion Rush'
-                      : 'Scrim Series'}
-                  </span>
-                  <span className="text-slate-600">·</span>
-                  <span>{featuredTournament.teams.length} Squads</span>
-                  <span className="text-slate-600">·</span>
-                  <span className="tabular-nums">
-                    {featuredInfo.completedCount}/{featuredInfo.plannedCount}{' '}
-                    Matches
-                  </span>
-                  {featuredInfo.leader && (
-                    <>
-                      <span className="text-slate-600">·</span>
-                      <span className="text-amber-300 font-semibold truncate max-w-[160px]">
-                        #1 {featuredInfo.leader.teamName} (
-                        {featuredInfo.leader.totalPoints} pts)
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      switchActiveTournament(
-                        featuredTournament.id,
-                        featuredInfo.nextMatch?.id || 'results'
-                      );
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-3.5 py-2 text-xs font-bold text-zinc-950 transition-colors cursor-pointer"
-                  >
-                    <Play className="h-3.5 w-3.5 fill-current" />
-                    <span>
-                      {featuredInfo.nextMatch
-                        ? `Open Match ${featuredInfo.nextMatch.matchNumber}`
-                        : 'Open Lobby'}
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      NO ACTIVE LOBBY
                     </span>
-                  </button>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      switchActiveTournament(featuredTournament.id, 'results');
-                    }}
-                    className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
-                  >
-                    <ImageIcon className="h-3.5 w-3.5 text-amber-400" />
-                    <span>Poster</span>
-                  </button>
+                  <h2 className="text-lg sm:text-xl font-black italic text-white tracking-tight group-hover:text-amber-300 transition-colors">
+                    Ready for Match Day
+                  </h2>
 
-                  <button
-                    type="button"
-                    onClick={() => duplicateTournament(featuredTournament.id)}
-                    title="Duplicate roster & logos into Next Day"
-                    className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
-                  >
-                    <CopyPlus className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>Next Day</span>
-                  </button>
+                  <p className="text-xs text-slate-300/90 max-w-sm">
+                    Create a tournament to start live scoring and export broadcast standing graphics.
+                  </p>
                 </div>
-              </div>
 
-              <button
-                type="button"
-                aria-label="Open featured tournament"
-                onClick={() => {
-                  switchActiveTournament(
-                    featuredTournament.id,
-                    featuredInfo.nextMatch?.id || 'results'
-                  );
-                }}
-                className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-[#0B0D14]/80 text-slate-200 hover:border-amber-400/50 hover:text-amber-300 transition-colors cursor-pointer"
-              >
-                <ChevronRight className="h-5 w-5" />
+                <ChevronRight className="relative z-10 h-5 w-5 shrink-0 text-slate-300 group-hover:text-amber-300" />
               </button>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => openCreateWithTemplate()}
-              className="studio-live-banner relative flex-1 overflow-hidden rounded-2xl min-h-[152px] flex items-center justify-between p-4 sm:p-5 text-left cursor-pointer group"
-            >
-              <img
-                src="/assets/web-crystal-trophy.webp"
-                alt=""
-                aria-hidden="true"
-                decoding="async"
-                draggable={false}
-                className="pointer-events-none absolute right-0 top-0 h-full w-44 sm:w-52 object-cover opacity-85"
-              />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#11131A] via-[#11131A]/90 to-transparent"
-              />
-
-              <div className="relative z-10 min-w-0 flex-1 pr-6 space-y-1.5">
-                <div className="flex items-center gap-2.5">
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/45 bg-[#282012] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                    STANDBY
-                  </span>
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    NO ACTIVE LOBBY
-                  </span>
-                </div>
-
-                <h2 className="text-lg sm:text-xl font-black italic text-white tracking-tight group-hover:text-amber-300 transition-colors">
-                  Ready for Match Day
-                </h2>
-
-                <p className="text-xs text-slate-300/90 max-w-sm">
-                  Create a tournament to start live scoring and export broadcast standing graphics.
-                </p>
-              </div>
-
-              <ChevronRight className="relative z-10 h-5 w-5 shrink-0 text-slate-300 group-hover:text-amber-300" />
-            </button>
-          )}
-
-          {/* Additional live lobbies switcher strip if organizer runs parallel lobbies */}
-          {otherLiveTournaments.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                Also Live:
-              </span>
-              {otherLiveTournaments.map((t) => {
-                const next =
-                  t.matches.find((m) => !m.isCompleted) ||
-                  t.matches[t.matches.length - 1];
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() =>
-                      switchActiveTournament(t.id, next?.id || 'results')
-                    }
-                    className="glass-pill inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-200 hover:border-amber-400/50 cursor-pointer"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                    <span className="truncate max-w-[160px]">
-                      {t.settings.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
+          </section>
+        </>
+      )}
 
       {/* RECENT PROJECTS SHELF */}
       <section className="space-y-3">

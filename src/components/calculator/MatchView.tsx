@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   CheckCircle2,
   AlertCircle,
@@ -16,6 +17,7 @@ import {
   Zap,
   Users,
   ChevronDown,
+  MoreVertical,
 } from 'lucide-react';
 import {
   useTournamentStore,
@@ -27,7 +29,11 @@ import { RankPickerPopover } from './RankPickerPopover';
 import { RapidWizard } from './RapidWizard';
 import { ScanScreenshotModal } from './ScanScreenshotModal';
 import { SquadPlayersModal } from './SquadPlayersModal';
-import { getPlacementPoints, getKillPoints } from '../../lib/scoring';
+import {
+  getPlacementPoints,
+  getKillPoints,
+  calculateTournamentStandings,
+} from '../../lib/scoring';
 import { formatStandingsTextSummary } from '../../lib/rosterHelpers';
 import {
   buildSwapOrAssignRankBatch,
@@ -65,15 +71,30 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     deleteMatch,
     setCurrentTab,
     createMatch,
-    getStandings,
     getActiveTournament,
     updateTournament,
-  } = useTournamentStore();
-  const { canUseAiAuto } = useAuthStore();
+  } = useTournamentStore(
+    useShallow((s) => ({
+      teams: s.teams,
+      settings: s.settings,
+      matches: s.matches,
+      updateMatchEntry: s.updateMatchEntry,
+      applyBatchMatchResults: s.applyBatchMatchResults,
+      completeMatch: s.completeMatch,
+      reopenMatch: s.reopenMatch,
+      deleteMatch: s.deleteMatch,
+      setCurrentTab: s.setCurrentTab,
+      createMatch: s.createMatch,
+      getActiveTournament: s.getActiveTournament,
+      updateTournament: s.updateTournament,
+    }))
+  );
+  const canUseAiAuto = useAuthStore((s) => s.canUseAiAuto);
 
   const [mobilePane, setMobilePane] = useState<'entry' | 'standings'>('entry');
   const [isRapidOpen, setIsRapidOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isPlayersOpen, setIsPlayersOpen] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
@@ -85,7 +106,10 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
   const rankInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const killsInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const standingsResult = getStandings();
+  const standingsResult = useMemo(
+    () => calculateTournamentStandings(teams, matches, settings),
+    [teams, matches, settings]
+  );
   const cumulativeByTeam = useMemo(() => {
     const map = new Map<string, number>();
     for (const row of standingsResult.standings) {
@@ -362,6 +386,43 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
 
   const allPlacedCleanly = rankedCount === teams.length && !hasErrors;
 
+  const renderSaveBar = (className: string) => (
+    <div
+      className={`glass-panel flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl p-4 ${className}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => completeMatch(match.id)}
+          disabled={hasErrors}
+          className="glass-pill rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-200 disabled:opacity-40 transition-colors cursor-pointer"
+        >
+          {match.isCompleted ? 'Re-save Match' : 'Save Only'}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleSaveAndOpenPoster}
+          disabled={hasErrors}
+          className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-amber-300 hover:text-amber-200 disabled:opacity-40 transition-colors cursor-pointer"
+        >
+          <ImageIcon className="h-3.5 w-3.5" />
+          <span>Save &amp; Poster</span>
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleSaveAndContinue}
+        disabled={hasErrors}
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40 transition-colors cursor-pointer"
+      >
+        <span>{primaryCtaLabel}</span>
+        <ArrowRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+
   return (
     <div className="space-y-5 select-none">
       {/* Mobile-Only Match Switcher Strip */}
@@ -460,43 +521,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
-                {canUseAiAuto && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setIsScanOpen(true)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                        settings.autoResultFromScreenshot
-                          ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
-                          : 'glass-pill text-slate-200'
-                      }`}
-                    >
-                      <ScanLine className="h-3.5 w-3.5" />
-                      <span>AI Scan</span>
-                      <span
-                        className={`rounded px-1 py-0.2 text-[10px] font-bold uppercase tracking-wide ${
-                          settings.autoResultFromScreenshot
-                            ? 'bg-zinc-950/20 text-zinc-950'
-                            : 'border border-amber-400/40 bg-amber-500/15 text-amber-300'
-                        }`}
-                      >
-                        Beta
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsPlayersOpen(true)}
-                      title="Add or edit squad team member IGNs for AI screenshot auto-matching"
-                      className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors cursor-pointer"
-                    >
-                      <Users className="h-3.5 w-3.5 text-amber-400" />
-                      <span>Players</span>
-                    </button>
-                  </>
-                )}
-
+              <div className="flex flex-wrap items-center gap-1.5 relative">
                 <button
                   type="button"
                   onClick={handleCopyStandingsText}
@@ -527,41 +552,80 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   </button>
                 )}
 
-                {matches.length > 1 &&
-                  (confirmDelete ? (
-                    <div className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-500/10 p-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          deleteMatch(match.id);
-                          setConfirmDelete(false);
-                        }}
-                        className="rounded bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-rose-500 cursor-pointer"
-                      >
-                        Delete Match
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(false)}
-                        className="rounded px-2 py-1 text-[11px] text-slate-300 hover:text-white cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
+                {(canUseAiAuto || matches.length > 1) && (
+                  <div className="relative">
                     <button
                       type="button"
-                      onClick={() => setConfirmDelete(true)}
-                      title={`Delete Match ${match.matchNumber}`}
-                      className="glass-pill flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-400 transition-colors cursor-pointer"
+                      onClick={() => {
+                        setConfirmDelete(false);
+                        setIsMoreOpen((v) => !v);
+                      }}
+                      aria-label="More match options"
+                      className="glass-pill flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:text-white transition-colors cursor-pointer"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <MoreVertical className="h-4 w-4" />
                     </button>
-                  ))}
+
+                    {isMoreOpen && (
+                      <div className="glass-modal absolute right-0 top-10 z-30 w-52 rounded-xl p-1.5 space-y-1 text-xs">
+                        {canUseAiAuto && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsMoreOpen(false);
+                              setIsPlayersOpen(true);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-medium text-slate-200 hover:bg-white/[0.06] cursor-pointer"
+                          >
+                            <Users className="h-3.5 w-3.5 text-amber-400" />
+                            <span>Squad Players (AI Scan)</span>
+                          </button>
+                        )}
+                        {matches.length > 1 &&
+                          (confirmDelete ? (
+                            <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 p-2 space-y-1.5">
+                              <div className="text-[11px] font-semibold text-rose-200">
+                                Delete Match {match.matchNumber}?
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    deleteMatch(match.id);
+                                    setConfirmDelete(false);
+                                    setIsMoreOpen(false);
+                                  }}
+                                  className="flex-1 rounded bg-rose-600 py-1 text-[11px] font-semibold text-white hover:bg-rose-500 cursor-pointer"
+                                >
+                                  Delete
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDelete(false)}
+                                  className="flex-1 rounded bg-white/[0.06] py-1 text-[11px] text-slate-300 hover:text-white cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDelete(true)}
+                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-medium text-rose-300 hover:bg-rose-500/10 cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              <span>Delete Match {match.matchNumber}</span>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Clean Rapid Launch + Match Summary Bar */}
+            {/* Clean Single Match Action Row: Progress + Optional AI Scan + Rapid */}
             <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
               <div className="flex items-center gap-2 text-xs tabular-nums">
                 <span
@@ -578,14 +642,34 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
               </div>
 
               {!match.isCompleted && (
-                <button
-                  type="button"
-                  onClick={() => setIsRapidOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs font-extrabold text-zinc-950 transition-colors cursor-pointer"
-                >
-                  <Zap className="h-3.5 w-3.5" />
-                  <span>Rapid</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {canUseAiAuto && (
+                    <button
+                      type="button"
+                      onClick={() => setIsScanOpen(true)}
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                        settings.autoResultFromScreenshot
+                          ? 'bg-amber-500/20 border border-amber-400/50 text-amber-200 hover:bg-amber-500/30'
+                          : 'glass-pill text-slate-200'
+                      }`}
+                    >
+                      <ScanLine className="h-3.5 w-3.5 text-amber-400" />
+                      <span>AI Scan</span>
+                      <span className="rounded border border-amber-400/40 bg-amber-500/15 px-1 py-0.2 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                        Beta
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setIsRapidOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs font-extrabold text-zinc-950 transition-colors cursor-pointer"
+                  >
+                    <Zap className="h-3.5 w-3.5" />
+                    <span>Rapid</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -842,50 +926,20 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
               </div>
             </div>
 
-          {/* Primary Save, Quick Poster & Next Bar */}
-          <div className="glass-panel flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => completeMatch(match.id)}
-                disabled={hasErrors}
-                className="glass-pill rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-200 disabled:opacity-40 transition-colors cursor-pointer"
-              >
-                {match.isCompleted ? 'Re-save Match' : 'Save Only'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSaveAndOpenPoster}
-                disabled={hasErrors}
-                className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-amber-300 hover:text-amber-200 disabled:opacity-40 transition-colors cursor-pointer"
-              >
-                <ImageIcon className="h-3.5 w-3.5" />
-                <span>Save &amp; Poster</span>
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSaveAndContinue}
-              disabled={hasErrors}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40 transition-colors cursor-pointer"
-            >
-              <span>{primaryCtaLabel}</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
+          {renderSaveBar('')}
         </div>
 
-        {/* Right: Sticky Live Standings Leaderboard */}
+        {/* Right: Sticky Live Standings Leaderboard + Mobile Action Bar */}
         <div
-          className={`lg:col-span-5 ${
+          className={`lg:col-span-5 space-y-4 ${
             mobilePane === 'standings' ? 'block' : 'hidden lg:block'
           }`}
         >
           <div className="lg:sticky lg:top-20">
             <LiveStandingsPanel />
           </div>
+
+          {renderSaveBar('lg:hidden')}
         </div>
       </div>
 

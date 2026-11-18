@@ -20,11 +20,13 @@ import '../widgets/app_components.dart';
 class PosterScreen extends StatefulWidget {
   final TournamentStore store;
   final VoidCallback onCreateTournament;
+  final bool isActive;
 
   const PosterScreen({
     super.key,
     required this.store,
     required this.onCreateTournament,
+    this.isActive = true,
   });
 
   @override
@@ -39,6 +41,7 @@ class _PosterScreenState extends State<PosterScreen> {
   WebViewController? _webController;
   bool _bridgeReady = false;
   bool _isExporting = false;
+  bool _pendingWebSync = false;
   String? _lastSavedBannerText;
   Completer<Uint8List>? _pendingExport;
   int _reqSeq = 0;
@@ -81,7 +84,20 @@ class _PosterScreenState extends State<PosterScreen> {
         !t.matches.any((m) => m.matchNumber == _selectedMatchNumber)) {
       _syncDefaultMatchNumber();
     }
+    if (!widget.isActive) {
+      _pendingWebSync = true;
+      return;
+    }
     _pushPayloadToWebView();
+  }
+
+  @override
+  void didUpdateWidget(covariant PosterScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive && _pendingWebSync) {
+      _pendingWebSync = false;
+      _pushPayloadToWebView();
+    }
   }
 
   Future<void> _initWebView() async {
@@ -192,6 +208,10 @@ class _PosterScreenState extends State<PosterScreen> {
   }
 
   Future<void> _pushPayloadToWebView({bool force = false}) async {
+    if (!widget.isActive && !force) {
+      _pendingWebSync = true;
+      return;
+    }
     final ctrl = _webController;
     final payload = _buildPayload();
     if (ctrl == null || payload == null) return;
@@ -434,8 +454,8 @@ class _PosterScreenState extends State<PosterScreen> {
     final previewRatio =
         _aspectRatio == AspectRatioMode.ratio4x5 ? 4 / 5 : 16 / 9;
 
-    const double bottomClearance = 24;
-    final maxPreviewHeight = MediaQuery.sizeOf(context).height * 0.34;
+    const double bottomClearance = 10;
+    final maxPreviewHeight = MediaQuery.sizeOf(context).height * 0.25;
 
     return Column(
       children: [
@@ -478,7 +498,7 @@ class _PosterScreenState extends State<PosterScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
 
               // Pinned Live Hybrid-Composition Monitor (no ClipRRect or Flutter overlay)
               AnimatedContainer(
@@ -515,7 +535,7 @@ class _PosterScreenState extends State<PosterScreen> {
         Expanded(
           child: ListView(
             physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(20, 14, 20, bottomClearance),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, bottomClearance),
             children: [
               // Theme Swatch Strip
               const Text(
@@ -527,9 +547,9 @@ class _PosterScreenState extends State<PosterScreen> {
                   letterSpacing: 1.0,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               SizedBox(
-                height: 44,
+                height: 40,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: broadcastThemePalettes.length,
@@ -596,7 +616,7 @@ class _PosterScreenState extends State<PosterScreen> {
                   },
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
 
               // Aspect Ratio & View Scope Controls
               SegmentedToggle<AspectRatioMode>(
@@ -728,74 +748,13 @@ class _PosterScreenState extends State<PosterScreen> {
                 ],
               ),
 
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: PrimaryPillButton(
-                      label: 'Save PNG',
-                      icon: Icons.download_rounded,
-                      accentColor: activePalette.primary,
-                      isLoading: _isExporting,
-                      onPressed: kIsWeb ? null : _saveToGallery,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: SecondaryPillButton(
-                      label: 'Share',
-                      icon: Icons.ios_share_rounded,
-                      onPressed: kIsWeb || _isExporting ? null : _sharePoster,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SecondaryPillButton(
-                    label: 'Copy',
-                    icon: Icons.copy_all_rounded,
-                    onPressed: () async {
-                      final overallResult = widget.store.getStandings();
-                      final completedMatches = tournament.matches
-                          .where((m) => m.isCompleted)
-                          .length;
-                      List<TeamCumulativeStanding> activeRows =
-                          overallResult.standings;
-                      if (_viewMode == StandingsViewMode.singleMatch &&
-                          tournament.matches.isNotEmpty) {
-                        final chosen = tournament.matches.firstWhere(
-                          (m) => m.matchNumber == _selectedMatchNumber,
-                          orElse: () => tournament.matches.first,
-                        );
-                        activeRows = calculateSingleMatchStandings(
-                          tournament.teams,
-                          chosen,
-                          tournament.settings.pointSystem,
-                          tournament.settings.tieBreakOrder,
-                        );
-                      }
-                      final summary = formatStandingsTextSummary(
-                        settings: tournament.settings,
-                        standings: activeRows,
-                        viewMode: _viewMode,
-                        matchNumber: _selectedMatchNumber,
-                        completedMatches: completedMatches,
-                      );
-                      await Clipboard.setData(ClipboardData(text: summary));
-                      HapticFeedback.mediumImpact();
-                      if (!mounted) return;
-                      setState(() {
-                        _lastSavedBannerText =
-                            'Standings text copied for WhatsApp / Discord';
-                      });
-                    },
-                  ),
-                ],
-              ),
+              const SizedBox(height: 10),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 220),
                 child: _lastSavedBannerText == null
                     ? const SizedBox.shrink()
                     : Padding(
-                        padding: const EdgeInsets.only(top: 12),
+                        padding: const EdgeInsets.only(top: 6),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,
@@ -854,6 +813,77 @@ class _PosterScreenState extends State<PosterScreen> {
                           ),
                         ),
                       ),
+              ),
+            ],
+          ),
+        ),
+
+        // Sticky Export Bottom Bar (always visible above bottom dock)
+        Container(
+          decoration: const BoxDecoration(
+            color: AppColors.canvas,
+            border: Border(
+              top: BorderSide(color: AppColors.borderSubtle),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: PrimaryPillButton(
+                  label: 'Save PNG',
+                  icon: Icons.download_rounded,
+                  accentColor: activePalette.primary,
+                  isLoading: _isExporting,
+                  onPressed: kIsWeb ? null : _saveToGallery,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SecondaryPillButton(
+                  label: 'Share',
+                  icon: Icons.ios_share_rounded,
+                  onPressed: kIsWeb || _isExporting ? null : _sharePoster,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SecondaryPillButton(
+                label: 'Copy',
+                icon: Icons.copy_all_rounded,
+                onPressed: () async {
+                  final overallResult = widget.store.getStandings();
+                  final completedMatches =
+                      tournament.matches.where((m) => m.isCompleted).length;
+                  List<TeamCumulativeStanding> activeRows =
+                      overallResult.standings;
+                  if (_viewMode == StandingsViewMode.singleMatch &&
+                      tournament.matches.isNotEmpty) {
+                    final chosen = tournament.matches.firstWhere(
+                      (m) => m.matchNumber == _selectedMatchNumber,
+                      orElse: () => tournament.matches.first,
+                    );
+                    activeRows = calculateSingleMatchStandings(
+                      tournament.teams,
+                      chosen,
+                      tournament.settings.pointSystem,
+                      tournament.settings.tieBreakOrder,
+                    );
+                  }
+                  final summary = formatStandingsTextSummary(
+                    settings: tournament.settings,
+                    standings: activeRows,
+                    viewMode: _viewMode,
+                    matchNumber: _selectedMatchNumber,
+                    completedMatches: completedMatches,
+                  );
+                  await Clipboard.setData(ClipboardData(text: summary));
+                  HapticFeedback.mediumImpact();
+                  if (!mounted) return;
+                  setState(() {
+                    _lastSavedBannerText =
+                        'Standings text copied for WhatsApp / Discord';
+                  });
+                },
               ),
             ],
           ),
