@@ -177,7 +177,7 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
         </div>
       </div>
 
-      {/* Offline Screenshot Auto-Result Toggle */}
+      {/* Gemini AI Screenshot Auto-Result Toggle */}
       {onAutoResultFromScreenshotChange && (
         <div className="pt-1 space-y-2">
           <button
@@ -206,14 +206,14 @@ export const TournamentDetailsSection: React.FC<TournamentDetailsSectionProps> =
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-semibold text-white">
-                    Auto Result from Screenshot
+                    AI Auto Result from Screenshot
                   </span>
                   <span className="rounded-md border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                    Beta
+                    Gemini AI
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-                  100% free offline OCR. Can also be turned on later, and squad member IGNs can be added or edited anytime.
+                  Powered by your Gemini API key (configured in Home Profile). Add 1-5 squad member IGNs now or anytime later.
                 </p>
               </div>
             </div>

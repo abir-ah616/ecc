@@ -22,6 +22,7 @@ import {
   useTournamentStore,
   generateInitials,
 } from '../../store/tournamentStore';
+import { useAuthStore } from '../../store/authStore';
 import { LiveStandingsPanel } from './LiveStandingsPanel';
 import { ScanScreenshotModal } from './ScanScreenshotModal';
 import { SquadPlayersModal } from './SquadPlayersModal';
@@ -49,6 +50,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     getActiveTournament,
     updateTournament,
   } = useTournamentStore();
+  const { canUseAiAuto } = useAuthStore();
 
   const [mobilePane, setMobilePane] = useState<'entry' | 'standings'>('entry');
   const [entryMode, setEntryMode] = useState<'slot' | 'rapid'>('slot');
@@ -397,37 +399,41 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsScanOpen(true)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                    settings.autoResultFromScreenshot
-                      ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
-                      : 'glass-pill text-slate-200'
-                  }`}
-                >
-                  <ScanLine className="h-3.5 w-3.5" />
-                  <span>Scan</span>
-                  <span
-                    className={`rounded px-1 py-0.2 text-[10px] font-bold uppercase tracking-wide ${
-                      settings.autoResultFromScreenshot
-                        ? 'bg-zinc-950/20 text-zinc-950'
-                        : 'border border-amber-400/40 bg-amber-500/15 text-amber-300'
-                    }`}
-                  >
-                    Beta
-                  </span>
-                </button>
+                {canUseAiAuto && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsScanOpen(true)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                        settings.autoResultFromScreenshot
+                          ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
+                          : 'glass-pill text-slate-200'
+                      }`}
+                    >
+                      <ScanLine className="h-3.5 w-3.5" />
+                      <span>AI Scan</span>
+                      <span
+                        className={`rounded px-1 py-0.2 text-[10px] font-bold uppercase tracking-wide ${
+                          settings.autoResultFromScreenshot
+                            ? 'bg-zinc-950/20 text-zinc-950'
+                            : 'border border-amber-400/40 bg-amber-500/15 text-amber-300'
+                        }`}
+                      >
+                        Gemini
+                      </span>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsPlayersOpen(true)}
-                  title="Add or edit squad team member IGNs for screenshot auto-matching"
-                  className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors"
-                >
-                  <Users className="h-3.5 w-3.5 text-amber-400" />
-                  <span>Players</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsPlayersOpen(true)}
+                      title="Add or edit squad team member IGNs for AI screenshot auto-matching"
+                      className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors"
+                    >
+                      <Users className="h-3.5 w-3.5 text-amber-400" />
+                      <span>Players</span>
+                    </button>
+                  </>
+                )}
 
                 <button
                   type="button"
@@ -941,26 +947,28 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
         </div>
       </div>
 
-      <ScanScreenshotModal
-        isOpen={isScanOpen}
-        matchNumber={match.matchNumber}
-        teams={teams}
-        autoResultFromScreenshot={Boolean(settings.autoResultFromScreenshot)}
-        onClose={() => setIsScanOpen(false)}
-        onUpdatePlayers={(updatedTeams, autoResultEnabled) => {
-          const active = getActiveTournament();
-          if (!active) return;
-          updateTournament(active.id, {
-            teams: updatedTeams,
-            autoResultFromScreenshot: autoResultEnabled,
-          });
-        }}
-        onApply={(entries, learnedByTeamId) => {
-          applyBatchMatchResults(match.id, entries, learnedByTeamId);
-        }}
-      />
+      {canUseAiAuto && (
+        <ScanScreenshotModal
+          isOpen={isScanOpen}
+          matchNumber={match.matchNumber}
+          teams={teams}
+          autoResultFromScreenshot={Boolean(settings.autoResultFromScreenshot)}
+          onClose={() => setIsScanOpen(false)}
+          onUpdatePlayers={(updatedTeams, autoResultEnabled) => {
+            const active = getActiveTournament();
+            if (!active) return;
+            updateTournament(active.id, {
+              teams: updatedTeams,
+              autoResultFromScreenshot: autoResultEnabled,
+            });
+          }}
+          onApply={(entries, learnedByTeamId) => {
+            applyBatchMatchResults(match.id, entries, learnedByTeamId);
+          }}
+        />
+      )}
 
-      {isPlayersOpen && (
+      {canUseAiAuto && isPlayersOpen && (
         <SquadPlayersModal
           isOpen={isPlayersOpen}
           teams={teams}

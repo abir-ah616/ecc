@@ -224,6 +224,7 @@ class _OrganizerShellState extends State<OrganizerShell> {
           body: SafeArea(
             child: CreateTournamentScreen(
               store: widget.tournamentStore,
+              canUseAiAuto: widget.authStore.canUseAiAuto,
               editingTournament: editing,
               initialPreset: preset,
               onCancel: () => Navigator.of(routeCtx).pop(),
@@ -455,6 +456,7 @@ class _OrganizerShellState extends State<OrganizerShell> {
                       RepaintBoundary(
                         child: MatchScreen(
                           store: widget.tournamentStore,
+                          authStore: widget.authStore,
                           preferredMatchId: _focusedMatchId,
                           matchFocusNonce: _matchFocusNonce,
                           onOpenPoster: () =>
@@ -462,6 +464,10 @@ class _OrganizerShellState extends State<OrganizerShell> {
                           onCreateTournament: () => _openCreate(),
                           onEditEvent: () {
                             if (active != null) _openCreate(editing: active);
+                          },
+                          onOpenAccountSheet: () {
+                            setState(() => _tab = _AppTab.home);
+                            _openAccountSheet();
                           },
                         ),
                       ),

@@ -19,12 +19,26 @@ import {
   LogOut,
   History,
   CopyPlus,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Check,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 import { useAuthStore } from '../../store/authStore';
 import { calculateTournamentStandings } from '../../lib/scoring';
 import { TOURNAMENT_TEMPLATES } from '../../lib/templates';
 import { resolveThemePreset, THEME_META_MAP } from '../../lib/theme';
+import {
+  clearStoredGeminiApiKey,
+  getStoredGeminiApiKey,
+  getStoredGeminiModel,
+  maskGeminiApiKey,
+  setStoredGeminiApiKey,
+  verifyGeminiApiKey,
+} from '../../lib/screenshotScanner';
 import { EspCalcLogoMark, OrganizerAvatar } from '../ui/BrandLogo';
 import type { TournamentRecord } from '../../types/tournament';
 
@@ -61,6 +75,240 @@ function formatRelativeTime(record: TournamentRecord): string {
   return record.createdAt || `${record.teams.length} Squads`;
 }
 
+const GeminiApiProfileCard: React.FC<{ userEmail: string | null }> = ({
+  userEmail,
+}) => {
+  const [savedGeminiKey, setSavedGeminiKey] = useState(() =>
+    getStoredGeminiApiKey(userEmail)
+  );
+  const [geminiKeyInput, setGeminiKeyInput] = useState(() =>
+    getStoredGeminiApiKey(userEmail)
+  );
+  const [verifiedGeminiModel, setVerifiedGeminiModel] = useState(() =>
+    getStoredGeminiModel(userEmail)
+  );
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [verifyingGeminiKey, setVerifyingGeminiKey] = useState(false);
+  const [showGeminiGuide, setShowGeminiGuide] = useState(
+    () => !getStoredGeminiApiKey(userEmail)
+  );
+  const [geminiFeedback, setGeminiFeedback] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  const handleVerifyAndSaveGeminiKey = async () => {
+    if (verifyingGeminiKey) return;
+    const raw = geminiKeyInput.trim();
+    if (!raw) {
+      setGeminiFeedback({
+        type: 'error',
+        text: 'Paste your Google AI Studio API key first.',
+      });
+      return;
+    }
+
+    setVerifyingGeminiKey(true);
+    setGeminiFeedback(null);
+    const res = await verifyGeminiApiKey(raw);
+    setVerifyingGeminiKey(false);
+
+    if (!res.valid) {
+      setGeminiFeedback({
+        type: 'error',
+        text: res.error || 'Could not verify API key.',
+      });
+      return;
+    }
+
+    const chosenModel = res.model || 'gemini-2.5-flash';
+    setStoredGeminiApiKey(userEmail, raw, chosenModel);
+    const clean = getStoredGeminiApiKey(userEmail);
+    setSavedGeminiKey(clean);
+    setGeminiKeyInput(clean);
+    setVerifiedGeminiModel(chosenModel);
+    setShowGeminiKey(false);
+    setShowGeminiGuide(false);
+    setGeminiFeedback({
+      type: 'success',
+      text: `Verified & saved (${chosenModel}). AI Auto Standings is ready.`,
+    });
+  };
+
+  const handleRemoveGeminiKey = () => {
+    clearStoredGeminiApiKey(userEmail);
+    setSavedGeminiKey('');
+    setGeminiKeyInput('');
+    setShowGeminiGuide(true);
+    setGeminiFeedback({
+      type: 'success',
+      text: 'Removed Gemini API key from this browser.',
+    });
+  };
+
+  return (
+    <div
+      className={`rounded-xl border p-3.5 space-y-3 ${
+        savedGeminiKey
+          ? 'border-emerald-500/35 bg-emerald-500/[0.06]'
+          : 'border-amber-500/35 bg-amber-500/[0.06]'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+              savedGeminiKey
+                ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-400'
+                : 'border-amber-500/35 bg-amber-500/15 text-amber-400'
+            }`}
+          >
+            <KeyRound className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-white">
+              AI Auto Standings · Gemini API
+            </div>
+            <div className="truncate text-[11px] text-slate-400">
+              {savedGeminiKey
+                ? `Connected (${maskGeminiApiKey(savedGeminiKey)} · ${verifiedGeminiModel})`
+                : 'Add your free Google AI Studio key to scan match results'}
+            </div>
+          </div>
+        </div>
+        <span
+          className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+            savedGeminiKey
+              ? 'border border-emerald-500/35 bg-emerald-500/15 text-emerald-300'
+              : 'border border-amber-500/40 bg-amber-500/15 text-amber-300'
+          }`}
+        >
+          {savedGeminiKey ? 'Active' : 'Required'}
+        </span>
+      </div>
+
+      <div className="relative">
+        <input
+          type={showGeminiKey ? 'text' : 'password'}
+          autoComplete="off"
+          spellCheck={false}
+          value={geminiKeyInput}
+          onChange={(e) => {
+            setGeminiKeyInput(e.target.value);
+            if (geminiFeedback) setGeminiFeedback(null);
+          }}
+          placeholder="Paste AIza... Gemini API key"
+          className="glass-input w-full rounded-lg pl-3 pr-9 py-2 text-xs font-mono text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => setShowGeminiKey((v) => !v)}
+          aria-label={showGeminiKey ? 'Hide API key' : 'Show API key'}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-white cursor-pointer"
+        >
+          {showGeminiKey ? (
+            <EyeOff className="h-3.5 w-3.5" />
+          ) : (
+            <Eye className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={verifyingGeminiKey}
+          onClick={handleVerifyAndSaveGeminiKey}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 px-3 py-2 text-xs font-bold text-zinc-950 transition-colors cursor-pointer"
+        >
+          {verifyingGeminiKey ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>Verifying Key...</span>
+            </>
+          ) : (
+            <>
+              <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+              <span>Verify &amp; Save Key</span>
+            </>
+          )}
+        </button>
+
+        {savedGeminiKey && (
+          <button
+            type="button"
+            onClick={handleRemoveGeminiKey}
+            className="rounded-lg border border-rose-500/35 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-300 transition-colors cursor-pointer"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+
+      {geminiFeedback && (
+        <div
+          className={`flex items-start gap-1.5 text-[11px] font-medium leading-snug ${
+            geminiFeedback.type === 'success'
+              ? 'text-emerald-300'
+              : 'text-rose-300'
+          }`}
+        >
+          {geminiFeedback.type === 'error' ? (
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-rose-400" />
+          ) : (
+            <Check className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-400" />
+          )}
+          <span>{geminiFeedback.text}</span>
+        </div>
+      )}
+
+      <div className="pt-0.5">
+        <button
+          type="button"
+          onClick={() => setShowGeminiGuide((v) => !v)}
+          className="text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline underline-offset-2 cursor-pointer"
+        >
+          {showGeminiGuide
+            ? 'Hide free API key guide'
+            : 'How to get a free Gemini API key (30 sec)'}
+        </button>
+
+        {showGeminiGuide && (
+          <div className="mt-2 rounded-lg border border-white/[0.08] bg-[#0B0E15] p-3 space-y-1.5 text-[11px] text-slate-300 leading-relaxed">
+            <div>
+              <span className="font-bold text-amber-400">1.</span> Open{' '}
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-semibold text-amber-300 hover:text-amber-200 underline"
+              >
+                <span>aistudio.google.com/apikey</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>{' '}
+              and sign in with Google.
+            </div>
+            <div>
+              <span className="font-bold text-amber-400">2.</span> Click{' '}
+              <span className="font-semibold text-white">Create API Key</span>{' '}
+              (free tier scans ~250–1,000 matches/day, zero billing needed).
+            </div>
+            <div>
+              <span className="font-bold text-amber-400">3.</span> Paste the{' '}
+              <span className="font-mono text-white">AIza...</span> key above
+              and click{' '}
+              <span className="font-semibold text-white">
+                Verify &amp; Save Key
+              </span>
+              .
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
   const {
     tournaments,
@@ -77,6 +325,9 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
   const {
     firebaseUser,
     isAdmin,
+    canUseAiAuto,
+    requestOpenProfileSettings,
+    setRequestOpenProfileSettings,
     setAdminDashboardOpen,
     logout,
   } = useAuthStore();
@@ -86,6 +337,15 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmDeleteRecord, setConfirmDeleteRecord] =
     useState<TournamentRecord | null>(null);
+
+  const userEmail = firebaseUser?.email || null;
+  const isSettingsModalOpen = settingsOpen || requestOpenProfileSettings;
+  const closeSettingsModal = () => {
+    setSettingsOpen(false);
+    if (requestOpenProfileSettings) {
+      setRequestOpenProfileSettings(false);
+    }
+  };
 
   const activeTournament = getActiveTournament();
   const liveTournaments = useMemo(
@@ -879,13 +1139,13 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
       )}
 
       {/* SETTINGS & EXPORT MODAL */}
-      {settingsOpen && (
+      {isSettingsModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setSettingsOpen(false)}
+          onClick={closeSettingsModal}
         >
           <div
-            className="glass-modal w-full max-w-md rounded-2xl p-5 sm:p-6 space-y-4"
+            className="glass-modal max-h-[90vh] overflow-y-auto w-full max-w-md rounded-2xl p-5 sm:p-6 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -908,7 +1168,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
               </div>
               <button
                 type="button"
-                onClick={() => setSettingsOpen(false)}
+                onClick={closeSettingsModal}
                 aria-label="Close settings modal"
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/[0.07] hover:text-white cursor-pointer"
               >
@@ -916,11 +1176,18 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
               </button>
             </div>
 
+            {canUseAiAuto && (
+              <GeminiApiProfileCard
+                key={userEmail || 'guest'}
+                userEmail={userEmail}
+              />
+            )}
+
             <div className="space-y-2">
               <button
                 type="button"
                 onClick={() => {
-                  setSettingsOpen(false);
+                  closeSettingsModal();
                   setCurrentTab('rules');
                 }}
                 className="studio-feature-tile w-full rounded-xl p-3 flex items-center justify-between text-left cursor-pointer"
@@ -944,7 +1211,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setSettingsOpen(false);
+                    closeSettingsModal();
                     onOpenJson();
                   }}
                   className="studio-feature-tile w-full rounded-xl p-3 flex items-center justify-between text-left cursor-pointer"
@@ -968,7 +1235,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setSettingsOpen(false);
+                    closeSettingsModal();
                     setAdminDashboardOpen(true);
                   }}
                   className="studio-feature-tile w-full rounded-xl p-3 flex items-center justify-between text-left cursor-pointer"
@@ -992,7 +1259,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setSettingsOpen(false);
+                    closeSettingsModal();
                     logout();
                   }}
                   className="w-full rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 p-3 flex items-center justify-center gap-2 text-xs font-bold text-rose-300 transition-colors cursor-pointer"

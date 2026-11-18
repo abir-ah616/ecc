@@ -29,6 +29,7 @@ class AllowedUserRecord {
   final String displayName;
   final UserRole role;
   final UserStatus status;
+  final bool allowAiAuto;
   final String notes;
   final String? addedBy;
   final int createdAt;
@@ -42,6 +43,7 @@ class AllowedUserRecord {
     required this.displayName,
     required this.role,
     required this.status,
+    this.allowAiAuto = false,
     this.notes = '',
     this.addedBy,
     required this.createdAt,
@@ -59,6 +61,7 @@ class AllowedUserRecord {
         status: (data['status'] as String?) == 'disabled'
             ? UserStatus.disabled
             : UserStatus.active,
+        allowAiAuto: (data['allowAiAuto'] as bool?) ?? false,
         notes: (data['notes'] as String?) ?? '',
         addedBy: data['addedBy'] as String?,
         createdAt: (data['createdAt'] as num?)?.toInt() ?? 0,
@@ -73,6 +76,7 @@ class AllowedUserRecord {
         'displayName': displayName,
         'role': userRoleToString(role),
         'status': status == UserStatus.disabled ? 'disabled' : 'active',
+        'allowAiAuto': allowAiAuto,
         'notes': notes,
         if (addedBy != null) 'addedBy': addedBy,
         'createdAt': createdAt,

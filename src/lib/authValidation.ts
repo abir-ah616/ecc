@@ -21,6 +21,7 @@ export interface BuildAllowedUserInput {
   displayName: string;
   role: UserRole;
   status?: UserStatus;
+  allowAiAuto?: boolean;
   notes?: string;
   currentUserEmail: string;
   existingData?: Partial<AllowedUserRecord> | null;
@@ -35,6 +36,7 @@ export const buildAllowedUserRecord = ({
   displayName,
   role,
   status = 'active',
+  allowAiAuto,
   notes = '',
   currentUserEmail,
   existingData,
@@ -46,6 +48,7 @@ export const buildAllowedUserRecord = ({
   }
 
   const isSuper = cleanEmail === SUPER_ADMIN_EMAIL;
+  const effectiveRole: UserRole = isSuper ? 'admin' : role;
   const existingAddedBy =
     typeof existingData?.addedBy === 'string' && existingData.addedBy.trim()
       ? existingData.addedBy.trim()
@@ -56,12 +59,19 @@ export const buildAllowedUserRecord = ({
     existingData.createdAt >= 0
       ? existingData.createdAt
       : now;
+  const resolvedAllowAiAuto =
+    effectiveRole === 'admin'
+      ? true
+      : typeof allowAiAuto === 'boolean'
+      ? allowAiAuto
+      : Boolean(existingData?.allowAiAuto);
 
   return {
     email: cleanEmail,
     displayName: sanitizeDisplayName(displayName, cleanEmail),
-    role: isSuper ? 'admin' : role,
+    role: effectiveRole,
     status: isSuper ? 'active' : status,
+    allowAiAuto: resolvedAllowAiAuto,
     notes: notes.trim().slice(0, 1000),
     addedBy: (existingAddedBy || normalizeEmail(currentUserEmail)).slice(0, 254),
     createdAt: existingCreatedAt,

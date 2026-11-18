@@ -35,22 +35,27 @@ interface AuthState {
   isLoading: boolean;
   isAllowed: boolean;
   isAdmin: boolean;
+  canUseAiAuto: boolean;
   authError: string | null;
   isAdminDashboardOpen: boolean;
+  requestOpenProfileSettings: boolean;
 
   setAdminDashboardOpen: (open: boolean) => void;
+  setRequestOpenProfileSettings: (open: boolean) => void;
   clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 
   setAllowTempLogin: (enabled: boolean) => Promise<void>;
   promoteTempToUser: (u: AllowedUserRecord) => Promise<void>;
+  toggleUserAiAuto: (u: AllowedUserRecord, enabled: boolean) => Promise<void>;
 
   addAllowedUser: (input: {
     email: string;
     displayName: string;
     role: UserRole;
     status?: UserStatus;
+    allowAiAuto?: boolean;
     notes?: string;
   }) => Promise<void>;
 
@@ -60,6 +65,7 @@ interface AuthState {
       displayName: string;
       role: UserRole;
       status: UserStatus;
+      allowAiAuto?: boolean;
       notes?: string;
     }
   ) => Promise<void>;
@@ -101,10 +107,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
   isAllowed: false,
   isAdmin: false,
+  canUseAiAuto: false,
   authError: null,
   isAdminDashboardOpen: false,
+  requestOpenProfileSettings: false,
 
   setAdminDashboardOpen: (open) => set({ isAdminDashboardOpen: open }),
+  setRequestOpenProfileSettings: (open) =>
+    set({ requestOpenProfileSettings: open }),
   clearAuthError: () => set({ authError: null }),
 
   signInWithGoogle: async () => {
@@ -158,7 +168,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       allUsers: [],
       isAllowed: false,
       isAdmin: false,
+      canUseAiAuto: false,
       isAdminDashboardOpen: false,
+      requestOpenProfileSettings: false,
       isLoading: false,
       authError: null,
     });
@@ -190,11 +202,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       displayName: u.displayName,
       role: 'user',
       status: 'active',
+      allowAiAuto: Boolean(u.allowAiAuto),
       notes: u.notes || '',
     });
   },
 
-  addAllowedUser: async ({ email, displayName, role, status = 'active', notes = '' }) => {
+  toggleUserAiAuto: async (u, enabled) => {
+    await get().updateAllowedUser(u.email, {
+      displayName: u.displayName,
+      role: u.role,
+      status: u.status,
+      allowAiAuto: enabled,
+      notes: u.notes || '',
+    });
+  },
+
+  addAllowedUser: async ({
+    email,
+    displayName,
+    role,
+    status = 'active',
+    allowAiAuto = false,
+    notes = '',
+  }) => {
     const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
     if (!currentUserEmail || !get().isAdmin) {
       throw new Error('You must be signed in as an admin to authorize users.');
@@ -213,6 +243,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         displayName,
         role,
         status,
+        allowAiAuto,
         notes,
         currentUserEmail,
         existingData: existing.exists()
@@ -225,23 +256,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  updateAllowedUser: async (email, { displayName, role, status, notes = '' }) => {
+  updateAllowedUser: async (
+    email,
+    { displayName, role, status, allowAiAuto, notes = '' }
+  ) => {
     const currentUserEmail = normalizeEmail(get().firebaseUser?.email || '');
     if (!currentUserEmail || !get().isAdmin) {
       throw new Error('You must be signed in as an admin to update users.');
     }
     const cleanEmail = normalizeEmail(email);
     const isSuper = cleanEmail === SUPER_ADMIN_EMAIL;
+    const effectiveRole: UserRole = isSuper ? 'admin' : role;
     const userRef = doc(db, 'allowed_users', cleanEmail);
 
+    const payload: Record<string, unknown> = {
+      displayName: sanitizeDisplayName(displayName, cleanEmail),
+      role: effectiveRole,
+      status: isSuper ? 'active' : status,
+      notes: notes.trim().slice(0, 1000),
+      updatedAt: Date.now(),
+    };
+    if (effectiveRole === 'admin') {
+      payload.allowAiAuto = true;
+    } else if (typeof allowAiAuto === 'boolean') {
+      payload.allowAiAuto = allowAiAuto;
+    }
+
     try {
-      await updateDoc(userRef, {
-        displayName: sanitizeDisplayName(displayName, cleanEmail),
-        role: isSuper ? 'admin' : role,
-        status: isSuper ? 'active' : status,
-        notes: notes.trim().slice(0, 1000),
-        updatedAt: Date.now(),
-      });
+      await updateDoc(userRef, payload);
     } catch (err) {
       throw formatAllowedUserError(err, currentUserEmail);
     }
@@ -322,6 +364,7 @@ export const initAuthListener = () => {
         allUsers: [],
         isAllowed: false,
         isAdmin: false,
+        canUseAiAuto: false,
         isLoading: false,
       });
       return;
@@ -334,6 +377,7 @@ export const initAuthListener = () => {
         allUsers: [],
         isAllowed: false,
         isAdmin: false,
+        canUseAiAuto: false,
         authError: 'A verified Google account email is required to access this workspace.',
         isLoading: false,
       });
@@ -363,6 +407,8 @@ export const initAuthListener = () => {
           isSuperAdmin || (isActive && (!isTemp || latestAllowTemp));
         const admin =
           isSuperAdmin || (isActive && latestRecord.role === 'admin');
+        const aiAuto =
+          admin || (allowed && Boolean(latestRecord.allowAiAuto));
 
         useAuthStore.setState({
           firebaseUser: user,
@@ -370,6 +416,7 @@ export const initAuthListener = () => {
           allowTempLogin: latestAllowTemp,
           isAllowed: allowed,
           isAdmin: admin,
+          canUseAiAuto: aiAuto,
           authError:
             isTemp && isActive && !latestAllowTemp
               ? 'Temporary login is currently disabled. Ask an administrator to re-enable Temp Login or upgrade your account to a permanent User.'
@@ -409,6 +456,7 @@ export const initAuthListener = () => {
           displayName: user.displayName || 'MR. OPPY (SUPER ADMIN)',
           role: 'admin',
           status: 'active',
+          allowAiAuto: true,
           notes: 'Primary System Administrator',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -419,6 +467,7 @@ export const initAuthListener = () => {
           allowTempLogin: latestAllowTemp,
           isAllowed: true,
           isAdmin: true,
+          canUseAiAuto: true,
           isLoading: false,
         });
         startAllUsersSubscription();
@@ -455,6 +504,7 @@ export const initAuthListener = () => {
         allowTempLogin: latestAllowTemp,
         isAllowed: false,
         isAdmin: false,
+        canUseAiAuto: false,
         isLoading: false,
       });
     };
@@ -499,6 +549,7 @@ export const initAuthListener = () => {
             allUsers: [],
             isAllowed: false,
             isAdmin: false,
+            canUseAiAuto: false,
             authError: 'Your session has been revoked or disabled.',
             isLoading: false,
           });
@@ -511,6 +562,7 @@ export const initAuthListener = () => {
             allowTempLogin: false,
             isAllowed: false,
             isAdmin: false,
+            canUseAiAuto: false,
             authError:
               'Online server verification is required to sign in. Check your connection and retry.',
             isLoading: false,
@@ -530,6 +582,7 @@ export const initAuthListener = () => {
             displayName: user.displayName || 'MR. OPPY (SUPER ADMIN)',
             role: 'admin',
             status: 'active',
+            allowAiAuto: true,
             notes: 'Primary System Administrator',
             addedBy: 'system',
             createdAt: now,
@@ -590,6 +643,7 @@ export const initAuthListener = () => {
             firebaseUser: user,
             isAllowed: true,
             isAdmin: true,
+            canUseAiAuto: true,
             isLoading: false,
           });
           startAllUsersSubscription();

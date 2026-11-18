@@ -13,6 +13,7 @@ rules_version = '2';
 //   - displayName: string (required, 1..120 chars) - user display name
 //   - role: string (required, enum: ['admin', 'user', 'temp']) - access control role
 //   - status: string (required, enum: ['active', 'disabled']) - account status
+//   - allowAiAuto: bool (optional; must be false or omitted on temp self-onboarding, immutable on self-update) - admin-controlled AI Auto permission flag
 //   - createdAt: number (required, 0 <= ts <= request.time + 24h; immutable & within +/- 24h of request.time on temp self-onboarding) - creation timestamp (ms)
 //   - updatedAt: number (required, 0 <= ts <= request.time + 24h; within +/- 24h of request.time on self-onboarding/self-update) - last update timestamp (ms)
 //   - notes: string (optional, 0..1000 chars, immutable on self-update) - admin notes
@@ -213,6 +214,7 @@ service cloud.firestore {
           'displayName',
           'role',
           'status',
+          'allowAiAuto',
           'notes',
           'addedBy',
           'createdAt',
@@ -237,6 +239,7 @@ service cloud.firestore {
         data.status in ['active', 'disabled'] &&
         // Root super-admin must always remain an active admin
         (emailId != 'johncenahzoppy@gmail.com' || (data.role == 'admin' && data.status == 'active')) &&
+        (!('allowAiAuto' in data) || data.allowAiAuto is bool) &&
         isValidEpochMs(data.createdAt) &&
         isValidEpochMs(data.updatedAt) &&
         isValidOptionalString('notes', 0, 1000) &&
@@ -254,6 +257,8 @@ service cloud.firestore {
         isValidAllowedUser(request.resource.data, emailId) &&
         request.resource.data.role == 'temp' &&
         request.resource.data.status == 'active' &&
+        (!('allowAiAuto' in request.resource.data) ||
+          request.resource.data.allowAiAuto == false) &&
         'addedBy' in request.resource.data &&
         request.resource.data.addedBy == 'temp-login' &&
         isNearRequestTime(request.resource.data.createdAt) &&
@@ -264,7 +269,7 @@ service cloud.firestore {
         uidUnchanged();
     }
 
-    // Active allowed users may only update their own login metadata without altering role, status, email, createdAt, addedBy, or notes
+    // Active allowed users may only update their own login metadata without altering role, status, allowAiAuto, email, createdAt, addedBy, or notes
     function isValidSelfMetadataUpdate(emailId) {
       return isOwner(emailId) &&
         resource.data.status == 'active' &&
@@ -279,6 +284,7 @@ service cloud.firestore {
           'email',
           'role',
           'status',
+          'allowAiAuto',
           'createdAt',
           'addedBy',
           'notes'

@@ -1,5 +1,6 @@
-import 'dart:typed_data';
+import 'dart:convert';
 import 'package:esp_calc_mobile/core/roster_helpers.dart';
+import 'package:esp_calc_mobile/models/auth_models.dart';
 import 'package:esp_calc_mobile/models/tournament_models.dart';
 import 'package:esp_calc_mobile/services/screenshot_scanner.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -628,77 +629,65 @@ Slot 01 - EVOS DIVINE (Confirmed)
       expect(incrementStageOrDayLabel('FINALS'), 'FINALS - Day 2');
     });
 
-    test('classifies single digits 0-9, 2-digit kills (16), and rank badges (12) with embedded Int8 CNN', () {
-      const glyphs = <int, List<String>>{
-        0: ['.#####.', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '.#####.'],
-        1: ['..###..', '.####..', '#####..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..'],
-        2: ['.#####.', '##...##', '.....##', '.....##', '....##.', '...##..', '..##...', '.##....', '##.....', '##.....', '#######', '#######'],
-        3: ['.#####.', '##...##', '.....##', '....##.', '..####.', '....##.', '.....##', '.....##', '.....##', '##...##', '.#####.', '..###..'],
-        4: ['....##.', '...###.', '..####.', '.##.##.', '##..##.', '##..##.', '#######', '#######', '....##.', '....##.', '....##.', '....##.'],
-        5: ['#######', '##.....', '##.....', '##.....', '######.', '.....##', '.....##', '.....##', '.....##', '##...##', '.#####.', '..###..'],
-        6: ['..####.', '.##....', '##.....', '##.....', '######.', '##...##', '##...##', '##...##', '##...##', '##...##', '.#####.', '..###..'],
-        7: ['#######', '#######', '.....##', '....##.', '....##.', '...##..', '...##..', '..##...', '..##...', '.##....', '.##....', '.##....'],
-        8: ['.#####.', '##...##', '##...##', '##...##', '.#####.', '.#####.', '##...##', '##...##', '##...##', '##...##', '.#####.', '..###..'],
-        9: ['.#####.', '##...##', '##...##', '##...##', '##...##', '.######', '.....##', '.....##', '....##.', '...##..', '..##...', '.##....'],
-      };
+    test(
+        'parses Gemini Vision structured JSON, sums per-player kills deterministically, and enforces allowAiAuto',
+        () {
+      expect(sanitizeGeminiApiKey(' "AIzaSyTestKey1234567890" '),
+          'AIzaSyTestKey1234567890');
+      expect(maskGeminiApiKey('AIzaSyTestKey1234567890'), 'AIzaSy...7890');
 
-      ({Uint8List rgba, int w, int h}) drawCell(
-        String numStr,
-        List<int> bgRgb,
-        List<int> fgRgb,
-      ) {
-        const w = 28;
-        const h = 22;
-        final rgba = Uint8List(w * h * 4);
-        for (int i = 0; i < w * h; i++) {
-          rgba[i * 4] = bgRgb[0];
-          rgba[i * 4 + 1] = bgRgb[1];
-          rgba[i * 4 + 2] = bgRgb[2];
-          rgba[i * 4 + 3] = 255;
-        }
-        var cursorX = 3;
-        for (final code in numStr.codeUnits) {
-          final g = glyphs[code - 48]!;
-          for (int y = 0; y < 12; y++) {
-            for (int x = 0; x < g[y].length; x++) {
-              if (g[y].codeUnitAt(x) == 0x23) {
-                final idx = ((5 + y) * w + (cursorX + x)) * 4;
-                rgba[idx] = fgRgb[0];
-                rgba[idx + 1] = fgRgb[1];
-                rgba[idx + 2] = fgRgb[2];
-              }
-            }
-          }
-          cursorX += 9;
-        }
-        return (rgba: rgba, w: w, h: h);
-      }
+      final recUser = AllowedUserRecord.fromMap({
+        'email': 'org@gmail.com',
+        'displayName': 'Organizer',
+        'role': 'user',
+        'status': 'active',
+        'allowAiAuto': true,
+        'createdAt': 100,
+        'updatedAt': 200,
+      });
+      expect(recUser.allowAiAuto, isTrue);
+      expect(recUser.toMap()['allowAiAuto'], isTrue);
 
-      for (int d = 0; d <= 9; d++) {
-        final gold = drawCell('$d', const [96, 72, 16], const [248, 202, 24]);
-        expect(
-          readRgbaCellNumber(gold.rgba, gold.w, gold.h, 0, 0, gold.w, gold.h, yellowMode: true),
-          d,
-        );
-      }
+      const teams = [
+        Team(id: 't1', name: 'Team TGE', player1: 'Akash'),
+        Team(id: 't2', name: 'Squad Two', player1: 'Saffat'),
+      ];
 
-      final twoDigit11 = drawCell('11', const [92, 68, 14], const [248, 202, 24]);
-      expect(
-        readRgbaCellNumber(twoDigit11.rgba, twoDigit11.w, twoDigit11.h, 0, 0, twoDigit11.w, twoDigit11.h, yellowMode: true),
-        11,
-      );
+      final rawJson = jsonEncode({
+        'rows': [
+          {
+            'rank': 1,
+            'isBottomClipped': false,
+            'matchedTeamId': null,
+            'players': [
+              {'ign': 'TGE---Leader', 'kills': 3},
+              {'ign': '!! RUDHRA FF', 'kills': 4},
+              {'ign': 'M\u0280\u20DD\u24B6\u24C0\u24B6\u24C8\u24BD..', 'kills': 0},
+              {'ign': 'S\u1D0B\u0F12JIBON', 'kills': 16},
+            ],
+            'totalKills': 10, // Ignored in favor of exact 3+4+0+16 = 23 sum
+          },
+          {
+            'rank': 2,
+            'isBottomClipped': false,
+            'matchedTeamId': 't2',
+            'players': [
+              {'ign': 'S A F F A T Eliminations', 'kills': 7},
+              {'ign': 'NILOY.MRLS Eliminatio', 'kills': 3},
+            ],
+            'totalKills': 10,
+          },
+        ],
+      });
 
-      final twoDigit16 = drawCell('16', const [92, 68, 14], const [248, 202, 24]);
-      expect(
-        readRgbaCellNumber(twoDigit16.rgba, twoDigit16.w, twoDigit16.h, 0, 0, twoDigit16.w, twoDigit16.h, yellowMode: true),
-        16,
-      );
-
-      final rank12 = drawCell('12', const [18, 19, 22], const [242, 244, 248]);
-      expect(
-        readRgbaCellNumber(rank12.rgba, rank12.w, rank12.h, 0, 0, rank12.w, rank12.h, yellowMode: false),
-        12,
-      );
+      final matched = parseGeminiStandingsJson(rawJson, teams, maxTeams: 12);
+      expect(matched.length, 2);
+      expect(matched[0].rank, 1);
+      expect(matched[0].kills, 23);
+      expect(matched[0].matchedTeamId, 't1');
+      expect(matched[1].rank, 2);
+      expect(matched[1].kills, 10);
+      expect(matched[1].matchedTeamId, 't2');
       expect(normalizeFreeFireIgn('EXV-NOBETA\u277B\u277E'), 'exv nobeta69');
     });
   });

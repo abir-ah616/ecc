@@ -48,7 +48,7 @@ export interface TournamentSettings {
   theme: ThemePreset;
   customLogoUrl?: string;                // Uploaded tournament logo data URL
   isManuallyEnded?: boolean;             // When organizer clicks "End Tournament"
-  autoResultFromScreenshot?: boolean;    // Enables offline OCR screenshot result scanner
+  autoResultFromScreenshot?: boolean;    // Enables Gemini AI screenshot auto-standings scanner
 }
 
 export interface Team {
@@ -56,7 +56,7 @@ export interface Team {
   name: string;
   logoUrl?: string;                      // Optional data URL
   shortCode?: string;                    // 2-3 letter initials fallback
-  player1?: string;                      // Primary player IGN keyword for screenshot OCR
+  player1?: string;                      // Primary player IGN keyword for AI auto-matching
   player2?: string;                      // Secondary optional player IGN keyword
   players?: string[];                    // Full addable/editable list of squad member IGNs
   learnedTokens?: string[];              // Auto-learned OCR tokens from Match 1+ reviews

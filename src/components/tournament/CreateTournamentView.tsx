@@ -11,6 +11,7 @@ import {
   useTournamentStore,
   generateInitials,
 } from '../../store/tournamentStore';
+import { useAuthStore } from '../../store/authStore';
 import type { SavedSquadRecord, TournamentMode } from '../../types/tournament';
 import {
   buildSquadPlayerFields,
@@ -37,6 +38,7 @@ export const CreateTournamentView: React.FC = () => {
     findSavedSquadByName,
     deleteSavedSquad,
   } = useTournamentStore();
+  const { canUseAiAuto } = useAuthStore();
 
   const [selectedMode, setSelectedMode] = useState<TournamentMode | null>(
     () => pendingTemplate?.mode ?? null
@@ -404,16 +406,22 @@ export const CreateTournamentView: React.FC = () => {
             customLogoUrl={customLogoUrl}
             onLogoUpload={handleTournamentLogoUpload}
             onClearLogo={() => setCustomLogoUrl(undefined)}
-            autoResultFromScreenshot={autoResultFromScreenshot}
-            onAutoResultFromScreenshotChange={(val) => {
-              setAutoResultFromScreenshot(val);
-              if (!val) {
-                setFillPlayersLater(false);
-                setFormError(null);
-              }
-            }}
+            autoResultFromScreenshot={canUseAiAuto && autoResultFromScreenshot}
+            onAutoResultFromScreenshotChange={
+              canUseAiAuto
+                ? (val) => {
+                    setAutoResultFromScreenshot(val);
+                    if (!val) {
+                      setFillPlayersLater(false);
+                      setFormError(null);
+                    }
+                  }
+                : undefined
+            }
             fillPlayersLater={fillPlayersLater}
-            onFillPlayersLaterChange={setFillPlayersLater}
+            onFillPlayersLaterChange={
+              canUseAiAuto ? setFillPlayersLater : undefined
+            }
           />
         </div>
 
@@ -448,7 +456,7 @@ export const CreateTournamentView: React.FC = () => {
               )
             }
             getInitials={generateInitials}
-            autoResultFromScreenshot={autoResultFromScreenshot}
+            autoResultFromScreenshot={canUseAiAuto && autoResultFromScreenshot}
             fillPlayersLater={fillPlayersLater}
             onPlayersChange={(idx, nextPlayers) => {
               setTeams((prev) =>

@@ -1,13 +1,8 @@
 import type { Team } from '../types/tournament';
-import { FF_DIGIT_CNN_B64, FF_DIGIT_CNN_SCALES } from './ffDigitCnnWeights';
 
-export interface OcrWordBox {
-  text: string;
-  x0: number; // pixel or normalized
-  y0: number;
-  x1: number;
-  y1: number;
-  confidence: number; // 0..100
+export interface ScannedPlayerSlot {
+  ign: string;
+  kills: number;
 }
 
 export interface ScannedRankRow {
@@ -18,6 +13,8 @@ export interface ScannedRankRow {
   confidence: number;
   isEdgeClipped: boolean;
   sourceImageIndex: number;
+  players?: ScannedPlayerSlot[];
+  aiMatchedTeamId?: string | null;
 }
 
 export interface MatchedScanRow extends ScannedRankRow {
@@ -26,11 +23,243 @@ export interface MatchedScanRow extends ScannedRankRow {
   matchedKeyword?: string;
 }
 
+export type GeminiErrorCode =
+  | 'MISSING_API_KEY'
+  | 'INVALID_API_KEY'
+  | 'RATE_LIMITED'
+  | 'NETWORK_ERROR'
+  | 'PARSE_ERROR';
+
+export class GeminiScannerError extends Error {
+  readonly code: GeminiErrorCode;
+
+  constructor(code: GeminiErrorCode, message: string) {
+    super(message);
+    this.name = 'GeminiScannerError';
+    this.code = code;
+  }
+}
+
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const PREFERRED_FLASH_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+] as const;
+
+function storageKeyForEmail(prefix: string, userEmail?: string | null): string {
+  const clean = (userEmail || '').trim().toLowerCase() || 'default';
+  return `${prefix}_${clean}`;
+}
+
+export function sanitizeGeminiApiKey(raw: string): string {
+  return raw.trim().replace(/^["']+|["']+$/g, '').replace(/\s+/g, '');
+}
+
+export function getStoredGeminiApiKey(userEmail?: string | null): string {
+  if (typeof window === 'undefined' || !window.localStorage) return '';
+  try {
+    return sanitizeGeminiApiKey(
+      window.localStorage.getItem(
+        storageKeyForEmail('esp_calc_gemini_api_key', userEmail)
+      ) || ''
+    );
+  } catch {
+    return '';
+  }
+}
+
+export function getStoredGeminiModel(userEmail?: string | null): string {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return PREFERRED_FLASH_MODELS[0];
+  }
+  try {
+    return (
+      window.localStorage.getItem(
+        storageKeyForEmail('esp_calc_gemini_model', userEmail)
+      ) || PREFERRED_FLASH_MODELS[0]
+    );
+  } catch {
+    return PREFERRED_FLASH_MODELS[0];
+  }
+}
+
+export function setStoredGeminiApiKey(
+  userEmail: string | null | undefined,
+  apiKey: string,
+  verifiedModel?: string
+): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  const clean = sanitizeGeminiApiKey(apiKey);
+  try {
+    const keyName = storageKeyForEmail('esp_calc_gemini_api_key', userEmail);
+    const modelName = storageKeyForEmail('esp_calc_gemini_model', userEmail);
+    if (!clean) {
+      window.localStorage.removeItem(keyName);
+      window.localStorage.removeItem(modelName);
+      return;
+    }
+    window.localStorage.setItem(keyName, clean);
+    if (verifiedModel) {
+      window.localStorage.setItem(modelName, verifiedModel);
+    }
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function clearStoredGeminiApiKey(userEmail?: string | null): void {
+  setStoredGeminiApiKey(userEmail, '');
+}
+
+export function maskGeminiApiKey(apiKey: string): string {
+  const clean = sanitizeGeminiApiKey(apiKey);
+  if (!clean) return '';
+  if (clean.length <= 10) return `${clean.slice(0, 4)}...`;
+  return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
+}
+
+interface GeminiModelListEntry {
+  name?: string;
+  supportedGenerationMethods?: string[];
+}
+
+function selectVisionFlashModels(entries: GeminiModelListEntry[]): string[] {
+  const available = new Set<string>();
+  for (const m of entries) {
+    const id = (m.name || '').replace(/^models\//, '').trim();
+    const methods = m.supportedGenerationMethods || [];
+    if (!id || !methods.includes('generateContent')) continue;
+    const lower = id.toLowerCase();
+    if (
+      lower.includes('tts') ||
+      lower.includes('embedding') ||
+      lower.includes('imagen') ||
+      lower.includes('image-generation') ||
+      lower.includes('audio') ||
+      lower.includes('veo')
+    ) {
+      continue;
+    }
+    if (lower.includes('gemini') && lower.includes('flash')) {
+      available.add(id);
+    }
+  }
+
+  const ordered: string[] = [];
+  for (const pref of PREFERRED_FLASH_MODELS) {
+    if (available.has(pref)) ordered.push(pref);
+  }
+  for (const id of Array.from(available).sort().reverse()) {
+    if (!ordered.includes(id)) ordered.push(id);
+  }
+  return ordered.length > 0 ? ordered : [...PREFERRED_FLASH_MODELS];
+}
+
+export async function verifyGeminiApiKey(rawKey: string): Promise<{
+  valid: boolean;
+  model?: string;
+  error?: string;
+}> {
+  const cleanKey = sanitizeGeminiApiKey(rawKey);
+  if (cleanKey.length < 20) {
+    return {
+      valid: false,
+      error:
+        'Paste a complete Google AI Studio API key (starts with AIza...).',
+    };
+  }
+
+  let candidateModels: string[] = [...PREFERRED_FLASH_MODELS];
+  try {
+    const res = await fetch(`${GEMINI_API_BASE}/models`, {
+      method: 'GET',
+      headers: {
+        'x-goog-api-key': cleanKey,
+      },
+    });
+
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      return {
+        valid: false,
+        error:
+          'Invalid Gemini API key. Copy the exact key from Google AI Studio (aistudio.google.com/apikey).',
+      };
+    }
+
+    if (res.ok) {
+      const json = (await res.json()) as { models?: GeminiModelListEntry[] };
+      if (Array.isArray(json.models) && json.models.length > 0) {
+        candidateModels = selectVisionFlashModels(json.models);
+      }
+    }
+  } catch {
+    return {
+      valid: false,
+      error:
+        'Could not reach Google Gemini servers. Check your internet connection and try again.',
+    };
+  }
+
+  // Live ping to confirm generateContent works on at least one Flash model
+  let sawRateLimit = false;
+  for (const model of candidateModels.slice(0, 3)) {
+    try {
+      const ping = await fetch(
+        `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': cleanKey,
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'Return {"ok":true}' }] }],
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 16,
+            },
+          }),
+        }
+      );
+
+      if (ping.ok) {
+        return { valid: true, model };
+      }
+      if (ping.status === 429) {
+        sawRateLimit = true;
+        continue;
+      }
+      if (ping.status === 400 || ping.status === 401 || ping.status === 403) {
+        const errBody = await ping.json().catch(() => null);
+        const msg =
+          errBody?.error?.message ||
+          'API key rejected by Google AI Studio. Check key permissions.';
+        if (/api.?key/i.test(msg) || ping.status !== 400) {
+          return { valid: false, error: msg };
+        }
+      }
+    } catch {
+      // Try next fallback model
+    }
+  }
+
+  if (sawRateLimit) {
+    // Key is authentic; currently rate-limited for this minute
+    return { valid: true, model: candidateModels[0] };
+  }
+
+  return {
+    valid: false,
+    error:
+      'Could not verify generateContent access for this key. Generate a fresh key at aistudio.google.com/apikey.',
+  };
+}
+
 /**
  * Common Free Fire stylized Unicode lookalikes that NFKD alone does not fold to ASCII.
  */
 const HOMOGLYPH_MAP: Record<string, string> = {
-  // Greek, Cyrillic, Currency & Nickfinder lookalikes
   '\u0391': 'a', '\u0410': 'a', '\u13AA': 'a', '\u039B': 'a', '\u03B1': 'a', '\u0430': 'a', '\u20B3': 'a', '\u0245': 'a', '\u028C': 'a', '\u0E14': 'a',
   '\u0392': 'b', '\u0412': 'b', '\u0299': 'b', '\u0432': 'b', '\u0E3F': 'b', '\u20BF': 'b', '\u00DF': 'b',
   '\u0421': 'c', '\u13DF': 'c', '\u1D04': 'c', '\u0441': 'c', '\u00A2': 'c', '\u20B5': 'c',
@@ -56,12 +285,11 @@ const HOMOGLYPH_MAP: Record<string, string> = {
   '\u03A7': 'x', '\u0425': 'x', '\u0445': 'x',
   '\u03A5': 'y', '\u0423': 'y', '\u028F': 'y', '\u0443': 'y', '\u00A5': 'y', '\u024E': 'y', '\u024F': 'y',
   '\u0396': 'z', '\u1D22': 'z',
-  // Common Free Fire clan/separator ornaments -> space so adjacent words split cleanly
   '\u30E1': ' ', '\u30C4': ' ',
   '\u4E42': ' ', '\u4E45': ' ', '\u534D': ' ', '\u3005': ' ', '\u4E95': ' ',
   '\u0F3A': ' ', '\u0F3B': ' ', '\u0F12': ' ', '\u262C': ' ', '\u20DD': ' ',
   '\u2020': ' ', '\u2021': ' ', '\uA9C1': ' ', '\uA9C2': ' ',
-  '\u2122': ' ', '\u00AE': ' ', // TM / Registered symbols between clan tag and IGN (e.g. Lg\u2122Slyam)
+  '\u2122': ' ', '\u00AE': ' ',
 };
 
 function preMapHomoglyphs(raw: string): string {
@@ -96,16 +324,12 @@ function preMapHomoglyphs(raw: string): string {
     .replace(/[\u0300-\u036f\u20dd-\u20e0]/g, '');
   let mapped = '';
   for (const ch of decomposed) {
-    mapped += HOMOGLYPH_MAP[ch] !== undefined ? HOMOGLYPH_MAP[ch] : ch.toLowerCase();
+    mapped +=
+      HOMOGLYPH_MAP[ch] !== undefined ? HOMOGLYPH_MAP[ch] : ch.toLowerCase();
   }
   return mapped;
 }
 
-/**
- * Expands inline symbol-leet commonly used inside Free Fire IGNs (e.g. @ -> a,
- * medial !/|/' between letters/digits -> i as in M!TUN, N@B!L, KRK-R!F4T10)
- * without polluting trailing decorative exclamation marks (e.g. PETRO!!).
- */
 function expandInlineSymbolLeet(raw: string): string {
   if (!raw) return '';
   return preMapHomoglyphs(raw)
@@ -115,10 +339,6 @@ function expandInlineSymbolLeet(raw: string): string {
     .replace(/(^|\s)!(?=[a-z])/g, '$1 ');
 }
 
-/**
- * Folds stylized Free Fire IGNs (superscripts, fullwidth, math bold, homoglyphs, ornaments)
- * into clean lowercase alphanumeric words.
- */
 export function normalizeFreeFireIgn(raw: string): string {
   if (!raw) return '';
   const mapped = preMapHomoglyphs(raw);
@@ -131,7 +351,6 @@ export function normalizeFreeFireIgn(raw: string): string {
 
   if (words.length === 0) return '';
 
-  // Collapse runs of spaced single characters: e.g. "s h a k i b" -> "shakib"
   const merged: string[] = [];
   let singleRun = '';
   for (const w of words) {
@@ -151,12 +370,9 @@ export function normalizeFreeFireIgn(raw: string): string {
   return merged.join(' ');
 }
 
-const NOISE_FRAGMENT_RE = /^(?:eliminations?|elims?|ations?|tions?|ions?|ons?|ns|ws|is)$/i;
+const NOISE_FRAGMENT_RE =
+  /^(?:eliminations?|elims?|eliminatio|ations?|tions?|ions?|ons?|ns|ws|is)$/i;
 
-/**
- * Extracts distinct searchable word tokens (plus inline-symbol-leet variants, alpha stems,
- * x-clan splits, and adjacent pairs/triplets so clan+name match with or without '-' / '.').
- */
 export function extractIgnTokens(raw: string): string[] {
   if (!raw) return [];
   const variants = new Set<string>();
@@ -166,7 +382,6 @@ export function extractIgnTokens(raw: string): string[] {
   const leetNorm = normalizeFreeFireIgn(expandInlineSymbolLeet(raw));
   if (leetNorm) variants.add(leetNorm);
 
-  // Split uppercase clan + lowercase 'x' + uppercase name (e.g. EXOSxF4RDIN -> EXOS F4RDIN)
   const xSplit = raw.replace(/([A-Z0-9]{2,5})x([A-Z0-9]{2,})/g, '$1 $2');
   if (xSplit !== raw) {
     const xNorm = normalizeFreeFireIgn(expandInlineSymbolLeet(xSplit));
@@ -181,12 +396,10 @@ export function extractIgnTokens(raw: string): string[] {
     const parts = rawWords.filter((p) => p.length >= 2 && !/^\d+$/.test(p));
     for (const p of parts) {
       set.add(p);
-      // Alpha stem stripping trailing digits / x-suffix (e.g. ksndrax1 -> ksndra, rifat9x -> rifat)
       const stem = p.replace(/(?:x?\d+|\d+x)$/, '');
       if (stem.length >= 4 && stem !== p) {
         set.add(stem);
       }
-      // Strip accidental 1-2 char "Eliminations" suffix overlap on tight right-column crops
       if (p.length >= 5 && /^(?:ns|ws|ms|s|w|n|v)/.test(p)) {
         const debleed2 = p.replace(/^(?:ns|ws|ms)/, '');
         if (debleed2.length >= 4 && debleed2 !== p) set.add(debleed2);
@@ -214,10 +427,6 @@ export function extractIgnTokens(raw: string): string[] {
   return Array.from(set);
 }
 
-/**
- * Folds common Free Fire leet digits & OCR confusions
- * (0->o, 1/l/!->i, 5->s, 4->a, 8->b, 6->g, 3->e, 2->z, 7->t).
- */
 function foldOcrAndLeet(s: string): string {
   return s
     .toLowerCase()
@@ -240,22 +449,28 @@ const OCR_SIMILAR_COSTS = new Map<string, number>();
       for (let j = i + 1; j < chars.length; j += 1) {
         const k1 = chars[i] + chars[j];
         const k2 = chars[j] + chars[i];
-        OCR_SIMILAR_COSTS.set(k1, Math.min(cost, OCR_SIMILAR_COSTS.get(k1) ?? 1));
-        OCR_SIMILAR_COSTS.set(k2, Math.min(cost, OCR_SIMILAR_COSTS.get(k2) ?? 1));
+        OCR_SIMILAR_COSTS.set(
+          k1,
+          Math.min(cost, OCR_SIMILAR_COSTS.get(k1) ?? 1)
+        );
+        OCR_SIMILAR_COSTS.set(
+          k2,
+          Math.min(cost, OCR_SIMILAR_COSTS.get(k2) ?? 1)
+        );
       }
     }
   };
-  addGroup('odquc', 0.32);  // O <-> D <-> Q <-> U <-> C (ALOM/ALDM, ORK/DRK)
-  addGroup('kxhr', 0.35);   // K <-> X <-> H <-> R (RYKER/RYXER, RHK/RMK)
-  addGroup('aeo', 0.38);    // A <-> E <-> O (NABIL/NEBL, MOWAJ/MBWAJ)
-  addGroup('mnwh', 0.38);   // M <-> N <-> W <-> H (FAHIM/FAMINE)
-  addGroup('iltyvj', 0.35); // I <-> L <-> T <-> Y <-> V (ALVI/ALW, SIYAM/SKYAM)
-  addGroup('bprd', 0.38);   // B <-> P <-> R <-> D
-  addGroup('uvwy', 0.35);   // U <-> V <-> W <-> Y
-  addGroup('ft', 0.35);     // F <-> T
-  addGroup('sz', 0.35);     // S <-> Z
-  addGroup('bs', 0.42);     // B <-> S (8/B/S condensed font)
-  addGroup('tr', 0.4);      // T <-> R
+  addGroup('odquc', 0.32);
+  addGroup('kxhr', 0.35);
+  addGroup('aeo', 0.38);
+  addGroup('mnwh', 0.38);
+  addGroup('iltyvj', 0.35);
+  addGroup('bprd', 0.38);
+  addGroup('uvwy', 0.35);
+  addGroup('ft', 0.35);
+  addGroup('sz', 0.35);
+  addGroup('bs', 0.42);
+  addGroup('tr', 0.4);
 })();
 
 const OCR_COST_TABLE = new Float64Array(128 * 128).fill(1.0);
@@ -272,11 +487,6 @@ function isAsciiVowelCode(cu: number): boolean {
 
 let dpScratch = new Float64Array(4096);
 
-/**
- * Weighted OCR Damerau-Levenshtein distance: handles adjacent transpositions
- * ("filcker" <-> "flicker") and visual Free Fire font confusions ("ORK" <-> "DRK",
- * "RYXER" <-> "RYKER", dropped stylized vowels) accurately for single-name setups.
- */
 function weightedDamerauLevenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const la = a.length;
@@ -305,8 +515,8 @@ function weightedDamerauLevenshtein(a: string, b: string): number {
         ca === cb
           ? 0
           : ca < 128 && cb < 128
-            ? OCR_COST_TABLE[ca * 128 + cb]
-            : 1.0;
+          ? OCR_COST_TABLE[ca * 128 + cb]
+          : 1.0;
       const insCost = isAsciiVowelCode(cb) ? 0.65 : 0.85;
       const d1 = dp[prevOff + j] + delCost;
       const d2 = dp[rowOff + j - 1] + insCost;
@@ -426,12 +636,12 @@ export function scoreSquadAgainstTokens(
       primaryKeywords.push({ label: collapsedStem, weight: baseWeight * 0.96 });
     }
 
-    // Index individual distinct word parts >= 4 chars (longer unique names weighted above 4-char clan prefixes)
     const subParts = normLeet
       .split(' ')
       .filter((w) => w.length >= 4 && !/^\d+$/.test(w));
     for (const sp of subParts) {
-      const partWeight = sp.length >= 5 ? baseWeight * 0.95 : baseWeight * 0.89;
+      const partWeight =
+        sp.length >= 5 ? baseWeight * 0.95 : baseWeight * 0.89;
       if (sp !== collapsed) {
         primaryKeywords.push({ label: sp, weight: partWeight });
       }
@@ -482,1031 +692,6 @@ export function scoreSquadAgainstTokens(
   return { score: bestScore, matchedKeyword: bestKw };
 }
 
-// ============================================================================
-// Dedicated Free Fire Neural Digit & Position CNN (16x20 Aspect-Preserving)
-// Architecture: Input(1x20x16) -> Conv3x3(12)+ReLU -> MaxPool2x2
-//               -> Conv3x3(24)+ReLU -> MaxPool2x2 -> FC(48)+ReLU -> FC(10)
-// ============================================================================
-
-const CNN_GW = 16;
-const CNN_GH = 20;
-const CNN_C1 = 12;
-const CNN_C2 = 24;
-const CNN_H1 = 10;
-const CNN_W1 = 8;
-const CNN_H2 = 5;
-const CNN_W2 = 4;
-const CNN_FLAT = CNN_C2 * CNN_H2 * CNN_W2; // 480
-const CNN_HID = 48;
-const CNN_CLS = 10;
-
-interface DecodedDigitCnn {
-  w1: Float32Array;
-  b1: Float32Array;
-  w2: Float32Array;
-  b2: Float32Array;
-  w3: Float32Array;
-  b3: Float32Array;
-  w4: Float32Array;
-  b4: Float32Array;
-}
-
-let cachedDigitCnn: DecodedDigitCnn | null = null;
-const cnnPool1Scratch = new Float32Array(CNN_C1 * CNN_H1 * CNN_W1);
-const cnnPool2Scratch = new Float32Array(CNN_FLAT);
-const cnnHidScratch = new Float32Array(CNN_HID);
-
-function getDigitCnn(): DecodedDigitCnn {
-  if (cachedDigitCnn) return cachedDigitCnn;
-  const bin = atob(FF_DIGIT_CNN_B64);
-  const lens = [
-    CNN_C1 * 9,
-    CNN_C1,
-    CNN_C2 * CNN_C1 * 9,
-    CNN_C2,
-    CNN_HID * CNN_FLAT,
-    CNN_HID,
-    CNN_CLS * CNN_HID,
-    CNN_CLS,
-  ];
-  let offset = 0;
-  const tensors = lens.map((len, idx) => {
-    const scale = FF_DIGIT_CNN_SCALES[idx];
-    const out = new Float32Array(len);
-    for (let i = 0; i < len; i += 1) {
-      const byte = bin.charCodeAt(offset + i);
-      const signed = byte > 127 ? byte - 256 : byte;
-      out[i] = signed * scale;
-    }
-    offset += len;
-    return out;
-  });
-  cachedDigitCnn = {
-    w1: tensors[0],
-    b1: tensors[1],
-    w2: tensors[2],
-    b2: tensors[3],
-    w3: tensors[4],
-    b3: tensors[5],
-    w4: tensors[6],
-    b4: tensors[7],
-  };
-  return cachedDigitCnn;
-}
-
-function classifyGlyphCnn16x20(x: Float32Array): number {
-  const net = getDigitCnn();
-
-  // Conv1 (3x3, pad=1) + ReLU + MaxPool1 (2x2) -> 12x10x8
-  for (let oc = 0; oc < CNN_C1; oc += 1) {
-    const wOff = oc * 9;
-    const bias = net.b1[oc];
-    for (let py = 0; py < CNN_H1; py += 1) {
-      for (let px = 0; px < CNN_W1; px += 1) {
-        let best = 0;
-        for (let dy = 0; dy < 2; dy += 1) {
-          const y = py * 2 + dy;
-          for (let dx = 0; dx < 2; dx += 1) {
-            const xx = px * 2 + dx;
-            let s = bias;
-            for (let ky = -1; ky <= 1; ky += 1) {
-              const iy = y + ky;
-              if (iy < 0 || iy >= CNN_GH) continue;
-              const kRow = (ky + 1) * 3;
-              for (let kx = -1; kx <= 1; kx += 1) {
-                const ix = xx + kx;
-                if (ix < 0 || ix >= CNN_GW) continue;
-                s += x[iy * CNN_GW + ix] * net.w1[wOff + kRow + (kx + 1)];
-              }
-            }
-            if (s > best) best = s;
-          }
-        }
-        cnnPool1Scratch[(oc * CNN_H1 + py) * CNN_W1 + px] = best;
-      }
-    }
-  }
-
-  // Conv2 (3x3, pad=1) + ReLU + MaxPool2 (2x2) -> 24x5x4 (480)
-  for (let oc = 0; oc < CNN_C2; oc += 1) {
-    const bias = net.b2[oc];
-    for (let py = 0; py < CNN_H2; py += 1) {
-      for (let px = 0; px < CNN_W2; px += 1) {
-        let best = 0;
-        for (let dy = 0; dy < 2; dy += 1) {
-          const y = py * 2 + dy;
-          for (let dx = 0; dx < 2; dx += 1) {
-            const xx = px * 2 + dx;
-            let s = bias;
-            for (let ic = 0; ic < CNN_C1; ic += 1) {
-              const inBase = ic * CNN_H1 * CNN_W1;
-              const wBase = (oc * CNN_C1 + ic) * 9;
-              for (let ky = -1; ky <= 1; ky += 1) {
-                const iy = y + ky;
-                if (iy < 0 || iy >= CNN_H1) continue;
-                const kRow = (ky + 1) * 3;
-                for (let kx = -1; kx <= 1; kx += 1) {
-                  const ix = xx + kx;
-                  if (ix < 0 || ix >= CNN_W1) continue;
-                  s +=
-                    cnnPool1Scratch[inBase + iy * CNN_W1 + ix] *
-                    net.w2[wBase + kRow + (kx + 1)];
-                }
-              }
-            }
-            if (s > best) best = s;
-          }
-        }
-        cnnPool2Scratch[(oc * CNN_H2 + py) * CNN_W2 + px] = best;
-      }
-    }
-  }
-
-  // FC1 (480 -> 48) + ReLU
-  for (let i = 0; i < CNN_HID; i += 1) {
-    let s = net.b3[i];
-    const wOff = i * CNN_FLAT;
-    for (let j = 0; j < CNN_FLAT; j += 1) {
-      s += cnnPool2Scratch[j] * net.w3[wOff + j];
-    }
-    cnnHidScratch[i] = s > 0 ? s : 0;
-  }
-
-  // FC2 (48 -> 10) Argmax
-  let bestDigit = 0;
-  let bestLogit = -1e9;
-  for (let c = 0; c < CNN_CLS; c += 1) {
-    let s = net.b4[c];
-    const wOff = c * CNN_HID;
-    for (let i = 0; i < CNN_HID; i += 1) {
-      s += cnnHidScratch[i] * net.w4[wOff + i];
-    }
-    if (s > bestLogit) {
-      bestLogit = s;
-      bestDigit = c;
-    }
-  }
-  return bestDigit;
-}
-
-export function readRgbaCellNumber(
-  rgba: Uint8ClampedArray,
-  W: number,
-  H: number,
-  cropX0: number,
-  cropY0: number,
-  cropW: number,
-  cropH: number,
-  mode: 'yellow' | 'white'
-): number | null {
-  if (cropW < 4 || cropH < 4) return null;
-  const cw = Math.max(40, cropW * 5);
-  const ch = Math.max(40, cropH * 5);
-  const scaleX = cw / cropW;
-  const scaleY = ch / cropH;
-
-  const sampleSignal = (sx: number, sy: number) => {
-    const px = Math.min(W - 1, Math.max(0, cropX0 + sx));
-    const py = Math.min(H - 1, Math.max(0, cropY0 + sy));
-    const idx = (py * W + px) * 4;
-    const r = rgba[idx];
-    const g = rgba[idx + 1];
-    const b = rgba[idx + 2];
-    return mode === 'yellow'
-      ? Math.max(0, 0.52 * r + 0.48 * g - 0.18 * b)
-      : 0.4 * r + 0.4 * g + 0.2 * b;
-  };
-
-  const vals: number[] = [];
-  for (let sy = 0; sy < cropH; sy += 1) {
-    for (let sx = 0; sx < cropW; sx += 1) {
-      vals.push(sampleSignal(sx, sy));
-    }
-  }
-  vals.sort((a, b) => a - b);
-  const bg = vals[Math.floor(vals.length * 0.25)];
-  const peak = vals[vals.length - 1];
-  if (peak - bg < (mode === 'yellow' ? 36 : 45)) return null;
-
-  const cell = new Float32Array(cw * ch);
-  for (let dy = 0; dy < ch; dy += 1) {
-    const fy = dy / scaleY;
-    const y0 = Math.floor(fy);
-    const y1 = Math.min(cropH - 1, y0 + 1);
-    const wy = fy - y0;
-    for (let dx = 0; dx < cw; dx += 1) {
-      const fx = dx / scaleX;
-      const x0 = Math.floor(fx);
-      const x1 = Math.min(cropW - 1, x0 + 1);
-      const wx = fx - x0;
-      const v =
-        (sampleSignal(x0, y0) * (1 - wx) + sampleSignal(x1, y0) * wx) *
-          (1 - wy) +
-        (sampleSignal(x0, y1) * (1 - wx) + sampleSignal(x1, y1) * wx) * wy;
-      cell[dy * cw + dx] = Math.max(
-        0,
-        Math.min(1, (v - (bg + (peak - bg) * 0.28)) / Math.max(18, (peak - bg) * 0.55))
-      );
-    }
-  }
-
-  let minY = ch;
-  let maxY = -1;
-  let minX = cw;
-  let maxX = -1;
-  for (let y = 2; y < ch - 2; y += 1) {
-    for (let x = 2; x < cw - 2; x += 1) {
-      if (cell[y * cw + x] > 0.38) {
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-      }
-    }
-  }
-  if (maxY - minY < ch * 0.22 || maxX - minX < 4) return null;
-
-  const bw = maxX - minX + 1;
-  const bh = maxY - minY + 1;
-  const xRanges: Array<[number, number]> = [];
-  if (bw / bh > 0.68) {
-    const colSum = new Float32Array(bw);
-    for (let x = 0; x < bw; x += 1) {
-      for (let y = minY; y <= maxY; y += 1) {
-        colSum[x] += cell[y * cw + (minX + x)];
-      }
-    }
-    let bestSplit = -1;
-    let bestVal = 1e9;
-    for (let x = Math.floor(bw * 0.22); x <= Math.ceil(bw * 0.78); x += 1) {
-      if (colSum[x] < bestVal) {
-        bestVal = colSum[x];
-        bestSplit = x;
-      }
-    }
-    let leftPeak = 0;
-    let rightPeak = 0;
-    for (let x = 0; x < bestSplit; x += 1) {
-      if (colSum[x] > leftPeak) leftPeak = colSum[x];
-    }
-    for (let x = bestSplit + 1; x < bw; x += 1) {
-      if (colSum[x] > rightPeak) rightPeak = colSum[x];
-    }
-    if (
-      bestSplit > 0 &&
-      bestVal < bh * 0.32 &&
-      leftPeak > bestVal * 2.2 &&
-      rightPeak > bestVal * 2.2
-    ) {
-      xRanges.push([minX, minX + bestSplit - 1], [minX + bestSplit + 1, maxX]);
-    } else {
-      xRanges.push([minX, maxX]);
-    }
-  } else {
-    xRanges.push([minX, maxX]);
-  }
-
-  let digits = '';
-  const glyphTensor = new Float32Array(CNN_GW * CNN_GH);
-  for (const [gx0, gx1] of xRanges) {
-    let x0 = gx1;
-    let x1 = gx0;
-    let y0 = maxY;
-    let y1 = minY;
-    for (let y = minY; y <= maxY; y += 1) {
-      for (let x = gx0; x <= gx1; x += 1) {
-        if (cell[y * cw + x] > 0.35) {
-          if (x < x0) x0 = x;
-          if (x > x1) x1 = x;
-          if (y < y0) y0 = y;
-          if (y > y1) y1 = y;
-        }
-      }
-    }
-    const gw = Math.max(1, x1 - x0 + 1);
-    const gh = Math.max(1, y1 - y0 + 1);
-    if (gh < ch * 0.2) continue;
-
-    // Aspect-preserving 16x20 tensor (targetH=16, targetW=clamp(2..14, 16*(gw/gh)))
-    glyphTensor.fill(0);
-    const targetH = 16.0;
-    const targetW = Math.max(2.0, Math.min(14.0, 16.0 * (gw / gh)));
-    const padX = (CNN_GW - targetW) * 0.5;
-    const padY = (CNN_GH - targetH) * 0.5;
-
-    for (let ty = 0; ty < CNN_GH; ty += 1) {
-      const sy = y0 + ((ty + 0.5 - padY) / targetH) * gh;
-      if (sy < y0 - 1 || sy > y1 + 1) continue;
-      const cy0 = Math.max(0, Math.min(ch - 1, Math.floor(sy)));
-      const cy1 = Math.max(0, Math.min(ch - 1, cy0 + 1));
-      const wy = Math.max(0, Math.min(1, sy - Math.floor(sy)));
-
-      for (let tx = 0; tx < CNN_GW; tx += 1) {
-        const sx = x0 + ((tx + 0.5 - padX) / targetW) * gw;
-        if (sx < x0 - 1 || sx > x1 + 1) continue;
-        const cx0 = Math.max(0, Math.min(cw - 1, Math.floor(sx)));
-        const cx1 = Math.max(0, Math.min(cw - 1, cx0 + 1));
-        const wx = Math.max(0, Math.min(1, sx - Math.floor(sx)));
-
-        glyphTensor[ty * CNN_GW + tx] =
-          (cell[cy0 * cw + cx0] * (1 - wx) + cell[cy0 * cw + cx1] * wx) *
-            (1 - wy) +
-          (cell[cy1 * cw + cx0] * (1 - wx) + cell[cy1 * cw + cx1] * wx) * wy;
-      }
-    }
-    digits += String(classifyGlyphCnn16x20(glyphTensor));
-  }
-
-  return digits ? parseInt(digits, 10) : null;
-}
-
-interface DetectedScoreboardCard {
-  side: 'L' | 'R';
-  rank: number;
-  kills: number;
-  clipped: boolean;
-  lines: Array<{ y0: number; y1: number; yc: number }>;
-  words: string[];
-}
-
-interface DetectedGridResult {
-  cards: DetectedScoreboardCard[];
-  nameCompositeCanvas: HTMLCanvasElement;
-  rowMeta: Array<{ cardIndex: number; y0: number; y1: number }>;
-}
-
-function detectFreeFireGridAndBuildNameCanvas(
-  rgba: Uint8ClampedArray,
-  W: number,
-  H: number,
-  rawRgba: Uint8ClampedArray,
-  rawW: number,
-  rawH: number
-): DetectedGridResult | null {
-  const lookDist = Math.max(5, Math.round(H * 0.015));
-  const yellowScoreX = new Float64Array(W);
-
-  // Scan below #1 gold banner (0.36*H..0.85*H) for local-contrast yellow kill-digit columns
-  for (let y = Math.floor(H * 0.36); y < Math.floor(H * 0.85); y += 1) {
-    for (let x = Math.floor(W * 0.06); x < Math.floor(W * 0.96); x += 1) {
-      const idx = (y * W + x) * 4;
-      const r = rgba[idx];
-      const g = rgba[idx + 1];
-      const b = rgba[idx + 2];
-      if (r >= 130 && g >= 95 && 0.6 * r + 0.4 * g - b >= 55) {
-        const lIdx = (y * W + Math.max(0, x - lookDist)) * 4;
-        const rIdx = (y * W + Math.min(W - 1, x + lookDist)) * 4;
-        const bgLum = Math.min(
-          0.5 * rgba[lIdx] + 0.5 * rgba[lIdx + 1],
-          0.5 * rgba[rIdx] + 0.5 * rgba[rIdx + 1]
-        );
-        const fgLum = 0.5 * r + 0.5 * g;
-        if (fgLum - bgLum >= 35) {
-          yellowScoreX[x] += fgLum - bgLum;
-        }
-      }
-    }
-  }
-
-  const win = Math.max(2, Math.round(H * 0.007));
-  const smoothed = new Float64Array(W);
-  for (let x = win; x < W - win; x += 1) {
-    for (let dx = -win; dx <= win; dx += 1) {
-      smoothed[x] += yellowScoreX[x + dx];
-    }
-  }
-
-  const cands: Array<{ x: number; score: number }> = [];
-  for (let x = Math.floor(W * 0.08); x < Math.floor(W * 0.95); x += 1) {
-    if (
-      smoothed[x] >= smoothed[x - 1] &&
-      smoothed[x] >= smoothed[x + 1] &&
-      smoothed[x] > H * 0.85
-    ) {
-      // Sub-pixel weighted centroid around local peak for +/-1px compression resilience
-      let num = 0;
-      let den = 0;
-      for (let dx = -win - 1; dx <= win + 1; dx += 1) {
-        const px = Math.min(W - 1, Math.max(0, x + dx));
-        num += px * yellowScoreX[px];
-        den += yellowScoreX[px];
-      }
-      cands.push({ x: den > 0 ? Math.round(num / den) : x, score: smoothed[x] });
-    }
-  }
-  cands.sort((a, b) => b.score - a.score);
-
-  const minPeakDist = H * 0.2;
-  const killX: number[] = [];
-  for (const c of cands) {
-    if (killX.every((px) => Math.abs(px - c.x) >= minPeakDist)) {
-      killX.push(c.x);
-      if (killX.length === 4) break;
-    }
-  }
-  killX.sort((a, b) => a - b);
-
-  if (killX.length !== 2 && killX.length !== 4) {
-    return null;
-  }
-
-  const hasRightCol = killX.length === 4;
-  const leftSpan = killX[1] - killX[0];
-  const rightSpan = hasRightCol ? killX[3] - killX[2] : leftSpan * 0.73;
-
-  if (leftSpan < H * 0.2) return null;
-
-  const findLines = (x0: number, x1: number) => {
-    const rowEdge = new Float64Array(H);
-    const minEdgeCount = Math.max(5, Math.round((x1 - x0) * 0.025));
-    for (let y = Math.floor(H * 0.18); y < Math.floor(H * 0.88); y += 1) {
-      let e = 0;
-      for (let x = Math.max(1, x0); x < Math.min(W - 1, x1); x += 1) {
-        const idx = (y * W + x) * 4;
-        const prev = (y * W + x - 1) * 4;
-        const lum = 0.55 * rgba[idx] + 0.45 * rgba[idx + 1];
-        const lumPrev = 0.55 * rgba[prev] + 0.45 * rgba[prev + 1];
-        if (lum >= 125 && Math.abs(lum - lumPrev) >= 22) e += 1;
-      }
-      rowEdge[y] = e;
-    }
-    const segs: Array<{ y0: number; y1: number; yc: number }> = [];
-    let s = -1;
-    const minLineH = Math.max(4, Math.round(H * 0.01));
-    for (let y = 0; y < H; y += 1) {
-      if (rowEdge[y] >= minEdgeCount) {
-        if (s === -1) s = y;
-      } else if (s !== -1) {
-        if (y - s >= minLineH) {
-          segs.push({ y0: s, y1: y - 1, yc: (s + y - 1) / 2 });
-        }
-        s = -1;
-      }
-    }
-    return segs;
-  };
-
-  const pairLines = (lines: Array<{ y0: number; y1: number; yc: number }>) => {
-    const grouped: Array<{
-      lines: Array<{ y0: number; y1: number; yc: number }>;
-      clipped: boolean;
-    }> = [];
-    for (let i = 0; i < lines.length; ) {
-      if (i + 1 < lines.length && lines[i + 1].yc - lines[i].yc < H * 0.056) {
-        grouped.push({ lines: [lines[i], lines[i + 1]], clipped: false });
-        i += 2;
-      } else {
-        grouped.push({ lines: [lines[i]], clipped: true });
-        i += 1;
-      }
-    }
-    return grouped;
-  };
-
-  const leftCards = pairLines(
-    findLines(
-      Math.round(killX[0] - leftSpan * 0.52),
-      Math.round(killX[1] + leftSpan * 0.25)
-    )
-  );
-  const rightCards = hasRightCol
-    ? pairLines(
-        findLines(
-          Math.round(killX[2] - rightSpan * 0.72),
-          Math.round(killX[3] + rightSpan * 0.25)
-        )
-      )
-    : [];
-
-  if (leftCards.length === 0 && rightCards.length === 0) return null;
-
-  // Asymmetric kill-digit cell crop: captures 1- and 2-digit kills (e.g. 16) while
-  // stopping before the "E" of "Eliminations" on the right.
-  const leftCellW = Math.max(8, Math.round(H * 0.023));
-  const rightCellW = Math.max(5, Math.round(H * 0.011));
-  const padY = Math.max(3, Math.round(H * 0.0085));
-
-  // Majority-vote starting rank for the scrollable Right Column (6..12)
-  let rightStartRank = 6;
-  if (hasRightCol && rightCards.length > 0) {
-    const startVotes = new Map<number, number>();
-    for (let i = 0; i < rightCards.length; i += 1) {
-      if (rightCards[i].clipped) continue;
-      const rx0 = Math.round(killX[2] - rightSpan * 1.045);
-      const midY = Math.round(
-        (rightCards[i].lines[0].y0 + rightCards[i].lines[1].y1) / 2 - H * 0.017
-      );
-      const badge = readRgbaCellNumber(
-        rgba,
-        W,
-        H,
-        rx0,
-        midY,
-        Math.round(rightSpan * 0.19),
-        Math.round(H * 0.035),
-        'white'
-      );
-      if (badge !== null && badge >= 6 && badge <= 24) {
-        const implied = badge - i;
-        startVotes.set(implied, (startVotes.get(implied) || 0) + 1);
-      }
-    }
-    let bestVotes = 0;
-    for (const [sr, v] of startVotes.entries()) {
-      if (v > bestVotes) {
-        bestVotes = v;
-        rightStartRank = sr;
-      }
-    }
-  }
-
-  const cards: DetectedScoreboardCard[] = [];
-  for (let i = 0; i < leftCards.length; i += 1) {
-    const c = leftCards[i];
-    let kills = 0;
-    for (const ln of c.lines) {
-      for (const kx of [killX[0], killX[1]]) {
-        const kv = readRgbaCellNumber(
-          rgba,
-          W,
-          H,
-          kx - leftCellW,
-          ln.y0 - padY,
-          leftCellW + rightCellW,
-          ln.y1 - ln.y0 + padY * 2,
-          'yellow'
-        );
-        if (kv !== null && kv <= 35) kills += kv;
-      }
-    }
-    cards.push({
-      side: 'L',
-      rank: i + 1,
-      kills,
-      clipped: c.clipped,
-      lines: c.lines,
-      words: [],
-    });
-  }
-
-  for (let i = 0; i < rightCards.length; i += 1) {
-    const c = rightCards[i];
-    let kills = 0;
-    for (const ln of c.lines) {
-      for (const kx of [killX[2], killX[3]]) {
-        const kv = readRgbaCellNumber(
-          rgba,
-          W,
-          H,
-          kx - leftCellW,
-          ln.y0 - padY,
-          leftCellW + rightCellW,
-          ln.y1 - ln.y0 + padY * 2,
-          'yellow'
-        );
-        if (kv !== null && kv <= 35) kills += kv;
-      }
-    }
-    cards.push({
-      side: 'R',
-      rank: rightStartRank + i,
-      kills,
-      clipped: c.clipped,
-      lines: c.lines,
-      words: [],
-    });
-  }
-
-  // Build isolated per-line composite from full-resolution rawRgba with per-slot local
-  // background removal (erases #1-#3 gold fog and card borders) + widened sub-column bounds
-  const rawRatioX = rawW / W;
-  const rawRatioY = rawH / H;
-  const targetScale = Math.max(2.0, Math.min(4.2, 1750 / rawH));
-  const padRawY = Math.max(3, Math.round(rawH * 0.009));
-
-  const strips: Array<{ side: 'L' | 'R'; x0: number; x1: number }> = [
-    {
-      side: 'L',
-      x0: Math.max(0, Math.round((killX[0] - leftSpan * 0.6) * rawRatioX)),
-      x1: Math.max(1, Math.round((killX[0] - leftSpan * 0.058) * rawRatioX)),
-    },
-    {
-      side: 'L',
-      x0: Math.max(0, Math.round((killX[0] + leftSpan * 0.34) * rawRatioX)),
-      x1: Math.max(1, Math.round((killX[1] - leftSpan * 0.058) * rawRatioX)),
-    },
-  ];
-  if (hasRightCol) {
-    strips.push(
-      {
-        side: 'R',
-        x0: Math.max(0, Math.round((killX[2] - rightSpan * 0.78) * rawRatioX)),
-        x1: Math.max(1, Math.round((killX[2] - rightSpan * 0.072) * rawRatioX)),
-      },
-      {
-        side: 'R',
-        x0: Math.max(0, Math.round((killX[2] + rightSpan * 0.345) * rawRatioX)),
-        x1: Math.max(1, Math.round((killX[3] - rightSpan * 0.072) * rawRatioX)),
-      }
-    );
-  }
-
-  const slotRows: Array<{
-    cardIndex: number;
-    ry0: number;
-    ry1: number;
-    s0: { x0: number; x1: number };
-    s1: { x0: number; x1: number };
-  }> = [];
-
-  for (let ci = 0; ci < cards.length; ci += 1) {
-    const card = cards[ci];
-    const sideStrips = strips.filter((s) => s.side === card.side);
-    if (sideStrips.length < 2) continue;
-    for (const ln of card.lines) {
-      slotRows.push({
-        cardIndex: ci,
-        ry0: Math.max(0, Math.round(ln.y0 * rawRatioY) - padRawY),
-        ry1: Math.min(rawH - 1, Math.round(ln.y1 * rawRatioY) + padRawY),
-        s0: sideStrips[0],
-        s1: sideStrips[1],
-      });
-    }
-  }
-
-  const maxStripW = Math.max(
-    16,
-    ...strips.map((s) => Math.round((s.x1 - s.x0) * targetScale))
-  );
-  const rowPitchY = Math.round(rawH * 0.058 * targetScale) + 28;
-  const gutterX = 64;
-  const canvasW = gutterX * 3 + maxStripW * 2;
-  const canvasH = Math.max(64, 32 + slotRows.length * rowPitchY);
-
-  const outCanvas = document.createElement('canvas');
-  outCanvas.width = canvasW;
-  outCanvas.height = canvasH;
-  const outCtx = outCanvas.getContext('2d');
-  if (!outCtx) return null;
-
-  const outImg = outCtx.createImageData(canvasW, canvasH);
-  const dst = outImg.data;
-  dst.fill(255);
-
-  const sampleRawLum = (px: number, py: number) => {
-    const idx = (py * rawW + px) * 4;
-    return (
-      0.45 * rawRgba[idx] +
-      0.45 * rawRgba[idx + 1] +
-      0.1 * rawRgba[idx + 2]
-    );
-  };
-
-  const renderSlot = (
-    sx0: number,
-    sx1: number,
-    sy0: number,
-    sy1: number,
-    outX0: number,
-    outY0: number
-  ): number => {
-    const sw = sx1 - sx0;
-    const sh = sy1 - sy0 + 1;
-    if (sw < 4 || sh < 4) return 20;
-
-    const lums: number[] = [];
-    for (let y = sy0; y <= sy1; y += 1) {
-      for (let x = sx0; x < sx1; x += 1) {
-        lums.push(sampleRawLum(x, y));
-      }
-    }
-    lums.sort((a, b) => a - b);
-    const bg = lums[Math.floor(lums.length * 0.35)];
-    const peak = lums[Math.floor(lums.length * 0.99)];
-    const dw = Math.max(4, Math.round(sw * targetScale));
-    const dh = Math.max(4, Math.round(sh * targetScale));
-    if (peak - bg < 28) return dh;
-
-    const lo = bg + (peak - bg) * 0.25;
-    const hi = Math.max(lo + 32, peak - (peak - bg) * 0.08);
-
-    for (let dy = 0; dy < dh; dy += 1) {
-      const fy = sy0 + dy / targetScale;
-      const y0 = Math.min(rawH - 1, Math.floor(fy));
-      const y1 = Math.min(rawH - 1, y0 + 1);
-      const wy = fy - y0;
-
-      for (let dx = 0; dx < dw; dx += 1) {
-        const fx = sx0 + dx / targetScale;
-        const x0 = Math.min(rawW - 1, Math.max(0, Math.floor(fx)));
-        const x1 = Math.min(rawW - 1, x0 + 1);
-        const wx = fx - x0;
-
-        const v =
-          (sampleRawLum(x0, y0) * (1 - wx) + sampleRawLum(x1, y0) * wx) *
-            (1 - wy) +
-          (sampleRawLum(x0, y1) * (1 - wx) + sampleRawLum(x1, y1) * wx) * wy;
-        const norm = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
-        const ink = Math.round(255 * (1 - norm));
-        const outIdx = ((outY0 + dy) * canvasW + (outX0 + dx)) * 4;
-        dst[outIdx] = ink;
-        dst[outIdx + 1] = ink;
-        dst[outIdx + 2] = ink;
-        dst[outIdx + 3] = 255;
-      }
-    }
-    return dh;
-  };
-
-  const rowMeta: Array<{ cardIndex: number; y0: number; y1: number }> = [];
-  for (let ri = 0; ri < slotRows.length; ri += 1) {
-    const r = slotRows[ri];
-    const outY0 = 20 + ri * rowPitchY;
-    const dh0 = renderSlot(r.s0.x0, r.s0.x1, r.ry0, r.ry1, gutterX, outY0);
-    const dh1 = renderSlot(
-      r.s1.x0,
-      r.s1.x1,
-      r.ry0,
-      r.ry1,
-      gutterX * 2 + maxStripW,
-      outY0
-    );
-    rowMeta.push({
-      cardIndex: r.cardIndex,
-      y0: outY0 - 8,
-      y1: outY0 + Math.max(dh0, dh1) + 8,
-    });
-  }
-
-  outCtx.putImageData(outImg, 0, 0);
-  return { cards, nameCompositeCanvas: outCanvas, rowMeta };
-}
-
-// ============================================================================
-// Generic Bounding-Box Fallback Parser (for synthetic tests & custom scoreboards)
-// ============================================================================
-
-interface NormalizedLine {
-  ny: number;
-  minY: number;
-  maxY: number;
-  words: Array<{
-    text: string;
-    nx0: number;
-    nx1: number;
-    nxCenter: number;
-    confidence: number;
-  }>;
-}
-
-function parseRankBadgeToken(raw: string, maxTeams: number): number | null {
-  const cleaned = raw
-    .trim()
-    .replace(/^[#№]+/, '')
-    .replace(/(?:st|nd|rd|th)$/i, '')
-    .replace(/[.:)\]]+$/, '');
-  if (!/^\d{1,2}$/.test(cleaned)) return null;
-  const val = parseInt(cleaned, 10);
-  if (val >= 1 && val <= maxTeams) return val;
-  return null;
-}
-
-function parseKillInteger(raw: string): number | null {
-  const cleaned = raw
-    .trim()
-    .replace(/(?:eliminations?|elims?|kills?)$/i, '')
-    .trim();
-  if (!/^\d{1,2}$/.test(cleaned)) return null;
-  const val = parseInt(cleaned, 10);
-  return val >= 0 && val <= 48 ? val : null;
-}
-
-function clusterNormalizedLines(
-  words: Array<{
-    text: string;
-    nx0: number;
-    ny0: number;
-    nx1: number;
-    ny1: number;
-    confidence: number;
-  }>
-): NormalizedLine[] {
-  if (words.length === 0) return [];
-  const sorted = [...words].sort(
-    (a, b) => (a.ny0 + a.ny1) / 2 - (b.ny0 + b.ny1) / 2
-  );
-  const lines: NormalizedLine[] = [];
-
-  for (const w of sorted) {
-    const wy = (w.ny0 + w.ny1) / 2;
-    const wh = Math.max(0.012, w.ny1 - w.ny0);
-    const tol = Math.max(0.016, wh * 0.68);
-    const existing = lines.find((ln) => Math.abs(ln.ny - wy) <= tol);
-    const item = {
-      text: w.text,
-      nx0: w.nx0,
-      nx1: w.nx1,
-      nxCenter: (w.nx0 + w.nx1) / 2,
-      confidence: w.confidence,
-    };
-
-    if (existing) {
-      existing.words.push(item);
-      existing.minY = Math.min(existing.minY, w.ny0);
-      existing.maxY = Math.max(existing.maxY, w.ny1);
-      existing.ny = (existing.minY + existing.maxY) / 2;
-    } else {
-      lines.push({
-        ny: wy,
-        minY: w.ny0,
-        maxY: w.ny1,
-        words: [item],
-      });
-    }
-  }
-
-  for (const ln of lines) {
-    ln.words.sort((a, b) => a.nx0 - b.nx0);
-  }
-  return lines.sort((a, b) => a.ny - b.ny);
-}
-
-function parseSingleColumnLines(
-  lines: NormalizedLine[],
-  maxTeams: number,
-  sourceImageIndex: number
-): ScannedRankRow[] {
-  if (lines.length === 0) return [];
-
-  const anchors: Array<{ lineIdx: number; rank: number }> = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const ln = lines[i];
-    const leftWords = ln.words.filter((w) => w.nx0 <= 0.24);
-    for (const w of leftWords) {
-      const r = parseRankBadgeToken(w.text, maxTeams);
-      if (r !== null) {
-        if (anchors.length === 0 || anchors[anchors.length - 1].rank !== r) {
-          anchors.push({ lineIdx: i, rank: r });
-        }
-        break;
-      }
-    }
-  }
-
-  if (anchors.length === 0) return [];
-
-  const rows: ScannedRankRow[] = [];
-  for (let a = 0; a < anchors.length; a += 1) {
-    const startIdx = anchors[a].lineIdx;
-    const endIdx =
-      a + 1 < anchors.length
-        ? anchors[a + 1].lineIdx - 1
-        : Math.min(lines.length - 1, startIdx + 4);
-    const rank = anchors[a].rank;
-    const slice = lines.slice(startIdx, endIdx + 1);
-
-    const playerWords: string[] = [];
-    const perLineKills: number[] = [];
-    let confSum = 0;
-    let confCount = 0;
-    let minY = 1;
-    let maxY = 0;
-
-    for (let sIdx = 0; sIdx < slice.length; sIdx += 1) {
-      const ln = slice[sIdx];
-      minY = Math.min(minY, ln.minY);
-      maxY = Math.max(maxY, ln.maxY);
-
-      let lineKill: number | null = null;
-      for (let wIdx = ln.words.length - 1; wIdx >= 0; wIdx -= 1) {
-        const w = ln.words[wIdx];
-        if (w.nxCenter >= 0.56) {
-          const k = parseKillInteger(w.text);
-          if (k !== null) {
-            lineKill = k;
-            break;
-          }
-        }
-      }
-      if (lineKill !== null && perLineKills.length < 4) {
-        perLineKills.push(lineKill);
-      }
-
-      for (const w of ln.words) {
-        if (
-          sIdx === 0 &&
-          w.nx0 <= 0.18 &&
-          parseRankBadgeToken(w.text, maxTeams) === rank
-        ) {
-          continue;
-        }
-        if (w.nxCenter >= 0.68 && parseKillInteger(w.text) !== null) {
-          continue;
-        }
-        if (/^eliminat/i.test(w.text.trim())) continue;
-        playerWords.push(w.text);
-        confSum += w.confidence;
-        confCount += 1;
-      }
-    }
-
-    const totalKills = perLineKills.reduce((acc, v) => acc + v, 0);
-    const rawPlayerText = playerWords.join(' ').trim();
-    const tokens = extractIgnTokens(rawPlayerText);
-    const isEdgeClipped = minY < 0.045 || maxY > 0.955;
-
-    rows.push({
-      rank,
-      kills: totalKills,
-      rawPlayerText,
-      normalizedTokens: tokens,
-      confidence: confCount > 0 ? confSum / confCount : 60,
-      isEdgeClipped,
-      sourceImageIndex,
-    });
-  }
-
-  return rows;
-}
-
-export function parseOcrElementsToRows(
-  boxes: OcrWordBox[],
-  imageWidth: number,
-  imageHeight: number,
-  maxTeams = 12,
-  sourceImageIndex = 0
-): ScannedRankRow[] {
-  const safeW = Math.max(1, imageWidth);
-  const safeH = Math.max(1, imageHeight);
-
-  const normWords = boxes
-    .filter((b) => b.text && b.text.trim().length > 0)
-    .map((b) => ({
-      text: b.text.trim(),
-      nx0: Math.max(0, Math.min(1, b.x0 / safeW)),
-      ny0: Math.max(0, Math.min(1, b.y0 / safeH)),
-      nx1: Math.max(0, Math.min(1, b.x1 / safeW)),
-      ny1: Math.max(0, Math.min(1, b.y1 / safeH)),
-      confidence: b.confidence ?? 75,
-    }))
-    .filter((w) => {
-      const cy = (w.ny0 + w.ny1) / 2;
-      return cy >= 0.06 && cy <= 0.96;
-    });
-
-  if (normWords.length === 0) return [];
-
-  const leftRankHits = normWords.filter(
-    (w) => w.nx0 <= 0.22 && parseRankBadgeToken(w.text, maxTeams) !== null
-  ).length;
-  const midRankHits = normWords.filter(
-    (w) =>
-      w.nx0 >= 0.45 &&
-      w.nx0 <= 0.65 &&
-      parseRankBadgeToken(w.text, maxTeams) !== null
-  ).length;
-
-  if (leftRankHits >= 1 && midRankHits >= 2) {
-    const leftWords = normWords
-      .filter((w) => (w.nx0 + w.nx1) / 2 < 0.5)
-      .map((w) => ({
-        ...w,
-        nx0: w.nx0 / 0.5,
-        nx1: Math.min(1, w.nx1 / 0.5),
-      }));
-    const rightWords = normWords
-      .filter((w) => (w.nx0 + w.nx1) / 2 >= 0.5)
-      .map((w) => ({
-        ...w,
-        nx0: Math.max(0, (w.nx0 - 0.5) / 0.5),
-        nx1: Math.min(1, (w.nx1 - 0.5) / 0.5),
-      }));
-
-    return [
-      ...parseSingleColumnLines(
-        clusterNormalizedLines(leftWords),
-        maxTeams,
-        sourceImageIndex
-      ),
-      ...parseSingleColumnLines(
-        clusterNormalizedLines(rightWords),
-        maxTeams,
-        sourceImageIndex
-      ),
-    ].sort((a, b) => a.rank - b.rank);
-  }
-
-  return parseSingleColumnLines(
-    clusterNormalizedLines(normWords),
-    maxTeams,
-    sourceImageIndex
-  );
-}
-
-/**
- * Deduplicates overlapping ranks across 1-3 scrolled screenshots (e.g. #1-#11 + #8-#12).
- * Prefers unclipped interior rows over scroll-edge-clipped rows and never double-counts kills.
- */
 export function mergeAndDeduplicateScans(
   scansPerImage: ScannedRankRow[][],
   maxTeams = 12
@@ -1543,6 +728,8 @@ export function mergeAndDeduplicateScans(
         normalizedTokens: mergedTokens,
         confidence: Math.max(existing.confidence, row.confidence),
         isEdgeClipped: existing.isEdgeClipped && row.isEdgeClipped,
+        aiMatchedTeamId:
+          primary.aiMatchedTeamId || secondary.aiMatchedTeamId || null,
       });
     }
   }
@@ -1551,8 +738,8 @@ export function mergeAndDeduplicateScans(
 }
 
 /**
- * Global maximum-weight bipartite matching (O(N^3) Hungarian algorithm) so no squad
- * greedily steals another squad's match when single-player or shared-clan IGNs overlap.
+ * Global maximum-weight bipartite matching (O(N^3) Hungarian algorithm) combining
+ * deterministic Unicode/leet roster scoring + Gemini visual squad matching.
  */
 export function matchScannedRowsToTeams(
   rows: ScannedRankRow[],
@@ -1569,11 +756,20 @@ export function matchScannedRowsToTeams(
   }
 
   const scoreMat = rows.map((row) =>
-    teams.map((team) => scoreSquadAgainstTokens(row.normalizedTokens, team))
+    teams.map((team) => {
+      const det = scoreSquadAgainstTokens(row.normalizedTokens, team);
+      if (row.aiMatchedTeamId && row.aiMatchedTeamId === team.id) {
+        // Boost when Gemini Vision directly matched this registered squad
+        const boosted = Math.max(det.score, 0.88);
+        return {
+          score: det.score >= 0.65 ? Math.min(1, det.score + 0.08) : boosted,
+          matchedKeyword: det.matchedKeyword || team.name,
+        };
+      }
+      return det;
+    })
   );
 
-  // Only allow edges that pass the confidence/margin gate, weighted by (1 + score^2)
-  // so Hungarian maximizes accepted match cardinality first and convex confidence second.
   const validWeight = Array.from({ length: R }, (_, rIdx) =>
     teams.map((_, tIdx) => {
       const s = scoreMat[rIdx][tIdx].score;
@@ -1584,8 +780,6 @@ export function matchScannedRowsToTeams(
         }
       }
       if (s >= 0.65 || (s >= 0.58 && s - runnerUp >= 0.12)) {
-        // Exact/near-exact matches (>= 0.92) carry anchor weight so two weak 0.66
-        // fuzzy guesses can never displace a 100% exact IGN match.
         return (s >= 0.92 ? 3.5 : 1.0) + s * s;
       }
       return 0;
@@ -1612,7 +806,7 @@ export function matchScannedRowsToTeams(
         if (used[j]) continue;
         const w =
           i0 - 1 < R && j - 1 < T ? validWeight[i0 - 1][j - 1] : 0;
-        const cost = 5.0 - w; // strictly non-negative [0.5 .. 5.0]
+        const cost = 5.0 - w;
         const cur = cost - u[i0] - v[j];
         if (cur < minv[j]) {
           minv[j] = cur;
@@ -1663,8 +857,6 @@ export function matchScannedRowsToTeams(
     }
   }
 
-  // Stage 2: Iterative residual matching among remaining unmatched rows & teams
-  // (critical for single-screenshot #1-#11 mode where 12 teams are registered).
   for (let pass = 0; pass < 3; pass += 1) {
     const remRows: number[] = [];
     for (let r = 0; r < R; r += 1) {
@@ -1772,196 +964,396 @@ export function extractLearnableTokens(
     .slice(0, 10);
 }
 
-async function decodeImagePixels(
+// ============================================================================
+// Gemini Multimodal Free Fire Post-Match Scoreboard Engine
+// ============================================================================
+
+const GEMINI_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    rows: {
+      type: 'ARRAY',
+      description:
+        'Deduplicated Free Fire post-match squad rank cards ordered by rank ascending (1 to 12).',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          rank: {
+            type: 'INTEGER',
+            description:
+              'Placement rank badge number shown on the left of the squad card (1 to 24).',
+          },
+          isBottomClipped: {
+            type: 'BOOLEAN',
+            description:
+              'True ONLY if this card (typically Rank 11 in an un-scrolled single screenshot) has its bottom player row cut off by the scroll edge and no other uploaded screenshot shows it in full.',
+          },
+          matchedTeamId: {
+            type: 'STRING',
+            nullable: true,
+            description:
+              'Exact teamId from the provided REGISTERED_SQUADS list if at least one player IGN on this rank card clearly belongs to that squad; otherwise null.',
+          },
+          players: {
+            type: 'ARRAY',
+            description:
+              'All visible players inside this squad card (1 to 4 players in a 2x2 grid). Do not invent empty slots.',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                ign: {
+                  type: 'STRING',
+                  description:
+                    'Player in-game nickname without the trailing word Eliminations.',
+                },
+                kills: {
+                  type: 'INTEGER',
+                  description:
+                    'Exact yellow integer shown immediately before Eliminations / Eliminatio for this player (0 to 99, careful with 2-digit kills like 11 or 16).',
+                },
+              },
+              required: ['ign', 'kills'],
+            },
+          },
+          totalKills: {
+            type: 'INTEGER',
+            description:
+              'Sum of kills across all players in this squad card.',
+          },
+        },
+        required: ['rank', 'isBottomClipped', 'players', 'totalKills'],
+      },
+    },
+  },
+  required: ['rows'],
+};
+
+function buildFreeFireGeminiPrompt(teams: Team[], imageCount: number): string {
+  const rosterPayload = teams.map((t) => {
+    const knownPlayers = Array.from(
+      new Set(
+        [
+          ...(t.players || []),
+          t.player1 || '',
+          t.player2 || '',
+          ...(t.learnedTokens || []),
+        ]
+          .map((s) => s.trim())
+          .filter(Boolean)
+      )
+    );
+    return {
+      teamId: t.id,
+      squadName: t.name,
+      shortCode: t.shortCode || '',
+      knownPlayerIgns: knownPlayers,
+    };
+  });
+
+  return [
+    `You are a precision Free Fire Esports tournament scoreboard vision parser analyzing ${imageCount} post-match result screenshot(s) from the SAME match.`,
+    '',
+    'CRITICAL FREE FIRE SCOREBOARD LAYOUT & RULES:',
+    '1. TWO-COLUMN LAYOUT:',
+    '   - Left column contains Ranks 1 to 5: Rank 1 (gold banner), Rank 2 (silver banner), Rank 3 (bronze banner), Rank 4 & 5 (dark cards).',
+    '   - Right scrollable column contains Ranks 6 to 12 (dark cards).',
+    '2. PLAYER SLOTS & EXACT KILLS (100% PRECISION REQUIRED):',
+    '   - Each rank card contains 1 to 4 players arranged in a 2x2 grid (Top-Left, Top-Right, Bottom-Left, Bottom-Right). If a squad entered with 1-3 players, the remaining slot is blank — only include visible players.',
+    '   - Every player slot displays: [White Player IGN] [Yellow Number] "Eliminations".',
+    '   - In the right column (Ranks 6-12), the left player\'s "Eliminations" label often touches the right player\'s IGN (e.g. "4 EliminationsBRK ROKK7") and the far-right label is clipped to "Eliminatio". NEVER include "Eliminations" or "Eliminatio" inside `ign`, and ALWAYS read every player\'s yellow integer accurately.',
+    '   - Inspect 2-digit yellow kill counts carefully (e.g. 10, 11, 12, 16 Eliminations) — never drop a digit or confuse 11/16 with 1/6.',
+    '3. MULTI-SCREENSHOT OVERLAP & RANK 11 CLIPPING:',
+    '   - Multiple screenshots of the same match overlap (e.g. Screenshot 1 shows Ranks 1-11; Screenshot 2 scrolled down shows Ranks 1-5 on left and Ranks 7-12 on right).',
+    '   - Output ONE deduplicated entry per rank (1, 2, 3, ...). NEVER add or double-count kills from two screenshots showing the same rank.',
+    '   - IMPORTANT: In an un-scrolled top screenshot, Rank 11 at the bottom-right is sliced horizontally in half above the yellow BACK button (hiding its bottom 2 players). When a second scrolled screenshot shows Rank 11 higher up with all 4 player slots visible, ALWAYS extract Rank 11 from the complete unclipped screenshot and set `isBottomClipped: false`. Only set `isBottomClipped: true` if no uploaded screenshot shows Rank 11\'s bottom row.',
+    '4. STYLIZED FREE FIRE NICKNAME MATCHING TO REGISTERED_SQUADS:',
+    '   - Match each rank card to `matchedTeamId` from REGISTERED_SQUADS below if at least one player IGN matches a squad\'s `knownPlayerIgns` (or `squadName`/clan tag when unambiguous).',
+    '   - Free Fire players use stylized Unicode & leet variations of plain organizer names: circled letters (\u24B6\u24C0\u24B6\u24C8\u24BD = AKASH), dingbat digits (\u277B\u277E = 69), spaced letters ("S A F F A T" = SAFFAT), symbols/separators (\u30E1, \u30C4, \u4E42, \u2122, -, ., _), and leet (! = i, 4 = a, @ = a, 0 = o, ? = 7, 5 = s).',
+    '   - Each `teamId` may be assigned to AT MOST ONE rank. If unsure or no `knownPlayerIgns` match, set `matchedTeamId: null`.',
+    '',
+    `REGISTERED_SQUADS JSON:\n${JSON.stringify(rosterPayload)}`,
+  ].join('\n');
+}
+
+function cleanExtractedIgn(raw: string): string {
+  return raw
+    .replace(/\b(?:eliminations?|eliminatio|elims?)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export interface RawGeminiRankPayload {
+  rank?: unknown;
+  isBottomClipped?: unknown;
+  matchedTeamId?: unknown;
+  players?: unknown;
+  totalKills?: unknown;
+}
+
+export function parseGeminiStandingsJson(
+  rawJsonText: string,
+  teams: Team[],
+  maxTeams = 24
+): MatchedScanRow[] {
+  const cleanedText = rawJsonText
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  let parsed: { rows?: RawGeminiRankPayload[] } | RawGeminiRankPayload[];
+  try {
+    parsed = JSON.parse(cleanedText);
+  } catch {
+    throw new GeminiScannerError(
+      'PARSE_ERROR',
+      'Gemini returned an unreadable response. Please click Re-Scan.'
+    );
+  }
+
+  const rawRows: RawGeminiRankPayload[] = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.rows)
+    ? parsed.rows
+    : [];
+
+  const validTeamIds = new Set(teams.map((t) => t.id));
+  const converted: ScannedRankRow[] = [];
+
+  for (const item of rawRows) {
+    const rank = Number(item?.rank);
+    if (!Number.isInteger(rank) || rank < 1 || rank > maxTeams) continue;
+
+    const rawPlayers = Array.isArray(item?.players) ? item.players : [];
+    const players: ScannedPlayerSlot[] = [];
+    for (const p of rawPlayers) {
+      if (!p || typeof p !== 'object') continue;
+      const pObj = p as { ign?: unknown; kills?: unknown };
+      const ign = cleanExtractedIgn(String(pObj.ign ?? ''));
+      const kNum = Number(pObj.kills);
+      const kills =
+        Number.isFinite(kNum) && kNum >= 0
+          ? Math.min(99, Math.round(kNum))
+          : 0;
+      if (ign || kills > 0) {
+        players.push({ ign, kills });
+      }
+    }
+
+    const fallbackTotal = Number(item?.totalKills);
+    const kills =
+      players.length > 0
+        ? players.reduce((sum, p) => sum + p.kills, 0)
+        : Number.isFinite(fallbackTotal) && fallbackTotal >= 0
+        ? Math.min(200, Math.round(fallbackTotal))
+        : 0;
+
+    const rawPlayerText = players
+      .map((p) => `${p.ign} (${p.kills})`.trim())
+      .filter(Boolean)
+      .join(' \u00B7 ');
+    const plainNamesJoined = players.map((p) => p.ign).join(' ');
+    const aiTeamId =
+      typeof item?.matchedTeamId === 'string' &&
+      validTeamIds.has(item.matchedTeamId)
+        ? item.matchedTeamId
+        : null;
+
+    converted.push({
+      rank,
+      kills,
+      rawPlayerText: rawPlayerText || plainNamesJoined,
+      normalizedTokens: extractIgnTokens(plainNamesJoined),
+      confidence: 98,
+      isEdgeClipped: Boolean(item?.isBottomClipped),
+      sourceImageIndex: 0,
+      players,
+      aiMatchedTeamId: aiTeamId,
+    });
+  }
+
+  const deduplicated = mergeAndDeduplicateScans([converted], maxTeams);
+  return matchScannedRowsToTeams(deduplicated, teams);
+}
+
+async function fileToInlineImagePart(
   file: File
-): Promise<{
-  rgba: Uint8ClampedArray;
-  width: number;
-  height: number;
-  rawRgba: Uint8ClampedArray;
-  rawWidth: number;
-  rawHeight: number;
-  fallbackCanvas: HTMLCanvasElement;
-}> {
+): Promise<{ inlineData: { mimeType: string; data: string } }> {
+  // Send crisp native screenshot bytes directly when <= 2.5 MB supported raster
+  const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+  if (file.size <= 2_500_000 && supportedTypes.has(file.type)) {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = String(reader.result || '');
+        const comma = res.indexOf(',');
+        resolve(comma >= 0 ? res.slice(comma + 1) : res);
+      };
+      reader.onerror = () =>
+        reject(new Error('Failed to read screenshot file.'));
+      reader.readAsDataURL(file);
+    });
+    return {
+      inlineData: {
+        mimeType: file.type,
+        data: base64,
+      },
+    };
+  }
+
+  // Downscale oversized screenshots cleanly to 1800px max dimension JPEG 0.90
   const bitmapUrl = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const el = new Image();
       el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error('Could not decode screenshot image'));
+      el.onerror = () =>
+        reject(new Error('Could not decode screenshot image.'));
       el.src = bitmapUrl;
     });
-
-    // Keep native mobile screenshot resolution (up to 1440p) for crisp player-name crops
-    const rawScale = img.naturalHeight > 1440 ? 1440 / img.naturalHeight : 1;
-    const rawWidth = Math.max(1, Math.round(img.naturalWidth * rawScale));
-    const rawHeight = Math.max(1, Math.round(img.naturalHeight * rawScale));
-
-    const rawCanvas = document.createElement('canvas');
-    rawCanvas.width = rawWidth;
-    rawCanvas.height = rawHeight;
-    const rawCtx = rawCanvas.getContext('2d');
-    if (!rawCtx) throw new Error('Canvas 2D context unavailable');
-    rawCtx.drawImage(img, 0, 0, rawWidth, rawHeight);
-    const rawRgba = rawCtx.getImageData(0, 0, rawWidth, rawHeight).data;
-
-    // Normalized <=540p buffer for fast grid & digit analysis
-    if (rawHeight <= 640) {
-      return {
-        rgba: rawRgba,
-        width: rawWidth,
-        height: rawHeight,
-        rawRgba,
-        rawWidth,
-        rawHeight,
-        fallbackCanvas: rawCanvas,
-      };
-    }
-
-    const scaleDown = 540 / rawHeight;
-    const width = Math.max(1, Math.round(rawWidth * scaleDown));
-    const height = 540;
+    const maxDim = Math.max(img.naturalWidth, img.naturalHeight);
+    const scale = maxDim > 1800 ? 1800 / maxDim : 1;
+    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+    const height = Math.max(1, Math.round(img.naturalHeight * scale));
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas 2D context unavailable');
+    if (!ctx) throw new Error('Canvas 2D context unavailable.');
     ctx.drawImage(img, 0, 0, width, height);
-    const imgData = ctx.getImageData(0, 0, width, height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    const comma = dataUrl.indexOf(',');
     return {
-      rgba: imgData.data,
-      width,
-      height,
-      rawRgba,
-      rawWidth,
-      rawHeight,
-      fallbackCanvas: rawCanvas,
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl,
+      },
     };
   } finally {
     URL.revokeObjectURL(bitmapUrl);
   }
 }
 
-/**
- * Runs 100% Free Offline OCR + Free Fire Pixel Scoreboard Grid Analysis across 1-3 screenshots.
- */
-export async function scanMatchScreenshotsOffline(
+export async function scanMatchScreenshotsWithGemini(
   files: File[],
   teams: Team[],
+  userEmail: string | null | undefined,
   onProgress?: (statusText: string, progressFraction: number) => void
 ): Promise<MatchedScanRow[]> {
   if (files.length === 0) return [];
 
-  onProgress?.('Loading offline OCR engine...', 0.06);
-  const Tesseract = await import('tesseract.js');
-  const worker = await Tesseract.createWorker('eng', 1, {
-    logger: (m) => {
-      if (m.status === 'recognizing text' && typeof m.progress === 'number') {
-        onProgress?.('Reading player IGNs offline...', 0.2 + m.progress * 0.72);
-      }
-    },
-  });
+  const apiKey = getStoredGeminiApiKey(userEmail);
+  if (!apiKey) {
+    throw new GeminiScannerError(
+      'MISSING_API_KEY',
+      'Add your personal Gemini API key in Home -> User Profile (top-right PFP) before using AI Auto Standings.'
+    );
+  }
 
-  try {
-    await worker.setParameters({ tessedit_pageseg_mode: '6' as never });
-    const scansPerImage: ScannedRankRow[][] = [];
-    const maxTeams = Math.max(12, teams.length);
+  onProgress?.('Preparing match screenshots...', 0.18);
+  const imageParts = await Promise.all(
+    files.slice(0, 3).map((f) => fileToInlineImagePart(f))
+  );
 
-    for (let i = 0; i < files.length; i += 1) {
-      onProgress?.(
-        `Analyzing screenshot ${i + 1} of ${files.length}...`,
-        (i + 0.15) / files.length
-      );
-      const {
-        rgba,
-        width,
-        height,
-        rawRgba,
-        rawWidth,
-        rawHeight,
-        fallbackCanvas,
-      } = await decodeImagePixels(files[i]);
+  const preferredModel = getStoredGeminiModel(userEmail);
+  const modelsToTry = Array.from(
+    new Set([preferredModel, ...PREFERRED_FLASH_MODELS])
+  );
+  const maxTeams = Math.max(12, teams.length);
+  const promptText = buildFreeFireGeminiPrompt(teams, imageParts.length);
 
-      const grid = detectFreeFireGridAndBuildNameCanvas(
-        rgba,
-        width,
-        height,
-        rawRgba,
-        rawWidth,
-        rawHeight
-      );
-      if (grid) {
-        const result = await worker.recognize(
-          grid.nameCompositeCanvas,
-          {},
-          { text: true, blocks: true }
-        );
+  onProgress?.('Analyzing scoreboard with Gemini Vision AI...', 0.52);
 
-        for (const block of result.data.blocks || []) {
-          for (const para of block.paragraphs || []) {
-            for (const line of para.lines || []) {
-              for (const word of line.words || []) {
-                const wy = (word.bbox.y0 + word.bbox.y1) / 2;
-                const rm = grid.rowMeta.find(
-                  (m) => wy >= m.y0 && wy <= m.y1
-                );
-                if (rm) {
-                  grid.cards[rm.cardIndex].words.push(word.text);
-                }
-              }
-            }
-          }
+  let sawRateLimit = false;
+  let lastErrorMsg = '';
+
+  for (const model of modelsToTry) {
+    let response: Response;
+    try {
+      response = await fetch(
+        `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [...imageParts, { text: promptText }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0,
+              responseMimeType: 'application/json',
+              responseSchema: GEMINI_RESPONSE_SCHEMA,
+            },
+          }),
         }
-
-        const parsedRows: ScannedRankRow[] = grid.cards.map((c) => {
-          const rawPlayerText = c.words.join(' ').trim();
-          return {
-            rank: c.rank,
-            kills: c.kills,
-            rawPlayerText,
-            normalizedTokens: extractIgnTokens(rawPlayerText),
-            confidence: 90,
-            isEdgeClipped: c.clipped,
-            sourceImageIndex: i,
-          };
-        });
-        scansPerImage.push(parsedRows);
-      } else {
-        // Fallback for custom non-Free-Fire screenshots
-        const result = await worker.recognize(
-          fallbackCanvas,
-          {},
-          { text: true, blocks: true }
-        );
-        const wordBoxes: OcrWordBox[] = [];
-        for (const block of result.data.blocks || []) {
-          for (const para of block.paragraphs || []) {
-            for (const line of para.lines || []) {
-              for (const word of line.words || []) {
-                wordBoxes.push({
-                  text: word.text,
-                  x0: word.bbox.x0,
-                  y0: word.bbox.y0,
-                  x1: word.bbox.x1,
-                  y1: word.bbox.y1,
-                  confidence: word.confidence ?? 80,
-                });
-              }
-            }
-          }
-        }
-        scansPerImage.push(
-          parseOcrElementsToRows(wordBoxes, rawWidth, rawHeight, maxTeams, i)
-        );
-      }
+      );
+    } catch {
+      throw new GeminiScannerError(
+        'NETWORK_ERROR',
+        'Network error while contacting Google Gemini AI. Check your internet connection and retry.'
+      );
     }
 
-    onProgress?.('Matching squads & deduplicating ranks...', 0.96);
-    const deduplicated = mergeAndDeduplicateScans(scansPerImage, maxTeams);
-    const matched = matchScannedRowsToTeams(deduplicated, teams);
-    onProgress?.('Scan complete', 1);
-    return matched;
-  } finally {
-    await worker.terminate();
+    if (response.ok) {
+      onProgress?.('Verifying kills & matching squads...', 0.88);
+      const data = (await response.json()) as {
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string }> };
+        }>;
+      };
+      const rawText =
+        data?.candidates?.[0]?.content?.parts
+          ?.map((pt) => pt.text || '')
+          .join('') || '';
+      if (!rawText.trim()) {
+        throw new GeminiScannerError(
+          'PARSE_ERROR',
+          'Gemini returned an empty scoreboard response. Try clearer full-screen match screenshots.'
+        );
+      }
+      const matched = parseGeminiStandingsJson(rawText, teams, maxTeams);
+      setStoredGeminiApiKey(userEmail, apiKey, model);
+      onProgress?.('AI standings ready', 1);
+      return matched;
+    }
+
+    if (response.status === 429) {
+      sawRateLimit = true;
+      continue;
+    }
+
+    const errJson = await response.json().catch(() => null);
+    const apiMessage = String(errJson?.error?.message || '');
+    lastErrorMsg = apiMessage;
+
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      (response.status === 400 && /api.?key/i.test(apiMessage))
+    ) {
+      throw new GeminiScannerError(
+        'INVALID_API_KEY',
+        'Your Gemini API key was rejected by Google AI Studio. Open Home -> User Profile (top-right PFP) to update your API key.'
+      );
+    }
+
+    // 404 or unsupported model -> try next Flash model in fallback list
   }
+
+  if (sawRateLimit) {
+    throw new GeminiScannerError(
+      'RATE_LIMITED',
+      'Gemini free-tier rate limit reached. Wait ~30 seconds and click Re-Scan, or switch to another Google AI Studio API key.'
+    );
+  }
+
+  throw new GeminiScannerError(
+    'PARSE_ERROR',
+    lastErrorMsg || 'Gemini AI scan failed. Please try again.'
+  );
 }

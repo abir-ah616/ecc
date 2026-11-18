@@ -6,6 +6,7 @@ export interface AllowedUserRecord {
   displayName: string;
   role: UserRole;
   status: UserStatus;
+  allowAiAuto?: boolean;
   notes?: string;
   addedBy?: string;
   createdAt: number;

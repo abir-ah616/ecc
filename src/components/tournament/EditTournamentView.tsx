@@ -4,6 +4,7 @@ import {
   useTournamentStore,
   generateInitials,
 } from '../../store/tournamentStore';
+import { useAuthStore } from '../../store/authStore';
 import type {
   SavedSquadRecord,
   Team,
@@ -38,6 +39,7 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
     findSavedSquadByName,
     deleteSavedSquad,
   } = useTournamentStore();
+  const { canUseAiAuto } = useAuthStore();
 
   const [name, setName] = useState(tournament.settings.name);
   const [roundOrDay, setRoundOrDay] = useState(tournament.settings.roundOrDay);
@@ -282,11 +284,15 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
             customLogoUrl={customLogoUrl}
             onLogoUpload={handleTournamentLogoUpload}
             onClearLogo={() => setCustomLogoUrl(undefined)}
-            autoResultFromScreenshot={autoResultFromScreenshot}
-            onAutoResultFromScreenshotChange={(val) => {
-              setAutoResultFromScreenshot(val);
-              if (!val) setFormError(null);
-            }}
+            autoResultFromScreenshot={canUseAiAuto && autoResultFromScreenshot}
+            onAutoResultFromScreenshotChange={
+              canUseAiAuto
+                ? (val) => {
+                    setAutoResultFromScreenshot(val);
+                    if (!val) setFormError(null);
+                  }
+                : undefined
+            }
           />
         </div>
 
@@ -361,7 +367,7 @@ const EditTournamentForm: React.FC<EditTournamentFormProps> = ({
               )
             }
             getInitials={generateInitials}
-            autoResultFromScreenshot={autoResultFromScreenshot}
+            autoResultFromScreenshot={canUseAiAuto && autoResultFromScreenshot}
             onPlayersChange={(idx, nextPlayers) => {
               setTeams((prev) =>
                 prev.map((t, i) =>

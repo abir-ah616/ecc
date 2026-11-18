@@ -32,6 +32,7 @@ describe('Allowlist Auth Validation', () => {
       displayName: 'NEWMOD',
       role: 'user',
       status: 'active',
+      allowAiAuto: false,
       notes: '',
       addedBy: SUPER_ADMIN_EMAIL,
       createdAt: 1794678500000,

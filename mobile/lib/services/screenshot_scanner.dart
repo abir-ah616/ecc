@@ -4,25 +4,16 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/tournament_models.dart';
-import 'ff_digit_cnn_weights.dart';
 
-class OcrWordBox {
-  final String text;
-  final double x0;
-  final double y0;
-  final double x1;
-  final double y1;
-  final double confidence;
+class ScannedPlayerSlot {
+  final String ign;
+  final int kills;
 
-  const OcrWordBox({
-    required this.text,
-    required this.x0,
-    required this.y0,
-    required this.x1,
-    required this.y1,
-    this.confidence = 80,
+  const ScannedPlayerSlot({
+    required this.ign,
+    required this.kills,
   });
 }
 
@@ -34,6 +25,8 @@ class ScannedRankRow {
   final double confidence;
   final bool isEdgeClipped;
   final int sourceImageIndex;
+  final List<ScannedPlayerSlot> players;
+  final String? aiMatchedTeamId;
 
   const ScannedRankRow({
     required this.rank,
@@ -43,6 +36,8 @@ class ScannedRankRow {
     required this.confidence,
     required this.isEdgeClipped,
     required this.sourceImageIndex,
+    this.players = const [],
+    this.aiMatchedTeamId,
   });
 }
 
@@ -51,6 +46,7 @@ class MatchedScanRow {
   final int kills;
   final String rawPlayerText;
   final List<String> normalizedTokens;
+  final bool isEdgeClipped;
   final String? matchedTeamId;
   final double matchConfidence;
   final String? matchedKeyword;
@@ -60,14 +56,271 @@ class MatchedScanRow {
     required this.kills,
     required this.rawPlayerText,
     required this.normalizedTokens,
+    this.isEdgeClipped = false,
     this.matchedTeamId,
     this.matchConfidence = 0,
     this.matchedKeyword,
   });
 }
 
+enum GeminiErrorCode {
+  missingApiKey,
+  invalidApiKey,
+  rateLimited,
+  networkError,
+  parseError,
+}
+
+class GeminiScannerException implements Exception {
+  final GeminiErrorCode code;
+  final String message;
+
+  const GeminiScannerException(this.code, this.message);
+
+  @override
+  String toString() => message;
+}
+
+const String _kGeminiApiBase =
+    'https://generativelanguage.googleapis.com/v1beta';
+const List<String> _kPreferredFlashModels = <String>[
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+];
+
+String _storageKeyForEmail(String prefix, String? userEmail) {
+  final clean = (userEmail ?? '').trim().toLowerCase();
+  return '${prefix}_${clean.isEmpty ? 'default' : clean}';
+}
+
+String sanitizeGeminiApiKey(String raw) {
+  return raw
+      .trim()
+      .replaceAll(RegExp(r'''^["']+|["']+$'''), '')
+      .replaceAll(RegExp(r'\s+'), '');
+}
+
+String maskGeminiApiKey(String rawKey) {
+  final clean = sanitizeGeminiApiKey(rawKey);
+  if (clean.isEmpty) return '';
+  if (clean.length <= 10) return '${clean.substring(0, 4)}...';
+  return '${clean.substring(0, 6)}...${clean.substring(clean.length - 4)}';
+}
+
+Future<String> getStoredGeminiApiKey(String? userEmail) async {
+  final prefs = await SharedPreferences.getInstance();
+  final raw =
+      prefs.getString(_storageKeyForEmail('esp_calc_gemini_api_key', userEmail)) ??
+          '';
+  return sanitizeGeminiApiKey(raw);
+}
+
+Future<String> getStoredGeminiModel(String? userEmail) async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString(
+          _storageKeyForEmail('esp_calc_gemini_model', userEmail)) ??
+      _kPreferredFlashModels.first;
+}
+
+Future<void> setStoredGeminiApiKey({
+  required String? userEmail,
+  required String apiKey,
+  String? verifiedModel,
+}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final clean = sanitizeGeminiApiKey(apiKey);
+  final keyName = _storageKeyForEmail('esp_calc_gemini_api_key', userEmail);
+  final modelName = _storageKeyForEmail('esp_calc_gemini_model', userEmail);
+  if (clean.isEmpty) {
+    await prefs.remove(keyName);
+    await prefs.remove(modelName);
+    return;
+  }
+  await prefs.setString(keyName, clean);
+  if (verifiedModel != null && verifiedModel.isNotEmpty) {
+    await prefs.setString(modelName, verifiedModel);
+  }
+}
+
+Future<void> clearStoredGeminiApiKey(String? userEmail) async {
+  await setStoredGeminiApiKey(userEmail: userEmail, apiKey: '');
+}
+
+List<String> _selectVisionFlashModels(List<dynamic> entries) {
+  final available = <String>{};
+  for (final raw in entries) {
+    if (raw is! Map) continue;
+    final id = ((raw['name'] as String?) ?? '')
+        .replaceFirst(RegExp(r'^models/'), '')
+        .trim();
+    final methods = (raw['supportedGenerationMethods'] as List?)
+            ?.whereType<String>()
+            .toList() ??
+        const <String>[];
+    if (id.isEmpty || !methods.contains('generateContent')) continue;
+    final lower = id.toLowerCase();
+    if (lower.contains('tts') ||
+        lower.contains('embedding') ||
+        lower.contains('imagen') ||
+        lower.contains('image-generation') ||
+        lower.contains('audio') ||
+        lower.contains('veo')) {
+      continue;
+    }
+    if (lower.contains('gemini') && lower.contains('flash')) {
+      available.add(id);
+    }
+  }
+
+  final ordered = <String>[];
+  for (final pref in _kPreferredFlashModels) {
+    if (available.contains(pref)) ordered.add(pref);
+  }
+  final sortedRest = available.toList()..sort((a, b) => b.compareTo(a));
+  for (final id in sortedRest) {
+    if (!ordered.contains(id)) ordered.add(id);
+  }
+  return ordered.isNotEmpty ? ordered : List<String>.from(_kPreferredFlashModels);
+}
+
+Future<({ int statusCode, String body })> _geminiHttpRequest({
+  required String method,
+  required String url,
+  required String apiKey,
+  String? jsonBody,
+}) async {
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+  try {
+    final uri = Uri.parse(url);
+    final req = method == 'POST'
+        ? await client.postUrl(uri)
+        : await client.getUrl(uri);
+    req.headers.set('x-goog-api-key', apiKey);
+    if (jsonBody != null) {
+      req.headers.contentType = ContentType.json;
+      req.add(utf8.encode(jsonBody));
+    }
+    final res = await req.close().timeout(const Duration(seconds: 60));
+    final body = await utf8.decodeStream(res);
+    return (statusCode: res.statusCode, body: body);
+  } finally {
+    client.close(force: true);
+  }
+}
+
+Future<({ bool valid, String? model, String? error })> verifyGeminiApiKey(
+  String rawKey,
+) async {
+  final cleanKey = sanitizeGeminiApiKey(rawKey);
+  if (cleanKey.length < 20) {
+    return (
+      valid: false,
+      model: null,
+      error: 'Paste a complete Google AI Studio API key (starts with AIza...).',
+    );
+  }
+
+  var candidateModels = List<String>.from(_kPreferredFlashModels);
+  try {
+    final res = await _geminiHttpRequest(
+      method: 'GET',
+      url: '$_kGeminiApiBase/models',
+      apiKey: cleanKey,
+    );
+
+    if (res.statusCode == 400 ||
+        res.statusCode == 401 ||
+        res.statusCode == 403) {
+      return (
+        valid: false,
+        model: null,
+        error:
+            'Invalid Gemini API key. Copy the exact key from Google AI Studio (aistudio.google.com/apikey).',
+      );
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map && decoded['models'] is List) {
+        candidateModels = _selectVisionFlashModels(decoded['models'] as List);
+      }
+    }
+  } catch (_) {
+    return (
+      valid: false,
+      model: null,
+      error:
+          'Could not reach Google Gemini servers. Check your internet connection and try again.',
+    );
+  }
+
+  var sawRateLimit = false;
+  for (final model in candidateModels.take(3)) {
+    try {
+      final ping = await _geminiHttpRequest(
+        method: 'POST',
+        url:
+            '$_kGeminiApiBase/models/${Uri.encodeComponent(model)}:generateContent',
+        apiKey: cleanKey,
+        jsonBody: jsonEncode({
+          'contents': [
+            {
+              'parts': [
+                {'text': 'Return {"ok":true}'},
+              ],
+            },
+          ],
+          'generationConfig': {
+            'temperature': 0,
+            'maxOutputTokens': 16,
+          },
+        }),
+      );
+
+      if (ping.statusCode >= 200 && ping.statusCode < 300) {
+        return (valid: true, model: model, error: null);
+      }
+      if (ping.statusCode == 429) {
+        sawRateLimit = true;
+        continue;
+      }
+      if (ping.statusCode == 400 ||
+          ping.statusCode == 401 ||
+          ping.statusCode == 403) {
+        String msg =
+            'API key rejected by Google AI Studio. Check key permissions.';
+        try {
+          final errMap = jsonDecode(ping.body);
+          if (errMap is Map &&
+              errMap['error'] is Map &&
+              errMap['error']['message'] is String) {
+            msg = errMap['error']['message'] as String;
+          }
+        } catch (_) {}
+        if (RegExp(r'api.?key', caseSensitive: false).hasMatch(msg) ||
+            ping.statusCode != 400) {
+          return (valid: false, model: null, error: msg);
+        }
+      }
+    } catch (_) {
+      // Try next fallback model
+    }
+  }
+
+  if (sawRateLimit) {
+    return (valid: true, model: candidateModels.first, error: null);
+  }
+
+  return (
+    valid: false,
+    model: null,
+    error:
+        'Could not verify generateContent access for this key. Generate a fresh key at aistudio.google.com/apikey.',
+  );
+}
+
 const Map<int, String> _kHomoglyphRuneMap = {
-  // Greek, Cyrillic, Cherokee, Currency/Nickfinder, Small-caps & Letterlike lookalikes
   0x0391: 'a', 0x0410: 'a', 0x13AA: 'a', 0x039B: 'a', 0x03B1: 'a', 0x0430: 'a', 0x1D2C: 'a', 0x1D43: 'a', 0x20B3: 'a', 0x0245: 'a', 0x028C: 'a', 0x0E14: 'a',
   0x0392: 'b', 0x0412: 'b', 0x0299: 'b', 0x0432: 'b', 0x1D2E: 'b', 0x1D47: 'b', 0x212C: 'b', 0x0E3F: 'b', 0x20BF: 'b', 0x00DF: 'b',
   0x0421: 'c', 0x13DF: 'c', 0x1D04: 'c', 0x0441: 'c', 0x1D9C: 'c', 0x212D: 'c', 0x00A2: 'c', 0x20B5: 'c',
@@ -100,15 +353,25 @@ const Map<int, String> _kHomoglyphRuneMap = {
 };
 
 String _foldLatinDiacritic(int rune) {
-  if ((rune >= 0x00C0 && rune <= 0x00C5) || (rune >= 0x00E0 && rune <= 0x00E5)) return 'a';
+  if ((rune >= 0x00C0 && rune <= 0x00C5) || (rune >= 0x00E0 && rune <= 0x00E5)) {
+    return 'a';
+  }
   if (rune == 0x00C6 || rune == 0x00E6) return 'ae';
   if (rune == 0x00C7 || rune == 0x00E7) return 'c';
-  if ((rune >= 0x00C8 && rune <= 0x00CB) || (rune >= 0x00E8 && rune <= 0x00EB)) return 'e';
-  if ((rune >= 0x00CC && rune <= 0x00CF) || (rune >= 0x00EC && rune <= 0x00EF)) return 'i';
+  if ((rune >= 0x00C8 && rune <= 0x00CB) || (rune >= 0x00E8 && rune <= 0x00EB)) {
+    return 'e';
+  }
+  if ((rune >= 0x00CC && rune <= 0x00CF) || (rune >= 0x00EC && rune <= 0x00EF)) {
+    return 'i';
+  }
   if (rune == 0x00D0 || rune == 0x00F0) return 'd';
   if (rune == 0x00D1 || rune == 0x00F1) return 'n';
-  if ((rune >= 0x00D2 && rune <= 0x00D6) || (rune >= 0x00F2 && rune <= 0x00F6)) return 'o';
-  if ((rune >= 0x00D9 && rune <= 0x00DC) || (rune >= 0x00F9 && rune <= 0x00FC)) return 'u';
+  if ((rune >= 0x00D2 && rune <= 0x00D6) || (rune >= 0x00F2 && rune <= 0x00F6)) {
+    return 'o';
+  }
+  if ((rune >= 0x00D9 && rune <= 0x00DC) || (rune >= 0x00F9 && rune <= 0x00FC)) {
+    return 'u';
+  }
   if (rune == 0x00DD || rune == 0x00FD || rune == 0x00FF) return 'y';
   return '';
 }
@@ -213,7 +476,7 @@ String normalizeFreeFireIgn(String raw) {
 }
 
 final RegExp _kNoiseFragmentRe = RegExp(
-  r'^(?:eliminations?|elims?|ations?|tions?|ions?|ons?|ns|ws|is)$',
+  r'^(?:eliminations?|elims?|eliminatio|ations?|tions?|ions?|ons?|ns|ws|is)$',
   caseSensitive: false,
 );
 
@@ -515,1094 +778,6 @@ double ocrFuzzySimilarity(String candidateToken, String keywordRaw) {
   return (score: bestScore, matchedKeyword: bestKw);
 }
 
-// ============================================================================
-// Dedicated Free Fire Neural Digit & Position CNN (16x20 Aspect-Preserving)
-// Architecture: Input(1x20x16) -> Conv3x3(12)+ReLU -> MaxPool2x2
-//               -> Conv3x3(24)+ReLU -> MaxPool2x2 -> FC(48)+ReLU -> FC(10)
-// ============================================================================
-
-const int _kCnnGw = 16;
-const int _kCnnGh = 20;
-const int _kCnnC1 = 12;
-const int _kCnnC2 = 24;
-const int _kCnnH1 = 10;
-const int _kCnnW1 = 8;
-const int _kCnnH2 = 5;
-const int _kCnnW2 = 4;
-const int _kCnnFlat = _kCnnC2 * _kCnnH2 * _kCnnW2; // 480
-const int _kCnnHid = 48;
-const int _kCnnCls = 10;
-
-class _DecodedDigitCnn {
-  final Float32List w1;
-  final Float32List b1;
-  final Float32List w2;
-  final Float32List b2;
-  final Float32List w3;
-  final Float32List b3;
-  final Float32List w4;
-  final Float32List b4;
-
-  const _DecodedDigitCnn({
-    required this.w1,
-    required this.b1,
-    required this.w2,
-    required this.b2,
-    required this.w3,
-    required this.b3,
-    required this.w4,
-    required this.b4,
-  });
-}
-
-_DecodedDigitCnn? _cachedDigitCnn;
-final Float32List _cnnPool1Scratch = Float32List(_kCnnC1 * _kCnnH1 * _kCnnW1);
-final Float32List _cnnPool2Scratch = Float32List(_kCnnFlat);
-final Float32List _cnnHidScratch = Float32List(_kCnnHid);
-
-_DecodedDigitCnn _getDigitCnn() {
-  if (_cachedDigitCnn != null) return _cachedDigitCnn!;
-  final rawBytes = base64Decode(kFfDigitCnnB64);
-  final qBytes = Int8List.sublistView(rawBytes);
-  const lens = <int>[
-    _kCnnC1 * 9,
-    _kCnnC1,
-    _kCnnC2 * _kCnnC1 * 9,
-    _kCnnC2,
-    _kCnnHid * _kCnnFlat,
-    _kCnnHid,
-    _kCnnCls * _kCnnHid,
-    _kCnnCls,
-  ];
-  var offset = 0;
-  final tensors = <Float32List>[];
-  for (int idx = 0; idx < lens.length; idx++) {
-    final len = lens[idx];
-    final scale = kFfDigitCnnScales[idx];
-    final out = Float32List(len);
-    for (int i = 0; i < len; i++) {
-      out[i] = qBytes[offset + i] * scale;
-    }
-    offset += len;
-    tensors.add(out);
-  }
-  _cachedDigitCnn = _DecodedDigitCnn(
-    w1: tensors[0],
-    b1: tensors[1],
-    w2: tensors[2],
-    b2: tensors[3],
-    w3: tensors[4],
-    b3: tensors[5],
-    w4: tensors[6],
-    b4: tensors[7],
-  );
-  return _cachedDigitCnn!;
-}
-
-int _classifyGlyphCnn16x20(Float32List x) {
-  final net = _getDigitCnn();
-
-  // Conv1 (3x3, pad=1) + ReLU + MaxPool1 (2x2) -> 12x10x8
-  for (int oc = 0; oc < _kCnnC1; oc++) {
-    final wOff = oc * 9;
-    final bias = net.b1[oc];
-    for (int py = 0; py < _kCnnH1; py++) {
-      for (int px = 0; px < _kCnnW1; px++) {
-        var best = 0.0;
-        for (int dy = 0; dy < 2; dy++) {
-          final y = py * 2 + dy;
-          for (int dx = 0; dx < 2; dx++) {
-            final xx = px * 2 + dx;
-            var s = bias;
-            for (int ky = -1; ky <= 1; ky++) {
-              final iy = y + ky;
-              if (iy < 0 || iy >= _kCnnGh) continue;
-              final kRow = (ky + 1) * 3;
-              for (int kx = -1; kx <= 1; kx++) {
-                final ix = xx + kx;
-                if (ix < 0 || ix >= _kCnnGw) continue;
-                s += x[iy * _kCnnGw + ix] * net.w1[wOff + kRow + (kx + 1)];
-              }
-            }
-            if (s > best) best = s;
-          }
-        }
-        _cnnPool1Scratch[(oc * _kCnnH1 + py) * _kCnnW1 + px] = best;
-      }
-    }
-  }
-
-  // Conv2 (3x3, pad=1) + ReLU + MaxPool2 (2x2) -> 24x5x4 (480)
-  for (int oc = 0; oc < _kCnnC2; oc++) {
-    final bias = net.b2[oc];
-    for (int py = 0; py < _kCnnH2; py++) {
-      for (int px = 0; px < _kCnnW2; px++) {
-        var best = 0.0;
-        for (int dy = 0; dy < 2; dy++) {
-          final y = py * 2 + dy;
-          for (int dx = 0; dx < 2; dx++) {
-            final xx = px * 2 + dx;
-            var s = bias;
-            for (int ic = 0; ic < _kCnnC1; ic++) {
-              final inBase = ic * _kCnnH1 * _kCnnW1;
-              final wBase = (oc * _kCnnC1 + ic) * 9;
-              for (int ky = -1; ky <= 1; ky++) {
-                final iy = y + ky;
-                if (iy < 0 || iy >= _kCnnH1) continue;
-                final kRow = (ky + 1) * 3;
-                for (int kx = -1; kx <= 1; kx++) {
-                  final ix = xx + kx;
-                  if (ix < 0 || ix >= _kCnnW1) continue;
-                  s += _cnnPool1Scratch[inBase + iy * _kCnnW1 + ix] *
-                      net.w2[wBase + kRow + (kx + 1)];
-                }
-              }
-            }
-            if (s > best) best = s;
-          }
-        }
-        _cnnPool2Scratch[(oc * _kCnnH2 + py) * _kCnnW2 + px] = best;
-      }
-    }
-  }
-
-  // FC1 (480 -> 48) + ReLU
-  for (int i = 0; i < _kCnnHid; i++) {
-    var s = net.b3[i];
-    final wOff = i * _kCnnFlat;
-    for (int j = 0; j < _kCnnFlat; j++) {
-      s += _cnnPool2Scratch[j] * net.w3[wOff + j];
-    }
-    _cnnHidScratch[i] = s > 0 ? s : 0.0;
-  }
-
-  // FC2 (48 -> 10) Argmax
-  var bestDigit = 0;
-  var bestLogit = -1e9;
-  for (int c = 0; c < _kCnnCls; c++) {
-    var s = net.b4[c];
-    final wOff = c * _kCnnHid;
-    for (int i = 0; i < _kCnnHid; i++) {
-      s += _cnnHidScratch[i] * net.w4[wOff + i];
-    }
-    if (s > bestLogit) {
-      bestLogit = s;
-      bestDigit = c;
-    }
-  }
-  return bestDigit;
-}
-
-int? readRgbaCellNumber(
-  Uint8List rgba,
-  int W,
-  int H,
-  int cropX0,
-  int cropY0,
-  int cropW,
-  int cropH, {
-  required bool yellowMode,
-}) =>
-    _readRgbaCellNumber(
-      rgba,
-      W,
-      H,
-      cropX0,
-      cropY0,
-      cropW,
-      cropH,
-      yellowMode: yellowMode,
-    );
-
-int? _readRgbaCellNumber(
-  Uint8List rgba,
-  int W,
-  int H,
-  int cropX0,
-  int cropY0,
-  int cropW,
-  int cropH, {
-  required bool yellowMode,
-}) {
-  if (cropW < 4 || cropH < 4) return null;
-  final cw = math.max(40, cropW * 5);
-  final ch = math.max(40, cropH * 5);
-  final scaleX = cw / cropW;
-  final scaleY = ch / cropH;
-
-  double sampleSignal(int sx, int sy) {
-    final px = (cropX0 + sx).clamp(0, W - 1).toInt();
-    final py = (cropY0 + sy).clamp(0, H - 1).toInt();
-    final idx = (py * W + px) * 4;
-    final r = rgba[idx].toDouble();
-    final g = rgba[idx + 1].toDouble();
-    final b = rgba[idx + 2].toDouble();
-    return yellowMode
-        ? math.max(0.0, 0.52 * r + 0.48 * g - 0.18 * b)
-        : (0.4 * r + 0.4 * g + 0.2 * b);
-  }
-
-  final vals = <double>[];
-  for (int sy = 0; sy < cropH; sy++) {
-    for (int sx = 0; sx < cropW; sx++) {
-      vals.add(sampleSignal(sx, sy));
-    }
-  }
-  vals.sort();
-  final bg = vals[(vals.length * 0.25).floor()];
-  final peak = vals.last;
-  if (peak - bg < (yellowMode ? 36.0 : 45.0)) return null;
-
-  final cell = Float32List(cw * ch);
-  for (int dy = 0; dy < ch; dy++) {
-    final fy = dy / scaleY;
-    final y0 = fy.floor();
-    final y1 = math.min(cropH - 1, y0 + 1);
-    final wy = fy - y0;
-    for (int dx = 0; dx < cw; dx++) {
-      final fx = dx / scaleX;
-      final x0 = fx.floor();
-      final x1 = math.min(cropW - 1, x0 + 1);
-      final wx = fx - x0;
-      final v =
-          (sampleSignal(x0, y0) * (1 - wx) + sampleSignal(x1, y0) * wx) *
-                  (1 - wy) +
-              (sampleSignal(x0, y1) * (1 - wx) + sampleSignal(x1, y1) * wx) *
-                  wy;
-      cell[dy * cw + dx] =
-          ((v - (bg + (peak - bg) * 0.28)) / math.max(18.0, (peak - bg) * 0.55))
-              .clamp(0.0, 1.0);
-    }
-  }
-
-  var minY = ch;
-  var maxY = -1;
-  var minX = cw;
-  var maxX = -1;
-  for (int y = 2; y < ch - 2; y++) {
-    for (int x = 2; x < cw - 2; x++) {
-      if (cell[y * cw + x] > 0.38) {
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-      }
-    }
-  }
-  if (maxY - minY < ch * 0.22 || maxX - minX < 4) return null;
-
-  final bw = maxX - minX + 1;
-  final bh = maxY - minY + 1;
-  final xRanges = <(int, int)>[];
-  if (bw / bh > 0.68) {
-    final colSum = Float32List(bw);
-    for (int x = 0; x < bw; x++) {
-      for (int y = minY; y <= maxY; y++) {
-        colSum[x] += cell[y * cw + (minX + x)];
-      }
-    }
-    var bestSplit = -1;
-    var bestVal = 1e9;
-    for (int x = (bw * 0.22).floor(); x <= (bw * 0.78).ceil(); x++) {
-      if (colSum[x] < bestVal) {
-        bestVal = colSum[x];
-        bestSplit = x;
-      }
-    }
-    var leftPeak = 0.0;
-    var rightPeak = 0.0;
-    for (int x = 0; x < bestSplit; x++) {
-      if (colSum[x] > leftPeak) leftPeak = colSum[x];
-    }
-    for (int x = bestSplit + 1; x < bw; x++) {
-      if (colSum[x] > rightPeak) rightPeak = colSum[x];
-    }
-    if (bestSplit > 0 &&
-        bestVal < bh * 0.32 &&
-        leftPeak > bestVal * 2.2 &&
-        rightPeak > bestVal * 2.2) {
-      xRanges.add((minX, minX + bestSplit - 1));
-      xRanges.add((minX + bestSplit + 1, maxX));
-    } else {
-      xRanges.add((minX, maxX));
-    }
-  } else {
-    xRanges.add((minX, maxX));
-  }
-
-  final digits = StringBuffer();
-  final glyphTensor = Float32List(_kCnnGw * _kCnnGh);
-  for (final (gx0, gx1) in xRanges) {
-    var x0 = gx1;
-    var x1 = gx0;
-    var y0 = maxY;
-    var y1 = minY;
-    for (int y = minY; y <= maxY; y++) {
-      for (int x = gx0; x <= gx1; x++) {
-        if (cell[y * cw + x] > 0.35) {
-          if (x < x0) x0 = x;
-          if (x > x1) x1 = x;
-          if (y < y0) y0 = y;
-          if (y > y1) y1 = y;
-        }
-      }
-    }
-    final gw = math.max(1, x1 - x0 + 1);
-    final gh = math.max(1, y1 - y0 + 1);
-    if (gh < ch * 0.20) continue;
-
-    glyphTensor.fillRange(0, glyphTensor.length, 0.0);
-    const targetH = 16.0;
-    final targetW = (16.0 * (gw / gh)).clamp(2.0, 14.0);
-    final padX = (_kCnnGw - targetW) * 0.5;
-    const padY = (_kCnnGh - targetH) * 0.5;
-
-    for (int ty = 0; ty < _kCnnGh; ty++) {
-      final sy = y0 + ((ty + 0.5 - padY) / targetH) * gh;
-      if (sy < y0 - 1 || sy > y1 + 1) continue;
-      final cy0 = sy.floor().clamp(0, ch - 1).toInt();
-      final cy1 = (cy0 + 1).clamp(0, ch - 1).toInt();
-      final wy = (sy - sy.floor()).clamp(0.0, 1.0);
-
-      for (int tx = 0; tx < _kCnnGw; tx++) {
-        final sx = x0 + ((tx + 0.5 - padX) / targetW) * gw;
-        if (sx < x0 - 1 || sx > x1 + 1) continue;
-        final cx0 = sx.floor().clamp(0, cw - 1).toInt();
-        final cx1 = (cx0 + 1).clamp(0, cw - 1).toInt();
-        final wx = (sx - sx.floor()).clamp(0.0, 1.0);
-
-        glyphTensor[ty * _kCnnGw + tx] =
-            (cell[cy0 * cw + cx0] * (1 - wx) + cell[cy0 * cw + cx1] * wx) *
-                    (1 - wy) +
-                (cell[cy1 * cw + cx0] * (1 - wx) + cell[cy1 * cw + cx1] * wx) *
-                    wy;
-      }
-    }
-    digits.write(_classifyGlyphCnn16x20(glyphTensor));
-  }
-
-  final str = digits.toString();
-  return str.isEmpty ? null : int.tryParse(str);
-}
-
-class _DetectedCard {
-  final String side; // 'L' or 'R'
-  final int rank;
-  final int kills;
-  final bool clipped;
-  final List<({int y0, int y1, double yc})> lines;
-  final List<String> words = [];
-
-  _DetectedCard({
-    required this.side,
-    required this.rank,
-    required this.kills,
-    required this.clipped,
-    required this.lines,
-  });
-}
-
-class _DetectedGridResult {
-  final List<_DetectedCard> cards;
-  final Uint8List compositeRgba;
-  final int compositeWidth;
-  final int compositeHeight;
-  final List<({int cardIndex, int y0, int y1})> rowMeta;
-
-  const _DetectedGridResult({
-    required this.cards,
-    required this.compositeRgba,
-    required this.compositeWidth,
-    required this.compositeHeight,
-    required this.rowMeta,
-  });
-}
-
-_DetectedGridResult? _detectFreeFireGridAndBuildComposite(
-  Uint8List rgba,
-  int W,
-  int H,
-  Uint8List rawRgba,
-  int rawW,
-  int rawH,
-) {
-  final lookDist = math.max(5, (H * 0.015).round());
-  final yellowScoreX = Float64List(W);
-
-  for (int y = (H * 0.36).floor(); y < (H * 0.85).floor(); y++) {
-    for (int x = (W * 0.06).floor(); x < (W * 0.96).floor(); x++) {
-      final idx = (y * W + x) * 4;
-      final r = rgba[idx].toDouble();
-      final g = rgba[idx + 1].toDouble();
-      final b = rgba[idx + 2].toDouble();
-      if (r >= 130 && g >= 95 && (0.6 * r + 0.4 * g - b) >= 55) {
-        final lIdx = (y * W + math.max<int>(0, x - lookDist)) * 4;
-        final rIdx = (y * W + math.min<int>(W - 1, x + lookDist)) * 4;
-        final bgLum = math.min(
-          0.5 * rgba[lIdx] + 0.5 * rgba[lIdx + 1],
-          0.5 * rgba[rIdx] + 0.5 * rgba[rIdx + 1],
-        );
-        final fgLum = 0.5 * r + 0.5 * g;
-        if (fgLum - bgLum >= 35) {
-          yellowScoreX[x] += fgLum - bgLum;
-        }
-      }
-    }
-  }
-
-  final win = math.max(2, (H * 0.007).round());
-  final smoothed = Float64List(W);
-  for (int x = win; x < W - win; x++) {
-    for (int dx = -win; dx <= win; dx++) {
-      smoothed[x] += yellowScoreX[x + dx];
-    }
-  }
-
-  final cands = <({int x, double score})>[];
-  for (int x = (W * 0.08).floor(); x < (W * 0.95).floor(); x++) {
-    if (smoothed[x] >= smoothed[x - 1] &&
-        smoothed[x] >= smoothed[x + 1] &&
-        smoothed[x] > H * 0.85) {
-      var numer = 0.0;
-      var den = 0.0;
-      for (int dx = -win - 1; dx <= win + 1; dx++) {
-        final px = (x + dx).clamp(0, W - 1).toInt();
-        numer += px * yellowScoreX[px];
-        den += yellowScoreX[px];
-      }
-      cands.add((x: den > 0 ? (numer / den).round() : x, score: smoothed[x]));
-    }
-  }
-  cands.sort((a, b) => b.score.compareTo(a.score));
-
-  final minPeakDist = H * 0.20;
-  final killX = <int>[];
-  for (final c in cands) {
-    if (killX.every((px) => (px - c.x).abs() >= minPeakDist)) {
-      killX.add(c.x);
-      if (killX.length == 4) break;
-    }
-  }
-  killX.sort();
-  if (killX.length != 2 && killX.length != 4) return null;
-
-  final hasRightCol = killX.length == 4;
-  final leftSpan = (killX[1] - killX[0]).toDouble();
-  final rightSpan =
-      hasRightCol ? (killX[3] - killX[2]).toDouble() : leftSpan * 0.73;
-  if (leftSpan < H * 0.20) return null;
-
-  List<({int y0, int y1, double yc})> findLines(int x0, int x1) {
-    final rowEdge = Int32List(H);
-    final minEdgeCount = math.max(5, ((x1 - x0) * 0.025).round());
-    for (int y = (H * 0.18).floor(); y < (H * 0.88).floor(); y++) {
-      var e = 0;
-      for (int x = math.max(1, x0); x < math.min(W - 1, x1); x++) {
-        final idx = (y * W + x) * 4;
-        final prev = (y * W + x - 1) * 4;
-        final lum = 0.55 * rgba[idx] + 0.45 * rgba[idx + 1];
-        final lumPrev = 0.55 * rgba[prev] + 0.45 * rgba[prev + 1];
-        if (lum >= 125 && (lum - lumPrev).abs() >= 22) e++;
-      }
-      rowEdge[y] = e;
-    }
-    final segs = <({int y0, int y1, double yc})>[];
-    var s = -1;
-    final minLineH = math.max(4, (H * 0.01).round());
-    for (int y = 0; y < H; y++) {
-      if (rowEdge[y] >= minEdgeCount) {
-        if (s == -1) s = y;
-      } else if (s != -1) {
-        if (y - s >= minLineH) {
-          segs.add((y0: s, y1: y - 1, yc: (s + y - 1) / 2.0));
-        }
-        s = -1;
-      }
-    }
-    return segs;
-  }
-
-  List<({List<({int y0, int y1, double yc})> lines, bool clipped})> pairLines(
-    List<({int y0, int y1, double yc})> lines,
-  ) {
-    final grouped =
-        <({List<({int y0, int y1, double yc})> lines, bool clipped})>[];
-    var i = 0;
-    while (i < lines.length) {
-      if (i + 1 < lines.length &&
-          lines[i + 1].yc - lines[i].yc < H * 0.056) {
-        grouped.add((lines: [lines[i], lines[i + 1]], clipped: false));
-        i += 2;
-      } else {
-        grouped.add((lines: [lines[i]], clipped: true));
-        i += 1;
-      }
-    }
-    return grouped;
-  }
-
-  final leftCards = pairLines(
-    findLines(
-      (killX[0] - leftSpan * 0.52).round(),
-      (killX[1] + leftSpan * 0.25).round(),
-    ),
-  );
-  final rightCards = hasRightCol
-      ? pairLines(
-          findLines(
-            (killX[2] - rightSpan * 0.72).round(),
-            (killX[3] + rightSpan * 0.25).round(),
-          ),
-        )
-      : <({List<({int y0, int y1, double yc})> lines, bool clipped})>[];
-
-  if (leftCards.isEmpty && rightCards.isEmpty) return null;
-
-  final leftCellW = math.max(8, (H * 0.023).round());
-  final rightCellW = math.max(5, (H * 0.011).round());
-  final padY = math.max(3, (H * 0.0085).round());
-
-  var rightStartRank = 6;
-  if (hasRightCol && rightCards.isNotEmpty) {
-    final startVotes = <int, int>{};
-    for (int i = 0; i < rightCards.length; i++) {
-      if (rightCards[i].clipped) continue;
-      final rx0 = (killX[2] - rightSpan * 1.045).round();
-      final midY = ((rightCards[i].lines[0].y0 + rightCards[i].lines[1].y1) /
-                  2.0 -
-              H * 0.017)
-          .round();
-      final badge = _readRgbaCellNumber(
-        rgba,
-        W,
-        H,
-        rx0,
-        midY,
-        (rightSpan * 0.19).round(),
-        (H * 0.035).round(),
-        yellowMode: false,
-      );
-      if (badge != null && badge >= 6 && badge <= 24) {
-        final implied = badge - i;
-        startVotes[implied] = (startVotes[implied] ?? 0) + 1;
-      }
-    }
-    var bestVotes = 0;
-    startVotes.forEach((sr, v) {
-      if (v > bestVotes) {
-        bestVotes = v;
-        rightStartRank = sr;
-      }
-    });
-  }
-
-  final cards = <_DetectedCard>[];
-  for (int i = 0; i < leftCards.length; i++) {
-    final c = leftCards[i];
-    var kills = 0;
-    for (final ln in c.lines) {
-      for (final kx in [killX[0], killX[1]]) {
-        final kv = _readRgbaCellNumber(
-          rgba,
-          W,
-          H,
-          kx - leftCellW,
-          ln.y0 - padY,
-          leftCellW + rightCellW,
-          ln.y1 - ln.y0 + padY * 2,
-          yellowMode: true,
-        );
-        if (kv != null && kv <= 35) kills += kv;
-      }
-    }
-    cards.add(
-      _DetectedCard(
-        side: 'L',
-        rank: i + 1,
-        kills: kills,
-        clipped: c.clipped,
-        lines: c.lines,
-      ),
-    );
-  }
-
-  for (int i = 0; i < rightCards.length; i++) {
-    final c = rightCards[i];
-    var kills = 0;
-    for (final ln in c.lines) {
-      for (final kx in [killX[2], killX[3]]) {
-        final kv = _readRgbaCellNumber(
-          rgba,
-          W,
-          H,
-          kx - leftCellW,
-          ln.y0 - padY,
-          leftCellW + rightCellW,
-          ln.y1 - ln.y0 + padY * 2,
-          yellowMode: true,
-        );
-        if (kv != null && kv <= 35) kills += kv;
-      }
-    }
-    cards.add(
-      _DetectedCard(
-        side: 'R',
-        rank: rightStartRank + i,
-        kills: kills,
-        clipped: c.clipped,
-        lines: c.lines,
-      ),
-    );
-  }
-
-  final rawRatioX = rawW / W;
-  final rawRatioY = rawH / H;
-  final targetScale = (1750.0 / rawH).clamp(2.0, 4.2);
-  final padRawY = math.max(3, (rawH * 0.009).round());
-
-  final strips = <({String side, int x0, int x1})>[
-    (
-      side: 'L',
-      x0: math.max(0, ((killX[0] - leftSpan * 0.60) * rawRatioX).round()),
-      x1: math.max(1, ((killX[0] - leftSpan * 0.058) * rawRatioX).round()),
-    ),
-    (
-      side: 'L',
-      x0: math.max(0, ((killX[0] + leftSpan * 0.34) * rawRatioX).round()),
-      x1: math.max(1, ((killX[1] - leftSpan * 0.058) * rawRatioX).round()),
-    ),
-  ];
-  if (hasRightCol) {
-    strips.addAll([
-      (
-        side: 'R',
-        x0: math.max(0, ((killX[2] - rightSpan * 0.78) * rawRatioX).round()),
-        x1: math.max(1, ((killX[2] - rightSpan * 0.072) * rawRatioX).round()),
-      ),
-      (
-        side: 'R',
-        x0: math.max(0, ((killX[2] + rightSpan * 0.345) * rawRatioX).round()),
-        x1: math.max(1, ((killX[3] - rightSpan * 0.072) * rawRatioX).round()),
-      ),
-    ]);
-  }
-
-  final slotRows = <({
-    int cardIndex,
-    int ry0,
-    int ry1,
-    ({String side, int x0, int x1}) s0,
-    ({String side, int x0, int x1}) s1,
-  })>[];
-
-  for (int ci = 0; ci < cards.length; ci++) {
-    final card = cards[ci];
-    final sideStrips = strips.where((s) => s.side == card.side).toList();
-    if (sideStrips.length < 2) continue;
-    for (final ln in card.lines) {
-      slotRows.add((
-        cardIndex: ci,
-        ry0: math.max(0, (ln.y0 * rawRatioY).round() - padRawY),
-        ry1: math.min(rawH - 1, (ln.y1 * rawRatioY).round() + padRawY),
-        s0: sideStrips[0],
-        s1: sideStrips[1],
-      ));
-    }
-  }
-
-  var maxStripW = 16;
-  for (final s in strips) {
-    final sw = ((s.x1 - s.x0) * targetScale).round();
-    if (sw > maxStripW) maxStripW = sw;
-  }
-  final rowPitchY = (rawH * 0.058 * targetScale).round() + 28;
-  const gutterX = 64;
-  final canvasW = gutterX * 3 + maxStripW * 2;
-  final canvasH = math.max(64, 32 + slotRows.length * rowPitchY);
-
-  final dst = Uint8List(canvasW * canvasH * 4);
-  dst.fillRange(0, dst.length, 255);
-
-  double sampleRawLum(int px, int py) {
-    final idx = (py * rawW + px) * 4;
-    return 0.45 * rawRgba[idx] +
-        0.45 * rawRgba[idx + 1] +
-        0.10 * rawRgba[idx + 2];
-  }
-
-  int renderSlot(
-    int sx0,
-    int sx1,
-    int sy0,
-    int sy1,
-    int outX0,
-    int outY0,
-  ) {
-    final sw = sx1 - sx0;
-    final sh = sy1 - sy0 + 1;
-    if (sw < 4 || sh < 4) return 20;
-
-    final lums = <double>[];
-    for (int y = sy0; y <= sy1; y++) {
-      for (int x = sx0; x < sx1; x++) {
-        lums.add(sampleRawLum(x, y));
-      }
-    }
-    lums.sort();
-    final bg = lums[(lums.length * 0.35).floor()];
-    final peak = lums[(lums.length * 0.99).floor()];
-    final dw = math.max(4, (sw * targetScale).round());
-    final dh = math.max(4, (sh * targetScale).round());
-    if (peak - bg < 28.0) return dh;
-
-    final lo = bg + (peak - bg) * 0.25;
-    final hi = math.max(lo + 32.0, peak - (peak - bg) * 0.08);
-
-    for (int dy = 0; dy < dh; dy++) {
-      final fy = sy0 + dy / targetScale;
-      final y0 = math.min<int>(rawH - 1, fy.floor());
-      final y1 = math.min<int>(rawH - 1, y0 + 1);
-      final wy = fy - y0;
-
-      for (int dx = 0; dx < dw; dx++) {
-        final fx = sx0 + dx / targetScale;
-        final x0 = fx.floor().clamp(0, rawW - 1).toInt();
-        final x1 = math.min<int>(rawW - 1, x0 + 1);
-        final wx = fx - x0;
-
-        final v =
-            (sampleRawLum(x0, y0) * (1 - wx) + sampleRawLum(x1, y0) * wx) *
-                    (1 - wy) +
-                (sampleRawLum(x0, y1) * (1 - wx) + sampleRawLum(x1, y1) * wx) *
-                    wy;
-        final norm = ((v - lo) / (hi - lo)).clamp(0.0, 1.0);
-        final ink = (255.0 * (1.0 - norm)).round();
-        final outIdx = ((outY0 + dy) * canvasW + (outX0 + dx)) * 4;
-        dst[outIdx] = ink;
-        dst[outIdx + 1] = ink;
-        dst[outIdx + 2] = ink;
-        dst[outIdx + 3] = 255;
-      }
-    }
-    return dh;
-  }
-
-  final rowMeta = <({int cardIndex, int y0, int y1})>[];
-  for (int ri = 0; ri < slotRows.length; ri++) {
-    final r = slotRows[ri];
-    final outY0 = 20 + ri * rowPitchY;
-    final dh0 = renderSlot(r.s0.x0, r.s0.x1, r.ry0, r.ry1, gutterX, outY0);
-    final dh1 = renderSlot(
-      r.s1.x0,
-      r.s1.x1,
-      r.ry0,
-      r.ry1,
-      gutterX * 2 + maxStripW,
-      outY0,
-    );
-    rowMeta.add((
-      cardIndex: r.cardIndex,
-      y0: outY0 - 8,
-      y1: outY0 + math.max<int>(dh0, dh1) + 8,
-    ));
-  }
-
-  return _DetectedGridResult(
-    cards: cards,
-    compositeRgba: dst,
-    compositeWidth: canvasW,
-    compositeHeight: canvasH,
-    rowMeta: rowMeta,
-  );
-}
-
-Future<String> _writeCompositeRgbaToTempPng(
-  Uint8List rgba,
-  int width,
-  int height,
-  int index,
-) async {
-  final completer = Completer<ui.Image>();
-  ui.decodeImageFromPixels(
-    rgba,
-    width,
-    height,
-    ui.PixelFormat.rgba8888,
-    completer.complete,
-  );
-  final image = await completer.future;
-  try {
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    final pngBytes = byteData!.buffer.asUint8List();
-    final path =
-        '${Directory.systemTemp.path}/esp_calc_ocr_${DateTime.now().microsecondsSinceEpoch}_$index.png';
-    await File(path).writeAsBytes(pngBytes, flush: true);
-    return path;
-  } finally {
-    image.dispose();
-  }
-}
-
-// ============================================================================
-// Generic Bounding-Box Fallback Parser
-// ============================================================================
-
-class _NormWord {
-  final String text;
-  final double nx0;
-  final double ny0;
-  final double nx1;
-  final double ny1;
-  final double confidence;
-
-  const _NormWord({
-    required this.text,
-    required this.nx0,
-    required this.ny0,
-    required this.nx1,
-    required this.ny1,
-    required this.confidence,
-  });
-
-  double get nxCenter => (nx0 + nx1) / 2;
-  double get nyCenter => (ny0 + ny1) / 2;
-}
-
-class _NormLine {
-  double ny;
-  double minY;
-  double maxY;
-  final List<_NormWord> words;
-
-  _NormLine({
-    required this.ny,
-    required this.minY,
-    required this.maxY,
-    required this.words,
-  });
-}
-
-int? _parseRankBadge(String raw, int maxTeams) {
-  final cleaned = raw
-      .trim()
-      .replaceFirst(RegExp(r'^[#№]+'), '')
-      .replaceFirst(RegExp(r'(?:st|nd|rd|th)$', caseSensitive: false), '')
-      .replaceFirst(RegExp(r'[.:)\]]+$'), '');
-  if (!RegExp(r'^\d{1,2}$').hasMatch(cleaned)) return null;
-  final val = int.tryParse(cleaned);
-  if (val != null && val >= 1 && val <= maxTeams) return val;
-  return null;
-}
-
-int? _parseKillInt(String raw) {
-  final cleaned = raw
-      .trim()
-      .replaceFirst(
-        RegExp(r'(?:eliminations?|elims?|kills?)$', caseSensitive: false),
-        '',
-      )
-      .trim();
-  if (!RegExp(r'^\d{1,2}$').hasMatch(cleaned)) return null;
-  final val = int.tryParse(cleaned);
-  return (val != null && val >= 0 && val <= 48) ? val : null;
-}
-
-List<_NormLine> _clusterLines(List<_NormWord> words) {
-  if (words.isEmpty) return const [];
-  final sorted = [...words]..sort((a, b) => a.nyCenter.compareTo(b.nyCenter));
-  final lines = <_NormLine>[];
-
-  for (final w in sorted) {
-    final wh = math.max(0.012, w.ny1 - w.ny0);
-    final tol = math.max(0.016, wh * 0.68);
-    _NormLine? match;
-    for (final ln in lines) {
-      if ((ln.ny - w.nyCenter).abs() <= tol) {
-        match = ln;
-        break;
-      }
-    }
-    if (match != null) {
-      match.words.add(w);
-      match.minY = math.min(match.minY, w.ny0);
-      match.maxY = math.max(match.maxY, w.ny1);
-      match.ny = (match.minY + match.maxY) / 2;
-    } else {
-      lines.add(
-        _NormLine(ny: w.nyCenter, minY: w.ny0, maxY: w.ny1, words: [w]),
-      );
-    }
-  }
-
-  for (final ln in lines) {
-    ln.words.sort((a, b) => a.nx0.compareTo(b.nx0));
-  }
-  lines.sort((a, b) => a.ny.compareTo(b.ny));
-  return lines;
-}
-
-List<ScannedRankRow> _parseColumnLines(
-  List<_NormLine> lines,
-  int maxTeams,
-  int sourceImageIndex,
-) {
-  if (lines.isEmpty) return const [];
-
-  final anchors = <({int lineIdx, int rank})>[];
-  for (int i = 0; i < lines.length; i++) {
-    for (final w in lines[i].words.where((w) => w.nx0 <= 0.24)) {
-      final r = _parseRankBadge(w.text, maxTeams);
-      if (r != null) {
-        if (anchors.isEmpty || anchors.last.rank != r) {
-          anchors.add((lineIdx: i, rank: r));
-        }
-        break;
-      }
-    }
-  }
-  if (anchors.isEmpty) return const [];
-
-  final out = <ScannedRankRow>[];
-  for (int a = 0; a < anchors.length; a++) {
-    final startIdx = anchors[a].lineIdx;
-    final endIdx = a + 1 < anchors.length
-        ? anchors[a + 1].lineIdx - 1
-        : math.min(lines.length - 1, startIdx + 4);
-    final rank = anchors[a].rank;
-    final slice = lines.sublist(startIdx, endIdx + 1);
-
-    final playerWords = <String>[];
-    final perLineKills = <int>[];
-    var minY = 1.0;
-    var maxY = 0.0;
-
-    for (int sIdx = 0; sIdx < slice.length; sIdx++) {
-      final ln = slice[sIdx];
-      minY = math.min(minY, ln.minY);
-      maxY = math.max(maxY, ln.maxY);
-
-      int? lineKill;
-      for (int wIdx = ln.words.length - 1; wIdx >= 0; wIdx--) {
-        final w = ln.words[wIdx];
-        if (w.nxCenter >= 0.56) {
-          final k = _parseKillInt(w.text);
-          if (k != null) {
-            lineKill = k;
-            break;
-          }
-        }
-      }
-      if (lineKill != null && perLineKills.length < 4) {
-        perLineKills.add(lineKill);
-      }
-
-      for (final w in ln.words) {
-        if (sIdx == 0 &&
-            w.nx0 <= 0.18 &&
-            _parseRankBadge(w.text, maxTeams) == rank) {
-          continue;
-        }
-        if (w.nxCenter >= 0.68 && _parseKillInt(w.text) != null) continue;
-        if (RegExp(r'^eliminat', caseSensitive: false).hasMatch(w.text.trim())) {
-          continue;
-        }
-        playerWords.add(w.text);
-      }
-    }
-
-    final totalKills = perLineKills.fold<int>(0, (acc, v) => acc + v);
-    final rawText = playerWords.join(' ').trim();
-    out.add(
-      ScannedRankRow(
-        rank: rank,
-        kills: totalKills,
-        rawPlayerText: rawText,
-        normalizedTokens: extractIgnTokens(rawText),
-        confidence: 80,
-        isEdgeClipped: minY < 0.045 || maxY > 0.955,
-        sourceImageIndex: sourceImageIndex,
-      ),
-    );
-  }
-  return out;
-}
-
-List<ScannedRankRow> parseOcrElementsToRows(
-  List<OcrWordBox> boxes,
-  double imageWidth,
-  double imageHeight, {
-  int maxTeams = 12,
-  int sourceImageIndex = 0,
-}) {
-  final safeW = math.max(1.0, imageWidth);
-  final safeH = math.max(1.0, imageHeight);
-
-  final normWords = boxes
-      .where((b) => b.text.trim().isNotEmpty)
-      .map(
-        (b) => _NormWord(
-          text: b.text.trim(),
-          nx0: (b.x0 / safeW).clamp(0.0, 1.0),
-          ny0: (b.y0 / safeH).clamp(0.0, 1.0),
-          nx1: (b.x1 / safeW).clamp(0.0, 1.0),
-          ny1: (b.y1 / safeH).clamp(0.0, 1.0),
-          confidence: b.confidence,
-        ),
-      )
-      .where((w) => w.nyCenter >= 0.06 && w.nyCenter <= 0.96)
-      .toList();
-
-  if (normWords.isEmpty) return const [];
-
-  final leftHits = normWords
-      .where((w) => w.nx0 <= 0.22 && _parseRankBadge(w.text, maxTeams) != null)
-      .length;
-  final midHits = normWords
-      .where(
-        (w) =>
-            w.nx0 >= 0.45 &&
-            w.nx0 <= 0.65 &&
-            _parseRankBadge(w.text, maxTeams) != null,
-      )
-      .length;
-
-  if (leftHits >= 1 && midHits >= 2) {
-    final leftWords = normWords
-        .where((w) => w.nxCenter < 0.50)
-        .map(
-          (w) => _NormWord(
-            text: w.text,
-            nx0: (w.nx0 / 0.50).clamp(0.0, 1.0),
-            ny0: w.ny0,
-            nx1: (w.nx1 / 0.50).clamp(0.0, 1.0),
-            ny1: w.ny1,
-            confidence: w.confidence,
-          ),
-        )
-        .toList();
-    final rightWords = normWords
-        .where((w) => w.nxCenter >= 0.50)
-        .map(
-          (w) => _NormWord(
-            text: w.text,
-            nx0: ((w.nx0 - 0.50) / 0.50).clamp(0.0, 1.0),
-            ny0: w.ny0,
-            nx1: ((w.nx1 - 0.50) / 0.50).clamp(0.0, 1.0),
-            ny1: w.ny1,
-            confidence: w.confidence,
-          ),
-        )
-        .toList();
-    final merged = [
-      ..._parseColumnLines(_clusterLines(leftWords), maxTeams, sourceImageIndex),
-      ..._parseColumnLines(_clusterLines(rightWords), maxTeams, sourceImageIndex),
-    ]..sort((a, b) => a.rank.compareTo(b.rank));
-    return merged;
-  }
-
-  return _parseColumnLines(_clusterLines(normWords), maxTeams, sourceImageIndex);
-}
-
 List<ScannedRankRow> mergeAndDeduplicateScans(
   List<List<ScannedRankRow>> scansPerImage, {
   int maxTeams = 12,
@@ -1640,6 +815,8 @@ List<ScannedRankRow> mergeAndDeduplicateScans(
         confidence: math.max(existing.confidence, row.confidence),
         isEdgeClipped: existing.isEdgeClipped && row.isEdgeClipped,
         sourceImageIndex: primary.sourceImageIndex,
+        players: primary.players.isNotEmpty ? primary.players : secondary.players,
+        aiMatchedTeamId: primary.aiMatchedTeamId ?? secondary.aiMatchedTeamId,
       );
     }
   }
@@ -1662,6 +839,7 @@ List<MatchedScanRow> matchScannedRowsToTeams(
           kills: row.kills,
           rawPlayerText: row.rawPlayerText,
           normalizedTokens: row.normalizedTokens,
+          isEdgeClipped: row.isEdgeClipped,
         ),
     ];
   }
@@ -1670,12 +848,23 @@ List<MatchedScanRow> matchScannedRowsToTeams(
     R,
     (rIdx) => [
       for (final team in teams)
-        scoreSquadAgainstTokens(rows[rIdx].normalizedTokens, team),
+        () {
+          final det = scoreSquadAgainstTokens(rows[rIdx].normalizedTokens, team);
+          if (rows[rIdx].aiMatchedTeamId != null &&
+              rows[rIdx].aiMatchedTeamId == team.id) {
+            final boosted = math.max(det.score, 0.88);
+            return (
+              score: det.score >= 0.65
+                  ? math.min(1.0, det.score + 0.08)
+                  : boosted,
+              matchedKeyword: det.matchedKeyword ?? team.name,
+            );
+          }
+          return det;
+        }(),
     ],
   );
 
-  // Only allow edges that pass the confidence/margin gate, weighted by (1 + score^2)
-  // so Hungarian maximizes accepted match cardinality first and convex confidence second.
   final validWeight = List<Float64List>.generate(R, (rIdx) {
     final wRow = Float64List(T);
     for (int tIdx = 0; tIdx < T; tIdx++) {
@@ -1693,7 +882,6 @@ List<MatchedScanRow> matchScannedRowsToTeams(
     return wRow;
   });
 
-  // Global maximum-weight bipartite matching (O(N^3) Hungarian algorithm)
   final N = math.max(R, T);
   final u = Float64List(N + 1);
   final v = Float64List(N + 1);
@@ -1718,7 +906,7 @@ List<MatchedScanRow> matchScannedRowsToTeams(
         if (used[j] != 0) continue;
         final w =
             (i0 - 1 < R && j - 1 < T) ? validWeight[i0 - 1][j - 1] : 0.0;
-        final cost = 5.0 - w; // strictly non-negative [0.5 .. 5.0]
+        final cost = 5.0 - w;
         final cur = cost - u[i0] - v[j];
         if (cur < minv[j]) {
           minv[j] = cur;
@@ -1768,8 +956,6 @@ List<MatchedScanRow> matchScannedRowsToTeams(
     }
   }
 
-  // Stage 2: Iterative residual matching among remaining unmatched rows & teams
-  // (critical for single-screenshot #1-#11 mode where 12 teams are registered).
   for (int pass = 0; pass < 3; pass++) {
     final remRows = <int>[];
     for (int r = 0; r < R; r++) {
@@ -1853,6 +1039,7 @@ List<MatchedScanRow> matchScannedRowsToTeams(
         kills: rows[i].kills,
         rawPlayerText: rows[i].rawPlayerText,
         normalizedTokens: rows[i].normalizedTokens,
+        isEdgeClipped: rows[i].isEdgeClipped,
         matchedTeamId: assigned[i]?.teamId,
         matchConfidence: assigned[i]?.score ?? 0,
         matchedKeyword: assigned[i]?.keyword,
@@ -1872,183 +1059,402 @@ List<String> extractLearnableTokens(List<String> normalizedTokens) {
       .toList();
 }
 
-Future<
-    ({
-      Uint8List rgba,
-      int width,
-      int height,
-      Uint8List rawRgba,
-      int rawWidth,
-      int rawHeight,
-    })> _decodeNormalizedRgba(String path) async {
-  final bytes = await File(path).readAsBytes();
-  final probeCodec = await ui.instantiateImageCodec(bytes);
-  final probeFrame = await probeCodec.getNextFrame();
-  final origH = probeFrame.image.height;
+// ============================================================================
+// Gemini Multimodal Free Fire Post-Match Scoreboard Engine
+// ============================================================================
 
-  late final Uint8List rawRgba;
-  late final int rawW;
-  late final int rawH;
+const Map<String, dynamic> _kGeminiResponseSchema = {
+  'type': 'OBJECT',
+  'properties': {
+    'rows': {
+      'type': 'ARRAY',
+      'description':
+          'Deduplicated Free Fire post-match squad rank cards ordered by rank ascending (1 to 12).',
+      'items': {
+        'type': 'OBJECT',
+        'properties': {
+          'rank': {
+            'type': 'INTEGER',
+            'description':
+                'Placement rank badge number shown on the left of the squad card (1 to 24).',
+          },
+          'isBottomClipped': {
+            'type': 'BOOLEAN',
+            'description':
+                'True ONLY if this card (typically Rank 11 in an un-scrolled single screenshot) has its bottom player row cut off by the scroll edge and no other uploaded screenshot shows it in full.',
+          },
+          'matchedTeamId': {
+            'type': 'STRING',
+            'nullable': true,
+            'description':
+                'Exact teamId from REGISTERED_SQUADS if at least one player IGN on this rank card clearly belongs to that squad; otherwise null.',
+          },
+          'players': {
+            'type': 'ARRAY',
+            'description':
+                'All visible players inside this squad card (1 to 4 players in a 2x2 grid). Do not invent empty slots.',
+            'items': {
+              'type': 'OBJECT',
+              'properties': {
+                'ign': {
+                  'type': 'STRING',
+                  'description':
+                      'Player in-game nickname without the trailing word Eliminations.',
+                },
+                'kills': {
+                  'type': 'INTEGER',
+                  'description':
+                      'Exact yellow integer shown immediately before Eliminations / Eliminatio for this player (0 to 99, careful with 2-digit kills like 11 or 16).',
+                },
+              },
+              'required': ['ign', 'kills'],
+            },
+          },
+          'totalKills': {
+            'type': 'INTEGER',
+            'description': 'Sum of kills across all players in this squad card.',
+          },
+        },
+        'required': ['rank', 'isBottomClipped', 'players', 'totalKills'],
+      },
+    },
+  },
+  'required': ['rows'],
+};
 
-  if (origH <= 1440) {
-    rawW = probeFrame.image.width;
-    rawH = origH;
-    final bd =
-        await probeFrame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    probeFrame.image.dispose();
-    rawRgba = bd!.buffer.asUint8List();
-  } else {
-    probeFrame.image.dispose();
-    final hiCodec = await ui.instantiateImageCodec(bytes, targetHeight: 1440);
-    final hiFrame = await hiCodec.getNextFrame();
-    rawW = hiFrame.image.width;
-    rawH = hiFrame.image.height;
-    final bd =
-        await hiFrame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    hiFrame.image.dispose();
-    rawRgba = bd!.buffer.asUint8List();
-  }
+String _buildFreeFireGeminiPrompt(List<Team> teams, int imageCount) {
+  final rosterPayload = teams.map((t) {
+    final knownPlayers = <String>{
+      ...t.players.map((s) => s.trim()).where((s) => s.isNotEmpty),
+      if ((t.player1 ?? '').trim().isNotEmpty) t.player1!.trim(),
+      if ((t.player2 ?? '').trim().isNotEmpty) t.player2!.trim(),
+      ...t.learnedTokens.map((s) => s.trim()).where((s) => s.isNotEmpty),
+    }.toList();
+    return {
+      'teamId': t.id,
+      'squadName': t.name,
+      'shortCode': t.shortCode,
+      'knownPlayerIgns': knownPlayers,
+    };
+  }).toList();
 
-  if (rawH <= 640) {
-    return (
-      rgba: rawRgba,
-      width: rawW,
-      height: rawH,
-      rawRgba: rawRgba,
-      rawWidth: rawW,
-      rawHeight: rawH,
+  return [
+    'You are a precision Free Fire Esports tournament scoreboard vision parser analyzing $imageCount post-match result screenshot(s) from the SAME match.',
+    '',
+    'CRITICAL FREE FIRE SCOREBOARD LAYOUT & RULES:',
+    '1. TWO-COLUMN LAYOUT:',
+    '   - Left column contains Ranks 1 to 5: Rank 1 (gold banner), Rank 2 (silver banner), Rank 3 (bronze banner), Rank 4 & 5 (dark cards).',
+    '   - Right scrollable column contains Ranks 6 to 12 (dark cards).',
+    '2. PLAYER SLOTS & EXACT KILLS (100% PRECISION REQUIRED):',
+    '   - Each rank card contains 1 to 4 players arranged in a 2x2 grid (Top-Left, Top-Right, Bottom-Left, Bottom-Right). If a squad entered with 1-3 players, the remaining slot is blank — only include visible players.',
+    '   - Every player slot displays: [White Player IGN] [Yellow Number] "Eliminations".',
+    '   - In the right column (Ranks 6-12), the left player\'s "Eliminations" label often touches the right player\'s IGN (e.g. "4 EliminationsBRK ROKK7") and the far-right label is clipped to "Eliminatio". NEVER include "Eliminations" or "Eliminatio" inside `ign`, and ALWAYS read every player\'s yellow integer accurately.',
+    '   - Inspect 2-digit yellow kill counts carefully (e.g. 10, 11, 12, 16 Eliminations) — never drop a digit or confuse 11/16 with 1/6.',
+    '3. MULTI-SCREENSHOT OVERLAP & RANK 11 CLIPPING:',
+    '   - Multiple screenshots of the same match overlap (e.g. Screenshot 1 shows Ranks 1-11; Screenshot 2 scrolled down shows Ranks 1-5 on left and Ranks 7-12 on right).',
+    '   - Output ONE deduplicated entry per rank (1, 2, 3, ...). NEVER add or double-count kills from two screenshots showing the same rank.',
+    '   - IMPORTANT: In an un-scrolled top screenshot, Rank 11 at the bottom-right is sliced horizontally in half above the yellow BACK button (hiding its bottom 2 players). When a second scrolled screenshot shows Rank 11 higher up with all 4 player slots visible, ALWAYS extract Rank 11 from the complete unclipped screenshot and set `isBottomClipped: false`. Only set `isBottomClipped: true` if no uploaded screenshot shows Rank 11\'s bottom row.',
+    '4. STYLIZED FREE FIRE NICKNAME MATCHING TO REGISTERED_SQUADS:',
+    '   - Match each rank card to `matchedTeamId` from REGISTERED_SQUADS below if at least one player IGN matches a squad\'s `knownPlayerIgns` (or `squadName`/clan tag when unambiguous).',
+    '   - Free Fire players use stylized Unicode & leet variations of plain organizer names: circled letters (\u24B6\u24C0\u24B6\u24C8\u24BD = AKASH), dingbat digits (\u277B\u277E = 69), spaced letters ("S A F F A T" = SAFFAT), symbols/separators (\u30E1, \u30C4, \u4E42, \u2122, -, ., _), and leet (! = i, 4 = a, @ = a, 0 = o, ? = 7, 5 = s).',
+    '   - Each `teamId` may be assigned to AT MOST ONE rank. If unsure or no `knownPlayerIgns` match, set `matchedTeamId: null`.',
+    '',
+    'REGISTERED_SQUADS JSON:\n${jsonEncode(rosterPayload)}',
+  ].join('\n');
+}
+
+String _cleanExtractedIgn(String raw) {
+  return raw
+      .replaceAll(
+          RegExp(r'\b(?:eliminations?|eliminatio|elims?)\b',
+              caseSensitive: false),
+          ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+List<MatchedScanRow> parseGeminiStandingsJson(
+  String rawJsonText,
+  List<Team> teams, {
+  int maxTeams = 24,
+}) {
+  final cleanedText = rawJsonText
+      .trim()
+      .replaceFirst(RegExp(r'^```(?:json)?\s*', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'\s*```$'), '')
+      .trim();
+
+  dynamic decoded;
+  try {
+    decoded = jsonDecode(cleanedText);
+  } catch (_) {
+    throw const GeminiScannerException(
+      GeminiErrorCode.parseError,
+      'Gemini returned an unreadable response. Please tap Re-Scan.',
     );
   }
 
-  final scaledCodec = await ui.instantiateImageCodec(bytes, targetHeight: 540);
-  final scaledFrame = await scaledCodec.getNextFrame();
-  final w = scaledFrame.image.width;
-  final h = scaledFrame.image.height;
-  final bd =
-      await scaledFrame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
-  scaledFrame.image.dispose();
+  final rawRows = decoded is List
+      ? decoded
+      : (decoded is Map && decoded['rows'] is List
+          ? decoded['rows'] as List
+          : const <dynamic>[]);
 
-  return (
-    rgba: bd!.buffer.asUint8List(),
-    width: w,
-    height: h,
-    rawRgba: rawRgba,
-    rawWidth: rawW,
-    rawHeight: rawH,
-  );
-}
+  final validTeamIds = teams.map((t) => t.id).toSet();
+  final converted = <ScannedRankRow>[];
 
-Future<List<MatchedScanRow>> scanMatchScreenshotsOffline({
-  required List<String> filePaths,
-  required List<Team> teams,
-}) async {
-  if (filePaths.isEmpty) return const [];
-  final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  for (final item in rawRows) {
+    if (item is! Map) continue;
+    final rankNum = item['rank'];
+    final rank = rankNum is num ? rankNum.round() : int.tryParse('$rankNum');
+    if (rank == null || rank < 1 || rank > maxTeams) continue;
 
-  try {
-    final perImage = <List<ScannedRankRow>>[];
-    final maxTeams = math.max(12, teams.length);
-
-    for (int i = 0; i < filePaths.length; i++) {
-      final path = filePaths[i];
-      final decoded = await _decodeNormalizedRgba(path);
-      final grid = _detectFreeFireGridAndBuildComposite(
-        decoded.rgba,
-        decoded.width,
-        decoded.height,
-        decoded.rawRgba,
-        decoded.rawWidth,
-        decoded.rawHeight,
-      );
-
-      if (grid != null) {
-        String? tempPngPath;
-        try {
-          tempPngPath = await _writeCompositeRgbaToTempPng(
-            grid.compositeRgba,
-            grid.compositeWidth,
-            grid.compositeHeight,
-            i,
-          );
-          final recognized = await recognizer.processImage(
-            InputImage.fromFilePath(tempPngPath),
-          );
-
-          for (final block in recognized.blocks) {
-            for (final line in block.lines) {
-              for (final el in line.elements) {
-                final rect = el.boundingBox;
-                final wy = (rect.top + rect.bottom) / 2.0;
-                for (final rm in grid.rowMeta) {
-                  if (wy >= rm.y0 && wy <= rm.y1) {
-                    grid.cards[rm.cardIndex].words.add(el.text);
-                    break;
-                  }
-                }
-              }
-            }
-          }
-
-          perImage.add(
-            grid.cards.map((c) {
-              final rawText = c.words.join(' ').trim();
-              return ScannedRankRow(
-                rank: c.rank,
-                kills: c.kills,
-                rawPlayerText: rawText,
-                normalizedTokens: extractIgnTokens(rawText),
-                confidence: 90,
-                isEdgeClipped: c.clipped,
-                sourceImageIndex: i,
-              );
-            }).toList(),
-          );
-        } finally {
-          if (tempPngPath != null) {
-            try {
-              final f = File(tempPngPath);
-              if (await f.exists()) await f.delete();
-            } catch (_) {}
-          }
-        }
-      } else {
-        // Fallback for custom non-Free-Fire scoreboards
-        final recognized = await recognizer.processImage(
-          InputImage.fromFilePath(path),
-        );
-        final boxes = <OcrWordBox>[];
-        for (final block in recognized.blocks) {
-          for (final line in block.lines) {
-            for (final el in line.elements) {
-              final rect = el.boundingBox;
-              boxes.add(
-                OcrWordBox(
-                  text: el.text,
-                  x0: rect.left,
-                  y0: rect.top,
-                  x1: rect.right,
-                  y1: rect.bottom,
-                  confidence: (el.confidence ?? 0.8) * 100,
-                ),
-              );
-            }
-          }
-        }
-        perImage.add(
-          parseOcrElementsToRows(
-            boxes,
-            decoded.rawWidth.toDouble(),
-            decoded.rawHeight.toDouble(),
-            maxTeams: maxTeams,
-            sourceImageIndex: i,
-          ),
-        );
+    final rawPlayers = item['players'] is List
+        ? item['players'] as List
+        : const <dynamic>[];
+    final players = <ScannedPlayerSlot>[];
+    for (final p in rawPlayers) {
+      if (p is! Map) continue;
+      final ign = _cleanExtractedIgn('${p['ign'] ?? ''}');
+      final kRaw = p['kills'];
+      final kVal = kRaw is num
+          ? kRaw.round()
+          : (int.tryParse('$kRaw') ?? 0);
+      final kills = kVal.clamp(0, 99);
+      if (ign.isNotEmpty || kills > 0) {
+        players.add(ScannedPlayerSlot(ign: ign, kills: kills));
       }
     }
 
-    final merged = mergeAndDeduplicateScans(perImage, maxTeams: maxTeams);
-    return matchScannedRowsToTeams(merged, teams);
-  } finally {
-    await recognizer.close();
+    final fallbackRaw = item['totalKills'];
+    final fallbackVal = fallbackRaw is num
+        ? fallbackRaw.round()
+        : (int.tryParse('$fallbackRaw') ?? 0);
+    final kills = players.isNotEmpty
+        ? players.fold<int>(0, (sum, p) => sum + p.kills)
+        : fallbackVal.clamp(0, 200);
+
+    final rawPlayerText = players
+        .map((p) => '${p.ign} (${p.kills})'.trim())
+        .where((s) => s.isNotEmpty)
+        .join(' \u00B7 ');
+    final plainJoined = players.map((p) => p.ign).join(' ');
+    final aiTeamId = item['matchedTeamId'] is String &&
+            validTeamIds.contains(item['matchedTeamId'] as String)
+        ? item['matchedTeamId'] as String
+        : null;
+
+    converted.add(
+      ScannedRankRow(
+        rank: rank,
+        kills: kills,
+        rawPlayerText: rawPlayerText.isNotEmpty ? rawPlayerText : plainJoined,
+        normalizedTokens: extractIgnTokens(plainJoined),
+        confidence: 98,
+        isEdgeClipped: item['isBottomClipped'] == true,
+        sourceImageIndex: 0,
+        players: players,
+        aiMatchedTeamId: aiTeamId,
+      ),
+    );
   }
+
+  final deduplicated = mergeAndDeduplicateScans([converted], maxTeams: maxTeams);
+  return matchScannedRowsToTeams(deduplicated, teams);
+}
+
+String _inferMimeType(String path, Uint8List bytes) {
+  if (bytes.length >= 4 &&
+      bytes[0] == 0x89 &&
+      bytes[1] == 0x50 &&
+      bytes[2] == 0x4E &&
+      bytes[3] == 0x47) {
+    return 'image/png';
+  }
+  if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8) {
+    return 'image/jpeg';
+  }
+  if (bytes.length >= 12 &&
+      bytes[0] == 0x52 &&
+      bytes[1] == 0x49 &&
+      bytes[8] == 0x57 &&
+      bytes[9] == 0x45) {
+    return 'image/webp';
+  }
+  final lower = path.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+}
+
+Future<Map<String, dynamic>> _fileToInlineImagePart(String path) async {
+  final rawBytes = await File(path).readAsBytes();
+  final mime = _inferMimeType(path, rawBytes);
+  if (rawBytes.length <= 2500000) {
+    return {
+      'inlineData': {
+        'mimeType': mime,
+        'data': base64Encode(rawBytes),
+      },
+    };
+  }
+
+  // Downscale oversized > 2.5 MB screenshots cleanly while keeping crisp text
+  final codec = await ui.instantiateImageCodec(rawBytes, targetWidth: 1600);
+  final frame = await codec.getNextFrame();
+  final pngData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+  frame.image.dispose();
+  if (pngData == null) {
+    return {
+      'inlineData': {
+        'mimeType': mime,
+        'data': base64Encode(rawBytes),
+      },
+    };
+  }
+  return {
+    'inlineData': {
+      'mimeType': 'image/png',
+      'data': base64Encode(pngData.buffer.asUint8List()),
+    },
+  };
+}
+
+Future<List<MatchedScanRow>> scanMatchScreenshotsWithGemini({
+  required List<String> filePaths,
+  required List<Team> teams,
+  required String? userEmail,
+}) async {
+  if (filePaths.isEmpty) return const [];
+
+  final apiKey = await getStoredGeminiApiKey(userEmail);
+  if (apiKey.isEmpty) {
+    throw const GeminiScannerException(
+      GeminiErrorCode.missingApiKey,
+      'Add your personal Gemini API key in Home -> User Profile (top-right PFP) before using AI Auto Standings.',
+    );
+  }
+
+  final imageParts = <Map<String, dynamic>>[];
+  for (final p in filePaths.take(3)) {
+    imageParts.add(await _fileToInlineImagePart(p));
+  }
+
+  final preferredModel = await getStoredGeminiModel(userEmail);
+  final modelsToTry = <String>{
+    preferredModel,
+    ..._kPreferredFlashModels,
+  }.toList();
+  final maxTeams = math.max(12, teams.length);
+  final promptText = _buildFreeFireGeminiPrompt(teams, imageParts.length);
+
+  var sawRateLimit = false;
+  var lastErrorMsg = '';
+
+  for (final model in modelsToTry) {
+    late final ({int statusCode, String body}) response;
+    try {
+      response = await _geminiHttpRequest(
+        method: 'POST',
+        url:
+            '$_kGeminiApiBase/models/${Uri.encodeComponent(model)}:generateContent',
+        apiKey: apiKey,
+        jsonBody: jsonEncode({
+          'contents': [
+            {
+              'parts': [
+                ...imageParts,
+                {'text': promptText},
+              ],
+            },
+          ],
+          'generationConfig': {
+            'temperature': 0,
+            'responseMimeType': 'application/json',
+            'responseSchema': _kGeminiResponseSchema,
+          },
+        }),
+      );
+    } catch (_) {
+      throw const GeminiScannerException(
+        GeminiErrorCode.networkError,
+        'Network error while contacting Google Gemini AI. Check your internet connection and retry.',
+      );
+    }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = jsonDecode(response.body);
+      String rawText = '';
+      if (decoded is Map &&
+          decoded['candidates'] is List &&
+          (decoded['candidates'] as List).isNotEmpty) {
+        final first = (decoded['candidates'] as List).first;
+        if (first is Map &&
+            first['content'] is Map &&
+            first['content']['parts'] is List) {
+          rawText = (first['content']['parts'] as List)
+              .whereType<Map>()
+              .map((pt) => (pt['text'] as String?) ?? '')
+              .join();
+        }
+      }
+      if (rawText.trim().isEmpty) {
+        throw const GeminiScannerException(
+          GeminiErrorCode.parseError,
+          'Gemini returned an empty scoreboard response. Try clearer full-screen match screenshots.',
+        );
+      }
+      final matched = parseGeminiStandingsJson(
+        rawText,
+        teams,
+        maxTeams: maxTeams,
+      );
+      await setStoredGeminiApiKey(
+        userEmail: userEmail,
+        apiKey: apiKey,
+        verifiedModel: model,
+      );
+      return matched;
+    }
+
+    if (response.statusCode == 429) {
+      sawRateLimit = true;
+      continue;
+    }
+
+    String apiMessage = '';
+    try {
+      final errMap = jsonDecode(response.body);
+      if (errMap is Map &&
+          errMap['error'] is Map &&
+          errMap['error']['message'] is String) {
+        apiMessage = errMap['error']['message'] as String;
+      }
+    } catch (_) {}
+    lastErrorMsg = apiMessage;
+
+    if (response.statusCode == 401 ||
+        response.statusCode == 403 ||
+        (response.statusCode == 400 &&
+            RegExp(r'api.?key', caseSensitive: false).hasMatch(apiMessage))) {
+      throw const GeminiScannerException(
+        GeminiErrorCode.invalidApiKey,
+        'Your Gemini API key was rejected by Google AI Studio. Open Home -> User Profile (top-right PFP) to update your API key.',
+      );
+    }
+  }
+
+  if (sawRateLimit) {
+    throw const GeminiScannerException(
+      GeminiErrorCode.rateLimited,
+      'Gemini free-tier rate limit reached. Wait ~30 seconds and tap Re-Scan, or switch to another Google AI Studio API key.',
+    );
+  }
+
+  throw GeminiScannerException(
+    GeminiErrorCode.parseError,
+    lastErrorMsg.isNotEmpty
+        ? lastErrorMsg
+        : 'Gemini AI scan failed. Please try again.',
+  );
 }

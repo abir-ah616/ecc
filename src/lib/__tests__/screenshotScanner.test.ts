@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractIgnTokens,
+  maskGeminiApiKey,
   matchScannedRowsToTeams,
   mergeAndDeduplicateScans,
   normalizeFreeFireIgn,
   ocrFuzzySimilarity,
-  parseOcrElementsToRows,
-  readRgbaCellNumber,
+  parseGeminiStandingsJson,
+  sanitizeGeminiApiKey,
 } from '../screenshotScanner';
+import { buildAllowedUserRecord } from '../authValidation';
 import {
   buildSquadPlayerFields,
   incrementStageOrDayLabel,
@@ -35,66 +37,66 @@ describe('Free Fire Screenshot Scanner & Roster Helpers', () => {
     expect(normalizeFreeFireIgn('\u0F12\u0F3A\u20A6\u0407\u20A6\u2111\u20B3\u0F3B\u0F12')).toBe('ninja');
   });
 
-  it('deduplicates overlapping ranks (#2-#11) across two scrolled screenshots and matches players', () => {
+  it('parses Gemini Vision structured JSON, sums per-player kills deterministically, strips Eliminations bleed, and matches squads', () => {
     const teams: Team[] = [
       { id: 't1', name: 'BDR Esports', player1: 'oppy', player2: 'shakib' },
       { id: 't2', name: 'EVOS Divine', player1: 'abax', player2: 'geday' },
       { id: 't3', name: 'Team Liquid', player1: 'raven' },
     ];
 
-    // Screenshot 1 has Rank #1 (interior) and Rank #2 (bottom scroll-edge clipped, partial kills)
-    const shot1 = parseOcrElementsToRows(
-      [
-        { text: '1', x0: 40, y0: 150, x1: 70, y1: 185, confidence: 92 },
-        { text: '\u1D2E\u1D30\u30E1OPPY', x0: 150, y0: 150, x1: 380, y1: 185, confidence: 85 },
-        { text: '6', x0: 820, y0: 150, x1: 850, y1: 185, confidence: 94 },
-        { text: '5HAK1B', x0: 150, y0: 205, x1: 360, y1: 235, confidence: 82 },
-        { text: '5', x0: 820, y0: 205, x1: 850, y1: 235, confidence: 91 },
-
-        // Rank #2 clipped at bottom edge y ~ 955/1000
-        { text: '2', x0: 40, y0: 930, x1: 70, y1: 960, confidence: 70 },
-        { text: 'EVOS_ABAX', x0: 150, y0: 930, x1: 380, y1: 960, confidence: 72 },
-        { text: '3', x0: 820, y0: 930, x1: 850, y1: 960, confidence: 80 },
+    const geminiJson = JSON.stringify({
+      rows: [
+        {
+          rank: 1,
+          isBottomClipped: false,
+          matchedTeamId: 't1',
+          players: [
+            { ign: '\u1D2E\u1D30\u30E1OPPY', kills: 11 },
+            { ign: '5HAK1B Eliminations', kills: 5 },
+          ],
+          totalKills: 99, // Even if totalKills had an LLM addition typo, player kills (11 + 5 = 16) win!
+        },
+        {
+          rank: 2,
+          isBottomClipped: true,
+          matchedTeamId: null,
+          players: [{ ign: 'EVOS_ABAX', kills: 3 }],
+          totalKills: 3,
+        },
+        {
+          rank: 2,
+          isBottomClipped: false,
+          matchedTeamId: null,
+          players: [
+            { ign: 'EVOS_ABAX', kills: 3 },
+            { ign: 'GEDAY99 Eliminatio', kills: 4 },
+          ],
+          totalKills: 7,
+        },
+        {
+          rank: 3,
+          isBottomClipped: false,
+          matchedTeamId: null,
+          players: [{ ign: 'TL_R4VEN', kills: 2 }],
+          totalKills: 2,
+        },
       ],
-      1000,
-      1000,
-      12,
-      0
-    );
+    });
 
-    // Screenshot 2 scrolled down: Rank #2 is now interior with both players (3 + 4 = 7 kills), plus Rank #3
-    const shot2 = parseOcrElementsToRows(
-      [
-        { text: '2', x0: 40, y0: 220, x1: 70, y1: 255, confidence: 95 },
-        { text: 'EVOS_ABAX', x0: 150, y0: 220, x1: 380, y1: 255, confidence: 90 },
-        { text: '3', x0: 820, y0: 220, x1: 850, y1: 255, confidence: 95 },
-        { text: 'GEDAY99', x0: 150, y0: 270, x1: 360, y1: 300, confidence: 89 },
-        { text: '4', x0: 820, y0: 270, x1: 850, y1: 300, confidence: 94 },
-
-        { text: '3', x0: 40, y0: 450, x1: 70, y1: 485, confidence: 93 },
-        { text: 'TL_R4VEN', x0: 150, y0: 450, x1: 360, y1: 485, confidence: 88 },
-        { text: '2', x0: 820, y0: 450, x1: 850, y1: 485, confidence: 93 },
-      ],
-      1000,
-      1000,
-      12,
-      1
-    );
-
-    const merged = mergeAndDeduplicateScans([shot1, shot2], 12);
-    expect(merged).toHaveLength(3);
-    // Rank 1 summed 6 + 5 = 11 kills
-    expect(merged[0].rank).toBe(1);
-    expect(merged[0].kills).toBe(11);
-    // Rank 2 took interior Shot 2 (3 + 4 = 7 kills), NOT 3 + 7 = 10 double-counted!
-    expect(merged[1].rank).toBe(2);
-    expect(merged[1].kills).toBe(7);
-    expect(merged[2].rank).toBe(3);
-    expect(merged[2].kills).toBe(2);
-
-    const matched = matchScannedRowsToTeams(merged, teams);
+    const matched = parseGeminiStandingsJson(geminiJson, teams, 12);
+    expect(matched).toHaveLength(3);
+    expect(matched[0].rank).toBe(1);
+    expect(matched[0].kills).toBe(16);
     expect(matched[0].matchedTeamId).toBe('t1');
+
+    // Duplicate Rank #2 took the unclipped 2-player version (3 + 4 = 7 kills), not clipped (3) or summed (10)
+    expect(matched[1].rank).toBe(2);
+    expect(matched[1].kills).toBe(7);
+    expect(matched[1].isEdgeClipped).toBe(false);
     expect(matched[1].matchedTeamId).toBe('t2');
+
+    expect(matched[2].rank).toBe(3);
+    expect(matched[2].kills).toBe(2);
     expect(matched[2].matchedTeamId).toBe('t3');
   });
 
@@ -456,73 +458,77 @@ describe('Free Fire Screenshot Scanner & Roster Helpers', () => {
     }
   });
 
-  it('classifies single digits 0-9, 2-digit kills (16), and rank badges (12) with embedded Int8 CNN', () => {
-    const glyphs: Record<number, string[]> = {
-      0: ['.#####.', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '##...##', '.#####.'],
-      1: ['..###..', '.####..', '#####..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..'],
-      2: ['.#####.', '##...##', '.....##', '.....##', '....##.', '...##..', '..##...', '.##....', '##.....', '##.....', '#######', '#######'],
-      3: ['.#####.', '##...##', '.....##', '....##.', '..####.', '....##.', '.....##', '.....##', '.....##', '##...##', '.#####.', '..###..'],
-      4: ['....##.', '...###.', '..####.', '.##.##.', '##..##.', '##..##.', '#######', '#######', '....##.', '....##.', '....##.', '....##.'],
-      5: ['#######', '##.....', '##.....', '##.....', '######.', '.....##', '.....##', '.....##', '.....##', '##...##', '.#####.', '..###..'],
-      6: ['..####.', '.##....', '##.....', '##.....', '######.', '##...##', '##...##', '##...##', '##...##', '##...##', '.#####.', '..###..'],
-      7: ['#######', '#######', '.....##', '....##.', '....##.', '...##..', '...##..', '..##...', '..##...', '.##....', '.##....', '.##....'],
-      8: ['.#####.', '##...##', '##...##', '##...##', '.#####.', '.#####.', '##...##', '##...##', '##...##', '##...##', '.#####.', '..###..'],
-      9: ['.#####.', '##...##', '##...##', '##...##', '##...##', '.######', '.....##', '.....##', '....##.', '...##..', '..##...', '.##....'],
-    };
+  it('enforces admin-gated allowAiAuto records, masks Gemini API keys, and handles 2-digit kills & 3-player squads', () => {
+    expect(sanitizeGeminiApiKey('  "AIzaSyTestKey1234567890" \n')).toBe(
+      'AIzaSyTestKey1234567890'
+    );
+    expect(maskGeminiApiKey('AIzaSyTestKey1234567890')).toBe('AIzaSy...7890');
 
-    const drawCell = (
-      numStr: string,
-      bgRgb: [number, number, number],
-      fgRgb: [number, number, number]
-    ) => {
-      const W = 28;
-      const H = 22;
-      const rgba = new Uint8ClampedArray(W * H * 4);
-      for (let i = 0; i < W * H; i += 1) {
-        rgba[i * 4] = bgRgb[0];
-        rgba[i * 4 + 1] = bgRgb[1];
-        rgba[i * 4 + 2] = bgRgb[2];
-        rgba[i * 4 + 3] = 255;
-      }
-      let cursorX = 3;
-      for (const ch of numStr) {
-        const g = glyphs[Number(ch)];
-        for (let y = 0; y < 12; y += 1) {
-          for (let x = 0; x < g[y].length; x += 1) {
-            if (g[y][x] === '#') {
-              const idx = ((5 + y) * W + (cursorX + x)) * 4;
-              rgba[idx] = fgRgb[0];
-              rgba[idx + 1] = fgRgb[1];
-              rgba[idx + 2] = fgRgb[2];
-            }
-          }
-        }
-        cursorX += 9;
-      }
-      return { rgba, W, H };
-    };
+    const defaultUser = buildAllowedUserRecord({
+      email: 'org@gmail.com',
+      displayName: 'Org',
+      role: 'user',
+      currentUserEmail: 'johncenahzoppy@gmail.com',
+    });
+    expect(defaultUser.allowAiAuto).toBe(false);
 
-    for (let d = 0; d <= 9; d += 1) {
-      // Gold #1-#3 banner background + yellow kill digit
-      const gold = drawCell(String(d), [96, 72, 16], [248, 202, 24]);
-      expect(readRgbaCellNumber(gold.rgba, gold.W, gold.H, 0, 0, gold.W, gold.H, 'yellow')).toBe(d);
-    }
+    const grantedUser = buildAllowedUserRecord({
+      email: 'org@gmail.com',
+      displayName: 'Org',
+      role: 'user',
+      allowAiAuto: true,
+      currentUserEmail: 'johncenahzoppy@gmail.com',
+    });
+    expect(grantedUser.allowAiAuto).toBe(true);
 
-    // Narrow two-digit 11 kills + 16 kills on gold banner + white rank badge 12 on dark card
-    const twoDigit11 = drawCell('11', [92, 68, 14], [248, 202, 24]);
-    expect(
-      readRgbaCellNumber(twoDigit11.rgba, twoDigit11.W, twoDigit11.H, 0, 0, twoDigit11.W, twoDigit11.H, 'yellow')
-    ).toBe(11);
+    const adminUser = buildAllowedUserRecord({
+      email: 'mod@gmail.com',
+      displayName: 'Mod',
+      role: 'admin',
+      allowAiAuto: false,
+      currentUserEmail: 'johncenahzoppy@gmail.com',
+    });
+    expect(adminUser.allowAiAuto).toBe(true);
 
-    const twoDigit16 = drawCell('16', [92, 68, 14], [248, 202, 24]);
-    expect(
-      readRgbaCellNumber(twoDigit16.rgba, twoDigit16.W, twoDigit16.H, 0, 0, twoDigit16.W, twoDigit16.H, 'yellow')
-    ).toBe(16);
-
-    const rank12 = drawCell('12', [18, 19, 22], [242, 244, 248]);
-    expect(
-      readRgbaCellNumber(rank12.rgba, rank12.W, rank12.H, 0, 0, rank12.W, rank12.H, 'white')
-    ).toBe(12);
+    const teams: Team[] = [
+      { id: 'sq_tge', name: 'Team TGE', player1: 'Akash' },
+      { id: 'sq_ryx', name: 'RYX', player1: 'Emon' },
+    ];
+    const parsed = parseGeminiStandingsJson(
+      JSON.stringify({
+        rows: [
+          {
+            rank: 2,
+            isBottomClipped: false,
+            matchedTeamId: null,
+            players: [
+              { ign: 'TGE---Leader', kills: 3 },
+              { ign: '!! RUDHRA FF', kills: 4 },
+              { ign: 'M\u0280\u20DD\u24B6\u24C0\u24B6\u24C8\u24BD..', kills: 0 },
+              { ign: 'S\u1D0B\u0F12JIBON', kills: 16 },
+            ],
+            totalKills: 23,
+          },
+          {
+            rank: 4,
+            isBottomClipped: false,
+            matchedTeamId: null,
+            // 3-player squad (4th slot blank)
+            players: [
+              { ign: 'RYX.ROCKETx', kills: 2 },
+              { ign: 'XhuterOnTop?', kills: 0 },
+              { ign: 'Tc EMON', kills: 0 },
+            ],
+            totalKills: 2,
+          },
+        ],
+      }),
+      teams
+    );
+    expect(parsed[0].kills).toBe(23);
+    expect(parsed[0].matchedTeamId).toBe('sq_tge');
+    expect(parsed[1].kills).toBe(2);
+    expect(parsed[1].matchedTeamId).toBe('sq_ryx');
     expect(normalizeFreeFireIgn('EXV-NOBETA\u277B\u277E')).toBe('exv nobeta69');
   });
 });

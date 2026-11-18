@@ -39,6 +39,8 @@ class AuthStore extends ChangeNotifier {
   bool get isFirebaseReady => _isFirebaseReady;
   bool get isAllowed => _isAllowed;
   bool get isAdmin => _isAdmin;
+  bool get canUseAiAuto =>
+      _isAdmin || (_isAllowed && (_allowedRecord?.allowAiAuto ?? false));
   bool get integrityTrusted => _integrityTrusted;
   String? get integrityError => _integrityError;
   String? get authError => _authError;
@@ -440,6 +442,18 @@ class AuthStore extends ChangeNotifier {
       displayName: u.displayName,
       role: UserRole.user,
       status: UserStatus.active,
+      allowAiAuto: u.allowAiAuto,
+      notes: u.notes,
+    );
+  }
+
+  Future<void> toggleUserAiAuto(AllowedUserRecord u, bool enabled) async {
+    await updateAllowedUser(
+      email: u.email,
+      displayName: u.displayName,
+      role: u.role,
+      status: u.status,
+      allowAiAuto: enabled,
       notes: u.notes,
     );
   }
@@ -537,6 +551,7 @@ class AuthStore extends ChangeNotifier {
     required String displayName,
     required UserRole role,
     UserStatus status = UserStatus.active,
+    bool allowAiAuto = false,
     String notes = '',
   }) async {
     if (!_isAdmin) {
@@ -554,6 +569,7 @@ class AuthStore extends ChangeNotifier {
     final existing = await ref.get();
 
     final isSuper = cleanEmail == AppFirebaseConfig.superAdminEmail;
+    final effectiveRole = isSuper ? UserRole.admin : role;
     final data = existing.data();
 
     await ref.set({
@@ -561,10 +577,11 @@ class AuthStore extends ChangeNotifier {
       'displayName': displayName.trim().isNotEmpty
           ? displayName.trim()
           : cleanEmail.split('@').first.toUpperCase(),
-      'role': isSuper ? 'admin' : userRoleToString(role),
+      'role': userRoleToString(effectiveRole),
       'status': isSuper
           ? 'active'
           : (status == UserStatus.disabled ? 'disabled' : 'active'),
+      'allowAiAuto': effectiveRole == UserRole.admin ? true : allowAiAuto,
       'notes': notes.trim(),
       'addedBy': (data?['addedBy'] as String?) ?? currentEmail,
       'createdAt': (data?['createdAt'] as num?)?.toInt() ?? now,
@@ -577,6 +594,7 @@ class AuthStore extends ChangeNotifier {
     required String displayName,
     required UserRole role,
     required UserStatus status,
+    bool? allowAiAuto,
     String notes = '',
   }) async {
     if (!_isAdmin) {
@@ -584,20 +602,28 @@ class AuthStore extends ChangeNotifier {
     }
     final cleanEmail = normalizeEmail(email);
     final isSuper = cleanEmail == AppFirebaseConfig.superAdminEmail;
+    final effectiveRole = isSuper ? UserRole.admin : role;
     final ref =
         FirebaseFirestore.instance.collection('allowed_users').doc(cleanEmail);
 
-    await ref.update({
+    final payload = <String, dynamic>{
       'displayName': displayName.trim().isNotEmpty
           ? displayName.trim()
           : cleanEmail.split('@').first.toUpperCase(),
-      'role': isSuper ? 'admin' : userRoleToString(role),
+      'role': userRoleToString(effectiveRole),
       'status': isSuper
           ? 'active'
           : (status == UserStatus.disabled ? 'disabled' : 'active'),
       'notes': notes.trim(),
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
-    });
+    };
+    if (effectiveRole == UserRole.admin) {
+      payload['allowAiAuto'] = true;
+    } else if (allowAiAuto != null) {
+      payload['allowAiAuto'] = allowAiAuto;
+    }
+
+    await ref.update(payload);
   }
 
   Future<void> deleteAllowedUser(String email) async {

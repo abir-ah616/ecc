@@ -16,6 +16,7 @@ class _EditableScanRow {
   String teamId;
   final String rawPlayerText;
   final List<String> normalizedTokens;
+  final bool isEdgeClipped;
   final double matchConfidence;
 
   _EditableScanRow({
@@ -24,6 +25,7 @@ class _EditableScanRow {
     required this.teamId,
     this.rawPlayerText = '',
     this.normalizedTokens = const [],
+    this.isEdgeClipped = false,
     this.matchConfidence = 0,
   });
 }
@@ -32,6 +34,8 @@ class ScanScreenshotSheet extends StatefulWidget {
   final int matchNumber;
   final List<Team> teams;
   final bool autoResultEnabled;
+  final String? userEmail;
+  final VoidCallback? onOpenAccountSheet;
   final void Function(List<Team> updatedTeams, bool autoResultEnabled)
       onUpdatePlayers;
   final void Function(
@@ -44,6 +48,8 @@ class ScanScreenshotSheet extends StatefulWidget {
     required this.matchNumber,
     required this.teams,
     required this.autoResultEnabled,
+    this.userEmail,
+    this.onOpenAccountSheet,
     required this.onUpdatePlayers,
     required this.onApply,
   });
@@ -58,7 +64,10 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
   late bool _autoEnabled;
   List<XFile> _pickedImages = [];
   List<_EditableScanRow> _rows = [];
+  String _savedApiKey = '';
+  bool _loadingKey = true;
   bool _isScanning = false;
+  bool _needsApiKeyAction = false;
   String? _errorMsg;
 
   @override
@@ -66,6 +75,21 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
     super.initState();
     _teams = List<Team>.from(widget.teams);
     _autoEnabled = widget.autoResultEnabled;
+    _checkSavedKey();
+  }
+
+  Future<void> _checkSavedKey() async {
+    final key = await getStoredGeminiApiKey(widget.userEmail);
+    if (!mounted) return;
+    setState(() {
+      _savedApiKey = key;
+      _loadingKey = false;
+    });
+  }
+
+  void _goToProfileApiSetup() {
+    Navigator.of(context).pop();
+    widget.onOpenAccountSheet?.call();
   }
 
   Future<void> _openPlayersEditor() async {
@@ -90,8 +114,8 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                       kills: r.kills,
                       rawPlayerText: r.rawPlayerText,
                       normalizedTokens: r.normalizedTokens,
-                      confidence: 80,
-                      isEdgeClipped: false,
+                      confidence: 95,
+                      isEdgeClipped: r.isEdgeClipped,
                       sourceImageIndex: 0,
                     ),
                   )
@@ -112,8 +136,7 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                   usedTeams.add(r.teamId);
                 }
               }
-              final emptyRows =
-                  _rows.where((r) => r.teamId.isEmpty).toList();
+              final emptyRows = _rows.where((r) => r.teamId.isEmpty).toList();
               final leftTeams = updatedTeams
                   .where((t) => !usedTeams.contains(t.id))
                   .toList();
@@ -134,6 +157,7 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
       setState(() {
         _pickedImages = [..._pickedImages, ...selected].take(3).toList();
         _errorMsg = null;
+        _needsApiKeyAction = false;
       });
     } catch (_) {
       if (mounted) {
@@ -146,16 +170,27 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
 
   Future<void> _runScan() async {
     if (_pickedImages.isEmpty) return;
+    if (_savedApiKey.isEmpty) {
+      setState(() {
+        _needsApiKeyAction = true;
+        _errorMsg =
+            'Add your Gemini API key in Home -> User Profile (top-right PFP) before scanning.';
+      });
+      return;
+    }
+
     HapticFeedback.mediumImpact();
     setState(() {
       _isScanning = true;
       _errorMsg = null;
+      _needsApiKeyAction = false;
     });
 
     try {
-      final matched = await scanMatchScreenshotsOffline(
+      final matched = await scanMatchScreenshotsWithGemini(
         filePaths: _pickedImages.map((f) => f.path).toList(),
         teams: _teams,
+        userEmail: widget.userEmail,
       );
 
       final byRank = <int, MatchedScanRow>{
@@ -163,9 +198,7 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
       };
       final maxRank = math.max(
         _teams.length,
-        matched.isEmpty
-            ? 0
-            : matched.map((r) => r.rank).reduce(math.max),
+        matched.isEmpty ? 0 : matched.map((r) => r.rank).reduce(math.max),
       );
 
       final built = <_EditableScanRow>[];
@@ -178,12 +211,13 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
             teamId: hit?.matchedTeamId ?? '',
             rawPlayerText: hit?.rawPlayerText ?? '',
             normalizedTokens: hit?.normalizedTokens ?? const [],
+            isEdgeClipped: hit?.isEdgeClipped ?? false,
             matchConfidence: hit?.matchConfidence ?? 0,
           ),
         );
       }
 
-      // Auto-fill last remaining squad (e.g. #12 scrolled off-screen) if 11 of 12 matched cleanly
+      // Auto-fill last remaining squad if 11 of 12 matched cleanly
       final assignedIds = built
           .where((r) => r.teamId.isNotEmpty)
           .map((r) => r.teamId)
@@ -204,11 +238,19 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
               'No rank rows detected. Ensure the screenshot shows the post-match scoreboard (#1..#12).';
         }
       });
-    } catch (e) {
+    } on GeminiScannerException catch (e) {
       if (!mounted) return;
       setState(() {
         _isScanning = false;
-        _errorMsg = 'Offline OCR scan failed. Please try a clearer screenshot.';
+        _needsApiKeyAction = e.code == GeminiErrorCode.missingApiKey ||
+            e.code == GeminiErrorCode.invalidApiKey;
+        _errorMsg = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isScanning = false;
+        _errorMsg = 'Gemini AI scan failed. Please try again.';
       });
     }
   }
@@ -279,9 +321,9 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
           child: Column(
             children: [
               SheetHeader(
-                title: 'Scan Match #${widget.matchNumber} Result (Beta)',
+                title: 'AI Auto Standings · Match #${widget.matchNumber}',
                 subtitle:
-                    '100% Free On-Device OCR · Attach 1-3 screenshots (overlaps deduplicated)',
+                    'Gemini Vision Mode · Attach 1-2 screenshots (overlaps merge)',
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -323,6 +365,107 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                   controller: scrollCtrl,
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
+                    if (!_loadingKey && _savedApiKey.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Container(
+                          padding: const EdgeInsets.all(13),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentSurface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.accentBorder),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(
+                                    Icons.vpn_key_rounded,
+                                    size: 16,
+                                    color: AppColors.accentBright,
+                                  ),
+                                  SizedBox(width: 7),
+                                  Text(
+                                    'Gemini API Key Required',
+                                    style: TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 5),
+                              const Text(
+                                'Open the Home page User Profile (top-right PFP) and paste your free Google AI Studio API key to activate AI Auto Standings.',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11.5,
+                                  height: 1.35,
+                                ),
+                              ),
+                              if (widget.onOpenAccountSheet != null) ...[
+                                const SizedBox(height: 10),
+                                PrimaryPillButton(
+                                  label: 'Open Home Profile API Setup',
+                                  icon: Icons.vpn_key_rounded,
+                                  onPressed: _goToProfileApiSetup,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (!_loadingKey && _savedApiKey.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.emeraldSurface,
+                            borderRadius: BorderRadius.circular(12),
+                            border:
+                                Border.all(color: const Color(0x5510B981)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.verified_rounded,
+                                size: 15,
+                                color: AppColors.emerald,
+                              ),
+                              const SizedBox(width: 7),
+                              Expanded(
+                                child: Text(
+                                  'Gemini API active (${maskGeminiApiKey(_savedApiKey)})',
+                                  style: const TextStyle(
+                                    color: AppColors.emerald,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              if (widget.onOpenAccountSheet != null)
+                                GestureDetector(
+                                  onTap: _goToProfileApiSetup,
+                                  child: const Text(
+                                    'Manage Key',
+                                    style: TextStyle(
+                                      color: AppColors.accentBright,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+
                     if (!_autoEnabled || configuredSquads == 0)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -339,7 +482,7 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                                 child: Text(
                                   !_autoEnabled
                                       ? 'Auto-Match is currently off. Turn it on and add squad member IGNs anytime.'
-                                      : 'Add 1 or more team member IGNs per squad so OCR matches squads automatically.',
+                                      : 'Add 1 or more team member IGNs per squad so Gemini matches squads automatically.',
                                   style: const TextStyle(
                                     color: AppColors.accentBright,
                                     fontSize: 11.5,
@@ -392,10 +535,12 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: PrimaryPillButton(
-                              label: _rows.isEmpty ? 'Run OCR Scan' : 'Re-Scan',
+                              label: _rows.isEmpty ? 'AI Scan' : 'Re-Scan',
                               icon: Icons.document_scanner_rounded,
                               isLoading: _isScanning,
-                              onPressed: _isScanning ? null : _runScan,
+                              onPressed: _isScanning || _savedApiKey.isEmpty
+                                  ? null
+                                  : _runScan,
                             ),
                           ),
                         ],
@@ -409,7 +554,8 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: _pickedImages.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 10),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 10),
                           itemBuilder: (_, idx) {
                             final f = _pickedImages[idx];
                             return Stack(
@@ -429,7 +575,8 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                                       File(f.path),
                                       fit: BoxFit.cover,
                                       cacheWidth: 240,
-                                      errorBuilder: (_, __, ___) => const Center(
+                                      errorBuilder: (_, __, ___) =>
+                                          const Center(
                                         child: Icon(
                                           Icons.image_outlined,
                                           color: AppColors.textMuted,
@@ -478,13 +625,27 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: const Color(0x55EF4444)),
                         ),
-                        child: Text(
-                          _errorMsg!,
-                          style: const TextStyle(
-                            color: AppColors.crimson,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _errorMsg!,
+                              style: const TextStyle(
+                                color: AppColors.crimson,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (_needsApiKeyAction &&
+                                widget.onOpenAccountSheet != null) ...[
+                              const SizedBox(height: 8),
+                              PrimaryPillButton(
+                                label: 'Open Profile API Setup',
+                                icon: Icons.vpn_key_rounded,
+                                onPressed: _goToProfileApiSetup,
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ],
@@ -687,12 +848,23 @@ class _ScanScreenshotSheetState extends State<ScanScreenshotSheet> {
                                 if (row.rawPlayerText.isNotEmpty) ...[
                                   const SizedBox(height: 5),
                                   Text(
-                                    'OCR: ${row.rawPlayerText}',
+                                    'Players: ${row.rawPlayerText}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       color: AppColors.textMuted,
                                       fontSize: 10.5,
+                                    ),
+                                  ),
+                                ],
+                                if (row.isEdgeClipped) ...[
+                                  const SizedBox(height: 3),
+                                  const Text(
+                                    'Bottom row clipped in screenshot — verify kills or add scrolled screenshot #2',
+                                    style: TextStyle(
+                                      color: AppColors.accentBright,
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],

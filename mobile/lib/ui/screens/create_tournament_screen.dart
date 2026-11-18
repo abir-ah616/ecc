@@ -131,6 +131,7 @@ const List<int> _kSquadCountPresets = [4, 6, 8, 12, 16, 18, 20];
 
 class CreateTournamentScreen extends StatefulWidget {
   final TournamentStore store;
+  final bool canUseAiAuto;
   final TournamentRecord? editingTournament;
   final TournamentLayoutPreset? initialPreset;
   final VoidCallback onSaved;
@@ -139,6 +140,7 @@ class CreateTournamentScreen extends StatefulWidget {
   const CreateTournamentScreen({
     super.key,
     required this.store,
+    this.canUseAiAuto = false,
     this.editingTournament,
     this.initialPreset,
     required this.onSaved,
@@ -1368,103 +1370,105 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                   ),
                 ],
               ),
-              const Divider(height: 18),
-              Row(
-                children: [
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                'Auto Result from Screenshot',
-                                style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w800,
+              if (widget.canUseAiAuto) ...[
+                const Divider(height: 18),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'AI Auto Result from Screenshot',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
-                            ),
-                            SizedBox(width: 6),
-                            StatusPill(
-                              label: 'BETA',
-                              backgroundColor: AppColors.accentSurface,
-                              borderColor: AppColors.accentBorder,
-                              textColor: AppColors.accentBright,
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          '100% Free Offline OCR · Can also be turned on later, and squad member IGNs can be added or edited anytime.',
-                          style: TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 11,
-                            height: 1.3,
+                              SizedBox(width: 6),
+                              StatusPill(
+                                label: 'GEMINI AI',
+                                backgroundColor: AppColors.accentSurface,
+                                borderColor: AppColors.accentBorder,
+                                textColor: AppColors.accentBright,
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          SizedBox(height: 2),
+                          Text(
+                            'Powered by your Gemini API key (configured in Home Profile). Add 1-5 squad member IGNs anytime.',
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 11,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Switch.adaptive(
-                    value: _autoResultFromScreenshot,
-                    activeThumbColor: AppColors.accent,
-                    onChanged: (v) {
+                    const SizedBox(width: 8),
+                    Switch.adaptive(
+                      value: _autoResultFromScreenshot,
+                      activeThumbColor: AppColors.accent,
+                      onChanged: (v) {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          _autoResultFromScreenshot = v;
+                          if (!v) _fillPlayersLater = false;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                if (_autoResultFromScreenshot && !_isEditing) ...[
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () {
                       HapticFeedback.selectionClick();
-                      setState(() {
-                        _autoResultFromScreenshot = v;
-                        if (!v) _fillPlayersLater = false;
-                      });
+                      setState(() => _fillPlayersLater = !_fillPlayersLater);
                     },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.inputFill,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.borderSubtle),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _fillPlayersLater
+                                ? Icons.check_box_rounded
+                                : Icons.check_box_outline_blank_rounded,
+                            size: 18,
+                            color: _fillPlayersLater
+                                ? AppColors.accentBright
+                                : AppColors.textMuted,
+                          ),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Add or edit team member names later',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              if (_autoResultFromScreenshot && !_isEditing) ...[
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _fillPlayersLater = !_fillPlayersLater);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 9,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.inputFill,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.borderSubtle),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _fillPlayersLater
-                              ? Icons.check_box_rounded
-                              : Icons.check_box_outline_blank_rounded,
-                          size: 18,
-                          color: _fillPlayersLater
-                              ? AppColors.accentBright
-                              : AppColors.textMuted,
-                        ),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            'Add or edit team member names later',
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ],
           ),
@@ -1658,7 +1662,9 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                         ),
                     ],
                   ),
-                  if (_autoResultFromScreenshot && !_fillPlayersLater) ...[
+                  if (widget.canUseAiAuto &&
+                      _autoResultFromScreenshot &&
+                      !_fillPlayersLater) ...[
                     const SizedBox(height: 6),
                     Padding(
                       padding: const EdgeInsets.only(right: 4, bottom: 2),

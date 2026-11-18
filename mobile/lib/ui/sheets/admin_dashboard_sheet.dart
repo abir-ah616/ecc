@@ -23,6 +23,7 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
   final _notesCtrl = TextEditingController();
   final _searchCtrl = TextEditingController();
   UserRole _newRole = UserRole.user;
+  bool _newAllowAiAuto = false;
   _MobileUserFilter _filter = _MobileUserFilter.all;
   bool _saving = false;
   bool _togglingTemp = false;
@@ -48,12 +49,14 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
         email: _emailCtrl.text,
         displayName: _nameCtrl.text,
         role: _newRole,
+        allowAiAuto: _newRole == UserRole.admin ? true : _newAllowAiAuto,
         notes: _notesCtrl.text,
       );
       HapticFeedback.mediumImpact();
       _emailCtrl.clear();
       _nameCtrl.clear();
       _notesCtrl.clear();
+      _newAllowAiAuto = false;
       if (mounted) {
         setState(() => _feedback = 'User added to Firestore allowlist.');
       }
@@ -332,6 +335,69 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
                                   labelText: 'Notes (Optional)',
                                 ),
                               ),
+                              if (_newRole != UserRole.admin) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _newAllowAiAuto
+                                        ? AppColors.accentSurface
+                                        : AppColors.inputFill,
+                                    borderRadius: BorderRadius.circular(13),
+                                    border: Border.all(
+                                      color: _newAllowAiAuto
+                                          ? AppColors.accentBorder
+                                          : AppColors.borderSubtle,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.document_scanner_rounded,
+                                        size: 18,
+                                        color: _newAllowAiAuto
+                                            ? AppColors.accentBright
+                                            : AppColors.textMuted,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      const Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Allow AI Auto Standings',
+                                              style: TextStyle(
+                                                color: AppColors.textPrimary,
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            Text(
+                                              'Lets user add Gemini API key in profile & scan results',
+                                              style: TextStyle(
+                                                color: AppColors.textMuted,
+                                                fontSize: 10.5,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Switch.adaptive(
+                                        value: _newAllowAiAuto,
+                                        activeThumbColor: AppColors.accent,
+                                        onChanged: (v) {
+                                          HapticFeedback.selectionClick();
+                                          setState(() => _newAllowAiAuto = v);
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                               if (_feedback != null) ...[
                                 const SizedBox(height: 10),
                                 Text(
@@ -516,6 +582,18 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
                                                         : AppColors
                                                             .accentBright,
                                               ),
+                                              if (u.role == UserRole.admin ||
+                                                  u.allowAiAuto) ...[
+                                                const SizedBox(width: 6),
+                                                const StatusPill(
+                                                  label: 'AI AUTO',
+                                                  backgroundColor:
+                                                      AppColors.emeraldSurface,
+                                                  borderColor:
+                                                      Color(0x5510B981),
+                                                  textColor: AppColors.emerald,
+                                                ),
+                                              ],
                                             ],
                                           ),
                                           const SizedBox(height: 2),
@@ -526,6 +604,68 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
                                               fontSize: 12,
                                             ),
                                           ),
+                                          if (u.role != UserRole.admin) ...[
+                                            const SizedBox(height: 6),
+                                            GestureDetector(
+                                              onTap: () async {
+                                                await widget.authStore
+                                                    .toggleUserAiAuto(
+                                                        u, !u.allowAiAuto);
+                                                HapticFeedback.selectionClick();
+                                              },
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 9,
+                                                  vertical: 4,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: u.allowAiAuto
+                                                      ? AppColors.accentSurface
+                                                      : AppColors.inputFill,
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color: u.allowAiAuto
+                                                        ? AppColors.accentBorder
+                                                        : AppColors
+                                                            .borderSubtle,
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      Icons
+                                                          .document_scanner_rounded,
+                                                      size: 13,
+                                                      color: u.allowAiAuto
+                                                          ? AppColors
+                                                              .accentBright
+                                                          : AppColors.textMuted,
+                                                    ),
+                                                    const SizedBox(width: 5),
+                                                    Text(
+                                                      u.allowAiAuto
+                                                          ? 'AI Auto: Allowed (Tap to revoke)'
+                                                          : 'Allow AI Auto',
+                                                      style: TextStyle(
+                                                        color: u.allowAiAuto
+                                                            ? AppColors
+                                                                .accentBright
+                                                            : AppColors
+                                                                .textSecondary,
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ),
@@ -571,6 +711,10 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
                                           if (v == 'makeUser') {
                                             await widget.authStore
                                                 .promoteTempToUser(u);
+                                          } else if (v == 'toggleAiAuto') {
+                                            await widget.authStore
+                                                .toggleUserAiAuto(
+                                                    u, !u.allowAiAuto);
                                           } else if (v == 'toggleStatus') {
                                             await widget.authStore
                                                 .updateAllowedUser(
@@ -580,6 +724,7 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
                                               status: isDisabled
                                                   ? UserStatus.active
                                                   : UserStatus.disabled,
+                                              allowAiAuto: u.allowAiAuto,
                                               notes: u.notes,
                                             );
                                           } else if (v == 'toggleRole') {
@@ -591,6 +736,10 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
                                                   ? UserRole.user
                                                   : UserRole.admin,
                                               status: u.status,
+                                              allowAiAuto:
+                                                  u.role == UserRole.admin
+                                                      ? u.allowAiAuto
+                                                      : true,
                                               notes: u.notes,
                                             );
                                           } else if (v == 'delete') {
@@ -603,6 +752,15 @@ class _AdminDashboardSheetState extends State<AdminDashboardSheet> {
                                             const PopupMenuItem(
                                               value: 'makeUser',
                                               child: Text('Make User (Permanent)'),
+                                            ),
+                                          if (u.role != UserRole.admin)
+                                            PopupMenuItem(
+                                              value: 'toggleAiAuto',
+                                              child: Text(
+                                                u.allowAiAuto
+                                                    ? 'Revoke AI Auto Standings'
+                                                    : 'Allow AI Auto Standings',
+                                              ),
                                             ),
                                           PopupMenuItem(
                                             value: 'toggleStatus',

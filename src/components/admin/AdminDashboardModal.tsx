@@ -10,6 +10,7 @@ import {
   UserX,
   Search,
   AlertCircle,
+  ScanLine,
 } from 'lucide-react';
 import { useAuthStore, normalizeEmail } from '../../store/authStore';
 import { isValidEmailAddress } from '../../lib/authValidation';
@@ -25,6 +26,7 @@ export const AdminDashboardModal: React.FC = () => {
     allowTempLogin,
     setAllowTempLogin,
     promoteTempToUser,
+    toggleUserAiAuto,
     addAllowedUser,
     updateAllowedUser,
     deleteAllowedUser,
@@ -35,6 +37,7 @@ export const AdminDashboardModal: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('user');
+  const [newAllowAiAuto, setNewAllowAiAuto] = useState(false);
   const [newNotes, setNewNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,6 +47,7 @@ export const AdminDashboardModal: React.FC = () => {
   const [editNameInput, setEditNameInput] = useState('');
   const [editRoleInput, setEditRoleInput] = useState<UserRole>('user');
   const [editStatusInput, setEditStatusInput] = useState<UserStatus>('active');
+  const [editAllowAiAutoInput, setEditAllowAiAutoInput] = useState(false);
   const [editNotesInput, setEditNotesInput] = useState('');
 
   // Filter & Feedback State
@@ -125,11 +129,13 @@ export const AdminDashboardModal: React.FC = () => {
         displayName: newName.trim() || clean.split('@')[0].toUpperCase(),
         role: newRole,
         status: 'active',
+        allowAiAuto: newRole === 'admin' ? true : newAllowAiAuto,
         notes: newNotes.trim(),
       });
       setNewEmail('');
       setNewName('');
       setNewRole('user');
+      setNewAllowAiAuto(false);
       setNewNotes('');
       showToast('success', `Authorized ${clean} (${newRole.toUpperCase()}).`);
     } catch (err: unknown) {
@@ -146,6 +152,7 @@ export const AdminDashboardModal: React.FC = () => {
     setEditNameInput(u.displayName);
     setEditRoleInput(u.role);
     setEditStatusInput(u.status);
+    setEditAllowAiAutoInput(u.role === 'admin' || Boolean(u.allowAiAuto));
     setEditNotesInput(u.notes || '');
   };
 
@@ -158,6 +165,8 @@ export const AdminDashboardModal: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+      const nextAiAuto =
+        editRoleInput === 'admin' ? true : editAllowAiAutoInput;
       if (
         targetEmail !== originalEmail &&
         originalEmail !== SUPER_ADMIN_EMAIL
@@ -168,6 +177,7 @@ export const AdminDashboardModal: React.FC = () => {
           displayName: editNameInput,
           role: editRoleInput,
           status: editStatusInput,
+          allowAiAuto: nextAiAuto,
           notes: editNotesInput,
         });
         await deleteAllowedUser(originalEmail);
@@ -176,6 +186,7 @@ export const AdminDashboardModal: React.FC = () => {
           displayName: editNameInput,
           role: editRoleInput,
           status: editStatusInput,
+          allowAiAuto: nextAiAuto,
           notes: editNotesInput,
         });
       }
@@ -186,6 +197,24 @@ export const AdminDashboardModal: React.FC = () => {
       showToast('error', msg);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleAiAuto = async (u: AllowedUserRecord) => {
+    if (u.role === 'admin') return;
+    const nextValue = !u.allowAiAuto;
+    try {
+      await toggleUserAiAuto(u, nextValue);
+      showToast(
+        'success',
+        nextValue
+          ? `Allowed AI Auto Standings for ${u.email}.`
+          : `Revoked AI Auto Standings for ${u.email}.`
+      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to update AI Auto access.';
+      showToast('error', msg);
     }
   };
 
@@ -463,6 +492,28 @@ export const AdminDashboardModal: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {newRole !== 'admin' && (
+              <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 cursor-pointer">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <ScanLine className="h-4 w-4 shrink-0 text-amber-400" />
+                  <div className="min-w-0">
+                    <span className="text-xs font-semibold text-white">
+                      Allow AI Auto Standings (Gemini Mode)
+                    </span>
+                    <p className="text-[11px] text-slate-400">
+                      Unlocks Gemini API Key setup in Home Profile &amp; AI screenshot scanning for this user
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={newAllowAiAuto}
+                  onChange={(e) => setNewAllowAiAuto(e.target.checked)}
+                  className="h-4 w-4 rounded accent-amber-500 cursor-pointer"
+                />
+              </label>
+            )}
           </form>
 
           {/* Search & Filter Bar (Compact search bar to fit TEMP beside DISABLED) */}
@@ -579,6 +630,25 @@ export const AdminDashboardModal: React.FC = () => {
                           </div>
                         </div>
 
+                        {editRoleInput !== 'admin' && (
+                          <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 cursor-pointer">
+                            <div className="flex items-center gap-2">
+                              <ScanLine className="h-4 w-4 text-amber-400" />
+                              <span className="text-xs font-semibold text-white">
+                                Allow AI Auto Standings (Gemini Mode)
+                              </span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={editAllowAiAutoInput}
+                              onChange={(e) =>
+                                setEditAllowAiAutoInput(e.target.checked)
+                              }
+                              className="h-4 w-4 rounded accent-amber-500 cursor-pointer"
+                            />
+                          </label>
+                        )}
+
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
@@ -650,6 +720,13 @@ export const AdminDashboardModal: React.FC = () => {
                             >
                               {u.status === 'active' ? 'ACTIVE' : 'DISABLED'}
                             </span>
+
+                            {(u.role === 'admin' || u.allowAiAuto) && (
+                              <span className="inline-flex items-center gap-1 rounded border border-amber-500/35 bg-amber-500/12 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                                <ScanLine className="h-3 w-3" />
+                                <span>AI AUTO</span>
+                              </span>
+                            )}
                           </div>
 
                           <div className="mt-0.5 truncate font-mono text-xs text-slate-400">
@@ -660,6 +737,27 @@ export const AdminDashboardModal: React.FC = () => {
 
                       {/* Row Actions */}
                       <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {u.role !== 'admin' && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAiAuto(u)}
+                            className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                              u.allowAiAuto
+                                ? 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                                : 'border-white/[0.12] bg-white/[0.04] text-slate-300 hover:bg-white/[0.09] hover:text-white'
+                            }`}
+                            title={
+                              u.allowAiAuto
+                                ? 'Revoke AI Auto Standings feature for this user'
+                                : 'Allow AI Auto Standings feature for this user'
+                            }
+                          >
+                            <ScanLine className="h-3.5 w-3.5" />
+                            <span>
+                              {u.allowAiAuto ? 'AI Auto: ON' : 'Allow AI'}
+                            </span>
+                          </button>
+                        )}
                         {u.role === 'temp' && (
                           <button
                             type="button"

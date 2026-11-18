@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../core/roster_helpers.dart';
 import '../../core/scoring.dart';
 import '../../models/tournament_models.dart';
+import '../../state/auth_state.dart';
 import '../../state/tournament_state.dart';
 import '../../theme/app_theme.dart';
 import '../sheets/scan_screenshot_sheet.dart';
@@ -11,18 +12,22 @@ import '../widgets/app_components.dart';
 
 class MatchScreen extends StatefulWidget {
   final TournamentStore store;
+  final AuthStore? authStore;
   final VoidCallback onOpenPoster;
   final VoidCallback onCreateTournament;
   final VoidCallback onEditEvent;
+  final VoidCallback? onOpenAccountSheet;
   final String? preferredMatchId;
   final int matchFocusNonce;
 
   const MatchScreen({
     super.key,
     required this.store,
+    this.authStore,
     required this.onOpenPoster,
     required this.onCreateTournament,
     required this.onEditEvent,
+    this.onOpenAccountSheet,
     this.preferredMatchId,
     this.matchFocusNonce = 0,
   });
@@ -67,6 +72,8 @@ class _MatchScreenState extends State<MatchScreen> {
     TournamentRecord tournament,
     MatchRecord match,
   ) async {
+    final userEmail = widget.authStore?.firebaseUser?.email ??
+        widget.authStore?.allowedRecord?.email;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -75,6 +82,8 @@ class _MatchScreenState extends State<MatchScreen> {
         matchNumber: match.matchNumber,
         teams: tournament.teams,
         autoResultEnabled: tournament.settings.autoResultFromScreenshot,
+        userEmail: userEmail,
+        onOpenAccountSheet: widget.onOpenAccountSheet,
         onUpdatePlayers: (updatedTeams, autoResultEnabled) {
           widget.store.updateTournament(
             tournament.id,
@@ -692,52 +701,15 @@ class _MatchScreenState extends State<MatchScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          _openPlayersSheet(tournament);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 7,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: AppColors.borderStrong),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.group_outlined,
-                                size: 14,
-                                color: AppColors.accentBright,
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Players',
-                                style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (!activeMatch.isCompleted) ...[
-                        const SizedBox(width: 6),
+                  if (widget.authStore?.canUseAiAuto ?? false) ...[
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         GestureDetector(
                           onTap: () {
                             HapticFeedback.selectionClick();
-                            _openScannerSheet(tournament, activeMatch);
+                            _openPlayersSheet(tournament);
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -745,34 +717,74 @@ class _MatchScreenState extends State<MatchScreen> {
                               vertical: 7,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.accentSurface,
+                              color: AppColors.surface,
                               borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: AppColors.accentBorder),
+                              border: Border.all(color: AppColors.borderStrong),
                             ),
                             child: const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.document_scanner_rounded,
+                                  Icons.group_outlined,
                                   size: 14,
                                   color: AppColors.accentBright,
                                 ),
                                 SizedBox(width: 4),
                                 Text(
-                                  'Scan (Beta)',
+                                  'Players',
                                   style: TextStyle(
-                                    color: AppColors.accentBright,
+                                    color: AppColors.textPrimary,
                                     fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ),
+                        if (!activeMatch.isCompleted) ...[
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              _openScannerSheet(tournament, activeMatch);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.accentSurface,
+                                borderRadius: BorderRadius.circular(999),
+                                border:
+                                    Border.all(color: AppColors.accentBorder),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.document_scanner_rounded,
+                                    size: 14,
+                                    color: AppColors.accentBright,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'AI Scan',
+                                    style: TextStyle(
+                                      color: AppColors.accentBright,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ],
               ),
             ),
