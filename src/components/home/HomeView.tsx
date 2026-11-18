@@ -229,18 +229,11 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenJson }) => {
 
         {/* Hero Editorial Copy */}
         <div className="relative z-10 mt-6 sm:mt-8 max-w-md space-y-2">
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-2.5">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">
               Tournament Graphics
             </span>
             <span className="h-[2px] w-6 rounded-full bg-amber-500" />
-            <button
-              type="button"
-              onClick={() => setCurrentTab('whats-new')}
-              className="inline-flex items-center gap-1 rounded-full border border-amber-400/35 bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300 hover:bg-amber-500/25 transition-colors cursor-pointer"
-            >
-              <span>v1.1 What&apos;s New</span>
-            </button>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-[1.12]">

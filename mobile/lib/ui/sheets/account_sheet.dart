@@ -9,7 +9,6 @@ class AccountSheet extends StatelessWidget {
   final VoidCallback onOpenJson;
   final VoidCallback onOpenRules;
   final VoidCallback onOpenAdmin;
-  final VoidCallback onOpenWhatsNew;
 
   const AccountSheet({
     super.key,
@@ -17,7 +16,6 @@ class AccountSheet extends StatelessWidget {
     required this.onOpenJson,
     required this.onOpenRules,
     required this.onOpenAdmin,
-    required this.onOpenWhatsNew,
   });
 
   @override
@@ -106,17 +104,6 @@ class AccountSheet extends StatelessWidget {
                   onTap: () {
                     Navigator.pop(context);
                     onOpenRules();
-                  },
-                ),
-                const SizedBox(height: 8),
-                _SheetTile(
-                  icon: Icons.new_releases_rounded,
-                  title: "What's New in v1.1",
-                  subtitle: 'AI Auto Detect, Rapid Point Enter & More Themes',
-                  accent: true,
-                  onTap: () {
-                    Navigator.pop(context);
-                    onOpenWhatsNew();
                   },
                 ),
                 const SizedBox(height: 8),

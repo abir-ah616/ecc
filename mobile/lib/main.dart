@@ -12,7 +12,6 @@ import 'ui/screens/login_screen.dart';
 import 'ui/screens/match_screen.dart';
 import 'ui/screens/poster_screen.dart';
 import 'ui/screens/rules_screen.dart';
-import 'ui/screens/whats_new_screen.dart';
 import 'ui/sheets/account_sheet.dart';
 import 'ui/sheets/admin_dashboard_sheet.dart';
 import 'ui/sheets/json_backup_sheet.dart';
@@ -31,7 +30,7 @@ void main() async {
   runApp(const EspCalcApp());
 }
 
-enum _AppTab { home, matches, poster, history, whatsNew }
+enum _AppTab { home, matches, poster, history }
 
 class EspCalcApp extends StatefulWidget {
   final AuthStore? authStoreOverride;
@@ -408,7 +407,6 @@ class _OrganizerShellState extends State<OrganizerShell> {
         onOpenJson: _openJsonSheet,
         onOpenRules: _openRules,
         onOpenAdmin: _openAdminSheet,
-        onOpenWhatsNew: () => _selectTab(_AppTab.whatsNew),
       ),
     );
   }
@@ -453,7 +451,6 @@ class _OrganizerShellState extends State<OrganizerShell> {
                           onEditEvent: (rec) => _openCreate(editing: rec),
                           onOpenJson: _openJsonSheet,
                           onOpenAccountSheet: _openAccountSheet,
-                          onOpenWhatsNew: () => _selectTab(_AppTab.whatsNew),
                         ),
                       ),
                       RepaintBoundary(
@@ -485,16 +482,6 @@ class _OrganizerShellState extends State<OrganizerShell> {
                               setState(() => _tab = _AppTab.poster),
                           onCreateTournament: () => _openCreate(),
                           onEditTournament: (rec) => _openCreate(editing: rec),
-                        ),
-                      ),
-                      RepaintBoundary(
-                        child: WhatsNewScreen(
-                          store: widget.tournamentStore,
-                          onOpenMatches: () =>
-                              setState(() => _tab = _AppTab.matches),
-                          onOpenPoster: () =>
-                              setState(() => _tab = _AppTab.poster),
-                          onCreateTournament: () => _openCreate(),
                         ),
                       ),
                     ],
@@ -580,12 +567,6 @@ class _OrganizerShellState extends State<OrganizerShell> {
                               label: 'History',
                               selected: _tab == _AppTab.history,
                               onTap: () => _selectTab(_AppTab.history),
-                            ),
-                            _DockItem(
-                              icon: Icons.new_releases_rounded,
-                              label: "What's New",
-                              selected: _tab == _AppTab.whatsNew,
-                              onTap: () => _selectTab(_AppTab.whatsNew),
                             ),
                           ],
                         ),

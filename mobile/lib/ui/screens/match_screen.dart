@@ -38,7 +38,6 @@ class MatchScreen extends StatefulWidget {
 class _MatchScreenState extends State<MatchScreen> {
   int _tab = 0; // 0 = Scorecard, 1 = Standings
   int _standingsScope = 0; // 0 = Overall, 1 = This Match
-  bool _rapidMode = false; // false = Team List, true = Rapid Mode
   String? _selectedMatchId;
   final Map<String, List<List<({String teamId, int? placement, int kills})>>>
       _undoStacksByMatch = {};
@@ -770,27 +769,9 @@ class _MatchScreenState extends State<MatchScreen> {
     );
     final allPlacedCleanly = rankedCount == teamCount && duplicateRanks.isEmpty;
 
-    final usedRanks = <int>{
-      for (final tm in tournament.teams)
-        if (activeMatch.entries[tm.id]?.placement != null)
-          activeMatch.entries[tm.id]!.placement!,
-    };
-    final openRanks = [
-      for (int r = 1; r <= teamCount; r++)
-        if (!usedRanks.contains(r)) r,
-    ];
-    final unplacedTeams = [
-      for (final tm in tournament.teams)
-        if (activeMatch.entries[tm.id]?.placement == null) tm,
-    ];
-    final canAutoFillLast = !activeMatch.isCompleted &&
-        duplicateRanks.isEmpty &&
-        openRanks.length == 1 &&
-        unplacedTeams.length == 1;
-
     return Column(
       children: [
-        // Compact Mode Switcher + Live Match Meter Bar
+        // Clean Scorecard Action Bar (Team List + Launch Full-Screen Rapid Overlay)
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
           child: Column(
@@ -798,110 +779,60 @@ class _MatchScreenState extends State<MatchScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.borderSubtle),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _ModeChip(
-                                label: 'Team List',
-                                icon: Icons.format_list_numbered_rounded,
-                                selected: !_rapidMode,
-                                onTap: () => setState(() => _rapidMode = false),
-                              ),
-                              const SizedBox(width: 2),
-                              _ModeChip(
-                                label: 'Rapid Mode',
-                                icon: Icons.bolt_rounded,
-                                selected: _rapidMode,
-                                onTap: () => setState(() => _rapidMode = true),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (canAutoFillLast)
-                    GestureDetector(
-                      onTap: () {
-                        HapticFeedback.mediumImpact();
-                        final lastTeam = unplacedTeams.first;
-                        _pushUndoSnapshot(
-                          tournament,
-                          activeMatch,
-                          highlightedTeamId: lastTeam.id,
-                        );
-                        widget.store.updateMatchEntry(
-                          matchId: activeMatch.id,
-                          teamId: lastTeam.id,
-                          placement: openRanks.first,
-                          kills: activeMatch.entries[lastTeam.id]?.kills ?? 0,
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.emeraldSurface,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: const Color(0x5522C55E)),
-                        ),
-                        child: Text(
-                          'Auto #${openRanks.first}',
-                          style: const TextStyle(
-                            color: AppColors.emerald,
-                            fontSize: 11,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$rankedCount/$teamCount Ranked · ${totalKills}K',
+                          style: kTabularNumbers.copyWith(
+                            color: duplicateRanks.isNotEmpty
+                                ? AppColors.crimson
+                                : allPlacedCleanly
+                                    ? AppColors.emerald
+                                    : AppColors.textPrimary,
+                            fontSize: 13.5,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                  if (!activeMatch.isCompleted)
+                    FilledButton.icon(
+                      onPressed: () async {
+                        HapticFeedback.mediumImpact();
+                        final finishedToStandings =
+                            await showFullScreenRapidOverlay(
+                          context: context,
+                          tournament: tournament,
+                          activeMatch: activeMatch,
+                          store: widget.store,
+                        );
+                        if (finishedToStandings && mounted) {
+                          setState(() => _tab = 1);
+                        }
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: const Color(0xFF090B0F),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 9,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    )
-                  else
-                    Text(
-                      '$rankedCount/$teamCount · ${totalKills}k',
-                      style: kTabularNumbers.copyWith(
-                        color: duplicateRanks.isNotEmpty
-                            ? AppColors.crimson
-                            : allPlacedCleanly
-                                ? AppColors.emerald
-                                : AppColors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                      icon: const Icon(Icons.bolt_rounded, size: 17),
+                      label: const Text(
+                        'Rapid',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                 ],
-              ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: teamCount == 0
-                      ? 0
-                      : (rankedCount / teamCount).clamp(0.0, 1.0),
-                  minHeight: 2.5,
-                  backgroundColor: AppColors.inputFill,
-                  valueColor: AlwaysStoppedAnimation(
-                    duplicateRanks.isNotEmpty
-                        ? AppColors.crimson
-                        : allPlacedCleanly
-                            ? AppColors.emerald
-                            : AppColors.accent,
-                  ),
-                ),
               ),
               if (duplicateRanks.isNotEmpty) ...[
                 const SizedBox(height: 6),
@@ -1026,12 +957,10 @@ class _MatchScreenState extends State<MatchScreen> {
         ),
 
         Expanded(
-          child: _rapidMode
-              ? _buildRapidRankScorecard(tournament, activeMatch)
-              : Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                  child: Container(
-                    decoration: BoxDecoration(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Container(
+              decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: AppColors.borderSubtle),
@@ -1322,23 +1251,6 @@ class _MatchScreenState extends State<MatchScreen> {
     );
   }
 
-  Widget _buildRapidRankScorecard(
-    TournamentRecord tournament,
-    MatchRecord activeMatch,
-  ) {
-    return RapidEntryWizard(
-      tournament: tournament,
-      activeMatch: activeMatch,
-      store: widget.store,
-      onFinishedToTeamList: () {
-        if (!mounted) return;
-        setState(() {
-          _rapidMode = false;
-        });
-      },
-    );
-  }
-
   Widget _buildStandings(
     TournamentRecord tournament,
     MatchRecord activeMatch,
@@ -1361,18 +1273,32 @@ class _MatchScreenState extends State<MatchScreen> {
       children: [
         Row(
           children: [
-            _ScopePill(
-              label: 'Overall',
-              selected: _standingsScope == 0,
-              onTap: () => setState(() => _standingsScope = 0),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ScopePill(
+                        label: 'Overall',
+                        selected: _standingsScope == 0,
+                        onTap: () => setState(() => _standingsScope = 0),
+                      ),
+                      const SizedBox(width: 8),
+                      _ScopePill(
+                        label: 'Match ${activeMatch.matchNumber}',
+                        selected: _standingsScope == 1,
+                        onTap: () => setState(() => _standingsScope = 1),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(width: 8),
-            _ScopePill(
-              label: 'Match ${activeMatch.matchNumber}',
-              selected: _standingsScope == 1,
-              onTap: () => setState(() => _standingsScope = 1),
-            ),
-            const Spacer(),
+            const SizedBox(width: 6),
             IconButton(
               tooltip: 'Copy Standings Text',
               visualDensity: VisualDensity.compact,
@@ -1394,6 +1320,10 @@ class _MatchScreenState extends State<MatchScreen> {
             ),
             TextButton.icon(
               onPressed: widget.onOpenPoster,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              ),
               icon: const Icon(
                 Icons.share_rounded,
                 size: 16,
@@ -1839,61 +1769,6 @@ class _KillStepButton extends StatelessWidget {
           icon,
           size: 16,
           color: enabled ? AppColors.textPrimary : AppColors.textMuted,
-        ),
-      ),
-    );
-  }
-}
-
-class _ModeChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ModeChip({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        if (!selected) {
-          HapticFeedback.selectionClick();
-          onTap();
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 13.5,
-              color: selected ? AppColors.inkOnAccent : AppColors.textSecondary,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color:
-                    selected ? AppColors.inkOnAccent : AppColors.textSecondary,
-                fontSize: 11.5,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-              ),
-            ),
-          ],
         ),
       ),
     );

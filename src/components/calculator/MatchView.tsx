@@ -14,7 +14,6 @@ import {
   Check,
   Image as ImageIcon,
   Zap,
-  ListOrdered,
   Users,
   ChevronDown,
 } from 'lucide-react';
@@ -73,7 +72,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
   const { canUseAiAuto } = useAuthStore();
 
   const [mobilePane, setMobilePane] = useState<'entry' | 'standings'>('entry');
-  const [entryMode, setEntryMode] = useState<'slot' | 'rapid'>('slot');
+  const [isRapidOpen, setIsRapidOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isPlayersOpen, setIsPlayersOpen] = useState(false);
@@ -81,9 +80,6 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
   const [rapidByMatchId, setRapidByMatchId] = useState<
     Record<string, RapidWizardState>
   >({});
-  const [rapidDoneBannerMatchId, setRapidDoneBannerMatchId] = useState<
-    string | null
-  >(null);
   const [rankPopover, setRankPopover] = useState<ActiveRankPopover | null>(null);
 
   const rankInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -111,7 +107,6 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     nextOpenRank,
     teamByRank,
     unplacedTeams,
-    placedRows,
     hasErrors,
   } = summary;
 
@@ -178,7 +173,6 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
       kills: match.entries[t.id]?.kills ?? 0,
     }));
     applyBatchMatchResults(match.id, cleared);
-    setRapidDoneBannerMatchId(null);
     setCurrentRapidWizard({
       rank: 1,
       phase: 'pick_team',
@@ -189,27 +183,8 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     });
   };
 
-  const handleAutoFillLast = () => {
-    if (
-      match.isCompleted ||
-      unassignedRanks.length !== 1 ||
-      unplacedTeams.length !== 1
-    ) {
-      return;
-    }
-    const lastTeam = unplacedTeams[0];
-    const lastRank = unassignedRanks[0];
-    updateMatchEntry(
-      match.id,
-      lastTeam.id,
-      lastRank,
-      match.entries[lastTeam.id]?.kills ?? 0
-    );
-  };
-
   const handleRapidPickTeam = (teamId: string) => {
     if (match.isCompleted) return;
-    setRapidDoneBannerMatchId(null);
     const { nextState, updates } = pickRapidTeam({
       state: activeRapidWizard,
       teams,
@@ -239,8 +214,8 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     }
     setCurrentRapidWizard(nextState);
     if (completedAll) {
-      setRapidDoneBannerMatchId(match.id);
-      setEntryMode('slot');
+      setIsRapidOpen(false);
+      setMobilePane('standings');
     }
   };
 
@@ -385,8 +360,6 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     ? `Save & Start Match ${matches.length + 1}`
     : 'Save & Open Poster';
 
-  const progressPct =
-    teams.length > 0 ? Math.min(100, (rankedCount / teams.length) * 100) : 0;
   const allPlacedCleanly = rankedCount === teams.length && !hasErrors;
 
   return (
@@ -588,142 +561,53 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
               </div>
             </div>
 
-            {/* Entry Method Segmented Bar + Match Completion Meter */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
-              <div className="glass-input grid grid-cols-2 sm:inline-flex rounded-xl p-1 gap-1">
-                <button
-                  type="button"
-                  onClick={() => setEntryMode('slot')}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                    entryMode === 'slot'
-                      ? 'bg-amber-500 text-zinc-950 font-bold'
-                      : 'text-slate-300 hover:text-white'
+            {/* Clean Rapid Launch + Match Summary Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+              <div className="flex items-center gap-2 text-xs tabular-nums">
+                <span
+                  className={`font-bold ${
+                    allPlacedCleanly ? 'text-emerald-400' : 'text-white'
                   }`}
                 >
-                  <ListOrdered className="h-3.5 w-3.5" />
-                  <span>Team List</span>
-                </button>
+                  {rankedCount}/{teams.length} Ranked
+                </span>
+                <span className="text-slate-600">·</span>
+                <span className="text-slate-300 font-medium">
+                  {totalKills} Kills
+                </span>
+              </div>
+
+              {!match.isCompleted && (
                 <button
                   type="button"
-                  onClick={() => setEntryMode('rapid')}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                    entryMode === 'rapid'
-                      ? 'bg-amber-500 text-zinc-950 font-bold'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
+                  onClick={() => setIsRapidOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs font-extrabold text-zinc-950 transition-colors cursor-pointer"
                 >
                   <Zap className="h-3.5 w-3.5" />
-                  <span>Rapid Mode</span>
+                  <span>Rapid</span>
                 </button>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5">
-                <div className="flex items-center gap-2 text-xs tabular-nums">
-                  <span
-                    className={`font-bold ${
-                      allPlacedCleanly ? 'text-emerald-400' : 'text-white'
-                    }`}
-                  >
-                    {rankedCount}/{teams.length} Ranked
-                  </span>
-                  <span className="text-slate-600">/</span>
-                  <span className="text-slate-300 font-medium">
-                    {totalKills} Kills
-                  </span>
-                </div>
-
-                {!match.isCompleted &&
-                  unassignedRanks.length === 1 &&
-                  unplacedTeams.length === 1 &&
-                  !hasErrors && (
-                    <button
-                      type="button"
-                      onClick={handleAutoFillLast}
-                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/12 px-2.5 py-1 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                    >
-                      <Check className="h-3 w-3" />
-                      <span>Auto-fill #{unassignedRanks[0]}</span>
-                    </button>
-                  )}
-              </div>
-            </div>
-
-            {/* Clean Progress Track */}
-            <div className="space-y-2">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#0B0E14]">
-                <div
-                  className={`h-full transition-all duration-200 ${
-                    allPlacedCleanly ? 'bg-emerald-500' : 'bg-amber-500'
-                  }`}
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-
-              {hasErrors ? (
-                <div className="flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-                  <span>
-                    Duplicate rank:{' '}
-                    <strong className="text-white">
-                      {Array.from(duplicatePlacements)
-                        .sort((a, b) => a - b)
-                        .map((p) => `#${p}`)
-                        .join(', ')}
-                    </strong>
-                    . Use the rank picker dropdown on either row to swap cleanly.
-                  </span>
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400">
-                  {entryMode === 'rapid'
-                    ? 'Step through Booyah down to last rank, then review or edit anytime in Team List.'
-                    : 'Enter finish rank (or click the selector beside Rank to pick/swap) and team kills.'}
-                </p>
               )}
             </div>
+
+            {hasErrors && (
+              <div className="flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                <span>
+                  Duplicate rank:{' '}
+                  <strong className="text-white">
+                    {Array.from(duplicatePlacements)
+                      .sort((a, b) => a - b)
+                      .map((p) => `#${p}`)
+                      .join(', ')}
+                  </strong>
+                  . Tap the rank dropdown on either row to swap cleanly.
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* MODE 2: GUIDED RAPID WIZARD */}
-          {entryMode === 'rapid' ? (
-            <RapidWizard
-              teams={teams}
-              match={match}
-              pointSystem={settings.pointSystem}
-              wizard={activeRapidWizard}
-              unplacedTeams={unplacedTeams}
-              placedRows={placedRows}
-              rankedCount={rankedCount}
-              completionNotice={rapidDoneBannerMatchId === match.id}
-              onPickTeam={handleRapidPickTeam}
-              onDraftKillsChange={handleRapidDraftKillsChange}
-              onConfirmKills={handleRapidConfirmKills}
-              onReverse={handleRapidReverse}
-              onRedo={handleRapidRedo}
-              onResetRanks={handleResetRanks}
-              onSwitchToList={() => setEntryMode('slot')}
-            />
-          ) : (
-            /* MODE 1: UNIFIED TEAM LIST SCORECARD */
-            <div className="space-y-3">
-              {rapidDoneBannerMatchId === match.id && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-                    <span>
-                      Rapid entry complete — edit any placement or kill count below.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setRapidDoneBannerMatchId(null)}
-                    className="text-[11px] font-bold text-slate-300 hover:text-white cursor-pointer"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              <div className="glass-panel overflow-hidden rounded-2xl">
+          {/* EDITABLE TEAM LIST */}
+          <div className="glass-panel overflow-hidden rounded-2xl">
               <div className="hidden sm:flex items-center justify-between border-b border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 <span>Slot &amp; Squad</span>
                 <div className="flex items-center gap-3">
@@ -956,9 +840,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   );
                 })}
               </div>
-              </div>
             </div>
-          )}
 
           {/* Primary Save, Quick Poster & Next Bar */}
           <div className="glass-panel flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl p-4">
@@ -1058,6 +940,21 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
               autoResultFromScreenshot: autoResultEnabled,
             });
           }}
+        />
+      )}
+      {isRapidOpen && (
+        <RapidWizard
+          teams={teams}
+          match={match}
+          wizard={activeRapidWizard}
+          unplacedTeams={unplacedTeams}
+          onPickTeam={handleRapidPickTeam}
+          onDraftKillsChange={handleRapidDraftKillsChange}
+          onConfirmKills={handleRapidConfirmKills}
+          onReverse={handleRapidReverse}
+          onRedo={handleRapidRedo}
+          onResetRanks={handleResetRanks}
+          onClose={() => setIsRapidOpen(false)}
         />
       )}
     </div>

@@ -19,7 +19,6 @@ class HomeScreen extends StatelessWidget {
   final void Function(TournamentRecord record) onEditEvent;
   final VoidCallback onOpenJson;
   final VoidCallback onOpenAccountSheet;
-  final VoidCallback onOpenWhatsNew;
 
   const HomeScreen({
     super.key,
@@ -35,7 +34,6 @@ class HomeScreen extends StatelessWidget {
     required this.onEditEvent,
     required this.onOpenJson,
     required this.onOpenAccountSheet,
-    required this.onOpenWhatsNew,
   });
 
   @override
@@ -112,8 +110,6 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              _WhatsNewBannerPill(onTap: onOpenWhatsNew),
               const SizedBox(height: 12),
               _LiveTournamentBannerCard(
                 active: active,
@@ -1361,73 +1357,6 @@ class _EmptyRecentCard extends StatelessWidget {
               const Icon(
                 Icons.chevron_right_rounded,
                 color: AppColors.textMuted,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _WhatsNewBannerPill extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _WhatsNewBannerPill({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.accentBorder),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.accentSurface,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'v1.1',
-                  style: TextStyle(
-                    color: AppColors.accentBright,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  "What's New: AI Auto Detect, New Rapid Mode & More Themes",
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: AppColors.accentBright,
               ),
             ],
           ),

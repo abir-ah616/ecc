@@ -19,7 +19,6 @@ import {
   Flag,
   Smartphone,
   Cloud,
-  Megaphone,
 } from 'lucide-react';
 import { useTournamentStore } from '../../store/tournamentStore';
 import { useAuthStore } from '../../store/authStore';
@@ -91,7 +90,6 @@ export const AppShell: React.FC<AppShellProps> = ({
     currentTab !== 'create' &&
     currentTab !== 'history' &&
     currentTab !== 'download' &&
-    currentTab !== 'whats-new' &&
     currentTab !== 'rules' &&
     currentTab !== 'setup';
 
@@ -135,12 +133,6 @@ export const AppShell: React.FC<AppShellProps> = ({
       return {
         title: 'App Download',
         subtitle: 'Official EspCalc Android Broadcast Studio APK',
-      };
-    }
-    if (currentTab === 'whats-new') {
-      return {
-        title: "What's New",
-        subtitle: 'EspCalc v1.1 Release Highlights',
       };
     }
     if (hasActiveTournament) {
@@ -273,26 +265,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {tournaments.length}
               </span>
             )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate('whats-new')}
-            className={navItemClass(currentTab === 'whats-new')}
-          >
-            <span className="flex items-center gap-2.5">
-              <Megaphone
-                className={`h-4 w-4 shrink-0 ${
-                  currentTab === 'whats-new'
-                    ? 'text-amber-400'
-                    : 'text-slate-400 group-hover:text-slate-200'
-                }`}
-              />
-              <span>What&apos;s New</span>
-            </span>
-            <span className="rounded bg-amber-500/10 border border-amber-400/25 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
-              v1.1
-            </span>
           </button>
 
           <button
@@ -648,13 +620,13 @@ export const AppShell: React.FC<AppShellProps> = ({
       {/* Mobile Bottom Broadcast Navigation Bar */}
       <nav
         aria-label="Mobile navigation"
-        className="glass-chrome fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.09] px-1.5 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] md:hidden select-none"
+        className="glass-chrome fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.09] px-2.5 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] md:hidden select-none"
       >
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-4 gap-1.5">
           <button
             type="button"
             onClick={() => navigate('home')}
-            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-semibold border transition-colors ${
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
               currentTab === 'home'
                 ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -668,7 +640,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             <button
               type="button"
               onClick={() => navigate(preferredMatch.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-semibold border transition-colors ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
                 matches.some((m) => m.id === currentTab)
                   ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -681,7 +653,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             <button
               type="button"
               onClick={() => navigate('create')}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-semibold border transition-colors ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
                 currentTab === 'create'
                   ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -696,7 +668,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             <button
               type="button"
               onClick={() => navigate('results')}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-semibold border transition-colors ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
                 currentTab === 'results'
                   ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -709,7 +681,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             <button
               type="button"
               onClick={() => navigate('rules')}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-semibold border transition-colors ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
                 currentTab === 'rules' || currentTab === 'setup'
                   ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -723,7 +695,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           <button
             type="button"
             onClick={() => navigate('history')}
-            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-semibold border transition-colors ${
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold border transition-colors ${
               currentTab === 'history'
                 ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -731,19 +703,6 @@ export const AppShell: React.FC<AppShellProps> = ({
           >
             <History className="h-4.5 w-4.5" />
             <span>History</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate('whats-new')}
-            className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1.5 text-[10px] font-semibold border transition-colors ${
-              currentTab === 'whats-new'
-                ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.16)]'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Megaphone className="h-4.5 w-4.5" />
-            <span className="truncate">What&apos;s New</span>
           </button>
         </div>
       </nav>

@@ -347,7 +347,7 @@ void main() {
   });
 
   testWidgets(
-      'Guided Rapid Mode (Booyah -> Total Kills? -> Reverse/Redo -> Edit List) and What\'s New tab work end-to-end',
+      'Full-screen blurred Rapid overlay (Booyah -> Total Kills? -> Reverse/Redo -> Standings) & Team List work end-to-end',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     final store = TournamentStore();
@@ -381,83 +381,79 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify What's New tab & v1.1 highlights
-    await tester.tap(find.byIcon(Icons.new_releases_rounded));
-    await tester.pumpAndSettle();
-    expect(find.text("What's New"), findsWidgets);
-    expect(find.text('AI Auto Detect'), findsOneWidget);
-    expect(find.text('New Rapid Mode Point Enter'), findsOneWidget);
-    expect(find.text('More Themes'), findsOneWidget);
-    expect(find.text('Inferno Blaze'), findsOneWidget);
-
     await tester.tap(find.byIcon(Icons.scoreboard_rounded));
     await tester.pumpAndSettle();
 
-    expect(find.text('Team List'), findsOneWidget);
-    expect(find.text('Rapid Mode'), findsOneWidget);
+    expect(find.text('Rapid'), findsOneWidget);
+    expect(find.text('SLOT · SQUAD'), findsOneWidget);
 
-    await tester.tap(find.text('Rapid Mode'));
+    await tester.tap(find.text('Rapid'));
     await tester.pumpAndSettle();
 
-    expect(find.text('#1 BOOYAH'), findsOneWidget);
-    expect(find.text('Which team took Booyah?'), findsOneWidget);
+    Finder inRapid(Finder inner) => find.descendant(
+          of: find.byKey(const Key('rapid-fullscreen-overlay')),
+          matching: inner,
+        );
 
-    // Select Squad Alpha -> Total Kills? pops up from bottom
-    await tester.tap(find.text('Squad Alpha'));
+    expect(inRapid(find.text('#1 Team')), findsOneWidget);
+    expect(inRapid(find.text('Which team took Booyah?')), findsOneWidget);
+
+    // Select Squad Alpha -> Total Kills? pops up
+    await tester.tap(inRapid(find.text('Squad Alpha')));
     await tester.pumpAndSettle();
-    expect(find.text('Total Kills?'), findsOneWidget);
+    expect(inRapid(find.text('Total Kills?')), findsOneWidget);
     expect(store.activeTournament!.matches.first.entries.values
         .firstWhere((e) => e.placement == 1)
         .teamId, store.activeTournament!.teams[0].id);
 
-    // Tap '1' and '2' on keypad -> 12 kills, then advance to 2nd place
-    await tester.tap(find.text('1'));
-    await tester.tap(find.text('2'));
+    // Enter 12 kills on keypad, then advance to 2nd place
+    await tester.tap(inRapid(find.text('1')));
+    await tester.tap(inRapid(find.text('2')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Next · 2nd Place'));
+    await tester.tap(inRapid(find.text('Next · 2nd')));
     await tester.pumpAndSettle();
     expect(
       store.activeTournament!.matches.first.entries[store.activeTournament!.teams[0].id]?.kills,
       12,
     );
-    expect(find.text('Which team placed 2nd?'), findsOneWidget);
+    expect(inRapid(find.text('Which team placed 2nd?')), findsOneWidget);
 
     // Reverse goes back to Total Kills? for Squad Alpha (12 kills preserved)
-    await tester.tap(find.text('Reverse'));
+    await tester.tap(inRapid(find.text('Reverse')));
     await tester.pumpAndSettle();
-    expect(find.text('Total Kills?'), findsOneWidget);
-    expect(find.text('12'), findsOneWidget);
+    expect(inRapid(find.text('Total Kills?')), findsOneWidget);
+    expect(inRapid(find.text('12')), findsOneWidget);
 
     // Reverse again returns to Booyah selection and clears placement
-    await tester.tap(find.text('Reverse'));
+    await tester.tap(inRapid(find.text('Reverse')));
     await tester.pumpAndSettle();
-    expect(find.text('Which team took Booyah?'), findsOneWidget);
+    expect(inRapid(find.text('Which team took Booyah?')), findsOneWidget);
     expect(
       store.activeTournament!.matches.first.entries[store.activeTournament!.teams[0].id]?.placement,
       isNull,
     );
 
     // Redo x2 restores #1 (12 kills) and advances to 2nd pick
-    await tester.tap(find.text('Redo'));
+    await tester.tap(inRapid(find.text('Redo')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Redo'));
+    await tester.tap(inRapid(find.text('Redo')));
     await tester.pumpAndSettle();
-    expect(find.text('Which team placed 2nd?'), findsOneWidget);
+    expect(inRapid(find.text('Which team placed 2nd?')), findsOneWidget);
 
     // Pick 2nd (Bravo, 5 kills) -> automatically loads sole 3rd team (Charlie) into Total Kills?
-    await tester.tap(find.text('Squad Bravo'));
+    await tester.tap(inRapid(find.text('Squad Bravo')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('5'));
+    await tester.tap(inRapid(find.text('5')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Next · 3rd Place'));
+    await tester.tap(inRapid(find.text('Next · 3rd')));
     await tester.pumpAndSettle();
-    expect(find.text('3RD PLACE SQUAD'), findsOneWidget);
-    expect(find.text('Total Kills?'), findsOneWidget);
+    expect(inRapid(find.text('#3')), findsOneWidget);
+    expect(inRapid(find.text('Total Kills?')), findsOneWidget);
 
-    // Enter 3 kills for 3rd place and Finish -> returns to editable Team List
-    await tester.tap(find.text('3'));
+    // Enter 3 kills for 3rd place and Done -> closes overlay and switches to Standings
+    await tester.tap(inRapid(find.text('3')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Finish & Edit List'));
+    await tester.tap(inRapid(find.text('Done · View Standings')));
     await tester.pumpAndSettle();
 
     final finalEntries = store.activeTournament!.matches.first.entries;
@@ -467,7 +463,10 @@ void main() {
     expect(finalEntries[store.activeTournament!.teams[1].id]?.kills, 5);
     expect(finalEntries[store.activeTournament!.teams[2].id]?.placement, 3);
     expect(finalEntries[store.activeTournament!.teams[2].id]?.kills, 3);
-    // Editable in normal Team List too
+
+    // Switch back to Scorecard tab and confirm normal Team List is still editable
+    await tester.tap(find.text('Scorecard'));
+    await tester.pumpAndSettle();
     expect(find.text('SLOT · SQUAD'), findsOneWidget);
   });
 }

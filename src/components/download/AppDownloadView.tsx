@@ -11,9 +11,9 @@ import {
 import { useTournamentStore } from '../../store/tournamentStore';
 import { EspCalcLogoMark } from '../ui/BrandLogo';
 
-const APK_URL = '/esp-calc.apk?v=20261118v11';
+const APK_URL = '/esp-calc.apk?v=20261118v11b';
 const APK_FILENAME = 'EspCalc-v1.1.apk';
-const APK_SIZE_LABEL = '54.4 MB';
+const APK_SIZE_LABEL = '54.3 MB';
 
 interface AppScreenshot {
   src: string;
@@ -207,6 +207,32 @@ export const AppDownloadView: React.FC = () => {
             </li>
           ))}
         </ul>
+
+        <div className="border-t border-white/[0.08] pt-4 space-y-2">
+          <div className="text-xs font-bold text-amber-300">
+            What&apos;s New in v1.1
+          </div>
+          <ul className="space-y-1.5 text-xs text-slate-300">
+            <li className="flex items-start gap-2.5">
+              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span>
+                <strong className="text-white">AI Auto Detect</strong> — extract match placements and kills straight from leaderboard screenshots.
+              </span>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span>
+                <strong className="text-white">New Rapid Mode Point Enter</strong> — faster full-screen guided team and kill entry.
+              </span>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span>
+                <strong className="text-white">More Themes</strong> — added Inferno Blaze, Obsidian Noir, and Royal Amethyst poster styles.
+              </span>
+            </li>
+          </ul>
+        </div>
       </div>
 
       {/* App Info & Install Steps */}
