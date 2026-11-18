@@ -52,7 +52,7 @@ class _JsonBackupSheetState extends State<JsonBackupSheet> {
         '${dir.path}/esp_calc_backup_${DateTime.now().millisecondsSinceEpoch}.json',
       );
       await file.writeAsString(widget.store.exportJson(), encoding: utf8);
-      await Share.shareXFiles([XFile(file.path)], text: 'Esports Calculator Backup');
+      await Share.shareXFiles([XFile(file.path)], text: 'EspCalc Backup');
     } catch (e) {
       if (!mounted) return;
       setState(() {

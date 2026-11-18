@@ -12,6 +12,7 @@ import 'ui/screens/login_screen.dart';
 import 'ui/screens/match_screen.dart';
 import 'ui/screens/poster_screen.dart';
 import 'ui/screens/rules_screen.dart';
+import 'ui/screens/whats_new_screen.dart';
 import 'ui/sheets/account_sheet.dart';
 import 'ui/sheets/admin_dashboard_sheet.dart';
 import 'ui/sheets/json_backup_sheet.dart';
@@ -30,7 +31,7 @@ void main() async {
   runApp(const EspCalcApp());
 }
 
-enum _AppTab { home, matches, poster, history }
+enum _AppTab { home, matches, poster, history, whatsNew }
 
 class EspCalcApp extends StatefulWidget {
   final AuthStore? authStoreOverride;
@@ -103,7 +104,7 @@ class _EspCalcAppState extends State<EspCalcApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Esports Calculator',
+      title: 'EspCalc',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
       home: AnimatedBuilder(
@@ -407,6 +408,7 @@ class _OrganizerShellState extends State<OrganizerShell> {
         onOpenJson: _openJsonSheet,
         onOpenRules: _openRules,
         onOpenAdmin: _openAdminSheet,
+        onOpenWhatsNew: () => _selectTab(_AppTab.whatsNew),
       ),
     );
   }
@@ -451,6 +453,7 @@ class _OrganizerShellState extends State<OrganizerShell> {
                           onEditEvent: (rec) => _openCreate(editing: rec),
                           onOpenJson: _openJsonSheet,
                           onOpenAccountSheet: _openAccountSheet,
+                          onOpenWhatsNew: () => _selectTab(_AppTab.whatsNew),
                         ),
                       ),
                       RepaintBoundary(
@@ -482,6 +485,16 @@ class _OrganizerShellState extends State<OrganizerShell> {
                               setState(() => _tab = _AppTab.poster),
                           onCreateTournament: () => _openCreate(),
                           onEditTournament: (rec) => _openCreate(editing: rec),
+                        ),
+                      ),
+                      RepaintBoundary(
+                        child: WhatsNewScreen(
+                          store: widget.tournamentStore,
+                          onOpenMatches: () =>
+                              setState(() => _tab = _AppTab.matches),
+                          onOpenPoster: () =>
+                              setState(() => _tab = _AppTab.poster),
+                          onCreateTournament: () => _openCreate(),
                         ),
                       ),
                     ],
@@ -568,6 +581,12 @@ class _OrganizerShellState extends State<OrganizerShell> {
                               selected: _tab == _AppTab.history,
                               onTap: () => _selectTab(_AppTab.history),
                             ),
+                            _DockItem(
+                              icon: Icons.new_releases_rounded,
+                              label: "What's New",
+                              selected: _tab == _AppTab.whatsNew,
+                              onTap: () => _selectTab(_AppTab.whatsNew),
+                            ),
                           ],
                         ),
                       ],
@@ -609,7 +628,7 @@ class _DockItem extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 9),
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 2),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -632,10 +651,13 @@ class _DockItem extends StatelessWidget {
                   color: selected
                       ? AppColors.accentBright
                       : AppColors.textSecondary,
-                  fontSize: 11,
+                  fontSize: 10.5,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                 ),
-                child: Text(label),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(label, maxLines: 1),
+                ),
               ),
             ],
           ),

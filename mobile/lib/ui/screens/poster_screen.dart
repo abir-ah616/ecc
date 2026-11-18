@@ -252,7 +252,7 @@ class _PosterScreenState extends State<PosterScreen> {
     setState(() => _isExporting = true);
     try {
       final file = await _exportPosterFile();
-      await Gal.putImage(file.path, album: 'Esports Calculator');
+      await Gal.putImage(file.path, album: 'EspCalc');
       final ratioLabel =
           _aspectRatio == AspectRatioMode.ratio4x5 ? '4:5 Post' : '16:9 Wide';
       if (mounted) {

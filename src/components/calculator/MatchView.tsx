@@ -15,11 +15,8 @@ import {
   Image as ImageIcon,
   Zap,
   ListOrdered,
-  X,
   Users,
-  Undo2,
   ChevronDown,
-  RotateCcw,
 } from 'lucide-react';
 import {
   useTournamentStore,
@@ -28,6 +25,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { LiveStandingsPanel } from './LiveStandingsPanel';
 import { RankPickerPopover } from './RankPickerPopover';
+import { RapidWizard } from './RapidWizard';
 import { ScanScreenshotModal } from './ScanScreenshotModal';
 import { SquadPlayersModal } from './SquadPlayersModal';
 import { getPlacementPoints, getKillPoints } from '../../lib/scoring';
@@ -35,8 +33,14 @@ import { formatStandingsTextSummary } from '../../lib/rosterHelpers';
 import {
   buildSwapOrAssignRankBatch,
   computeMatchScorecardSummary,
+  confirmRapidKills,
+  createInitialRapidState,
+  pickRapidTeam,
+  redoRapidStep,
+  reverseRapidStep,
   snapshotMatchEntries,
-  type BatchEntryUpdate,
+  type RapidWizardSnapshot,
+  type RapidWizardState,
 } from '../../lib/scorecardHelpers';
 import type { Match, Team } from '../../types/tournament';
 
@@ -48,14 +52,6 @@ interface ActiveRankPopover {
   team: Team;
   currentRank: number | null;
   anchorRect: DOMRect;
-}
-
-function rankBadgeTone(rank: number, hasTeam = true): string {
-  if (!hasTeam) return 'glass-input text-slate-400';
-  if (rank === 1) return 'bg-amber-500 text-zinc-950';
-  if (rank === 2) return 'bg-slate-200/90 text-zinc-950';
-  if (rank === 3) return 'bg-amber-700/80 text-amber-50';
-  return 'glass-input text-slate-200 hover:border-amber-400/50';
 }
 
 export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
@@ -82,24 +78,16 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isPlayersOpen, setIsPlayersOpen] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
-  const [undoState, setUndoState] = useState<{
-    matchId: string;
-    stack: BatchEntryUpdate[][];
-    lastPickedTeamId: string | null;
-  }>({
-    matchId: match.id,
-    stack: [],
-    lastPickedTeamId: null,
-  });
+  const [rapidByMatchId, setRapidByMatchId] = useState<
+    Record<string, RapidWizardState>
+  >({});
+  const [rapidDoneBannerMatchId, setRapidDoneBannerMatchId] = useState<
+    string | null
+  >(null);
   const [rankPopover, setRankPopover] = useState<ActiveRankPopover | null>(null);
 
   const rankInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const killsInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const activeUndoStack =
-    undoState.matchId === match.id ? undoState.stack : [];
-  const highlightedTeamId =
-    undoState.matchId === match.id ? undoState.lastPickedTeamId : null;
 
   const standingsResult = getStandings();
   const cumulativeByTeam = useMemo(() => {
@@ -109,12 +97,6 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     }
     return map;
   }, [standingsResult]);
-
-  const slotNumberByTeamId = useMemo(() => {
-    const map = new Map<string, number>();
-    teams.forEach((t, idx) => map.set(t.id, idx + 1));
-    return map;
-  }, [teams]);
 
   const summary = useMemo(
     () => computeMatchScorecardSummary(teams, match),
@@ -133,6 +115,34 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     hasErrors,
   } = summary;
 
+  const rawRapidWizard = useMemo(
+    () => rapidByMatchId[match.id] ?? createInitialRapidState(teams, match),
+    [rapidByMatchId, match, teams]
+  );
+
+  const activeRapidWizard = useMemo<RapidWizardState>(() => {
+    if (
+      rawRapidWizard.phase === 'pick_team' &&
+      !unassignedRanks.includes(rawRapidWizard.rank)
+    ) {
+      if (unassignedRanks.length === 0 || unplacedTeams.length === 0) {
+        return { ...rawRapidWizard, phase: 'done', selectedTeamId: null };
+      }
+      if (unassignedRanks.length === 1 && unplacedTeams.length === 1) {
+        const onlyTeam = unplacedTeams[0];
+        return {
+          ...rawRapidWizard,
+          rank: unassignedRanks[0],
+          phase: 'enter_kills',
+          selectedTeamId: onlyTeam.id,
+          draftKills: match.entries[onlyTeam.id]?.kills ?? 0,
+        };
+      }
+      return { ...rawRapidWizard, rank: unassignedRanks[0] };
+    }
+    return rawRapidWizard;
+  }, [rawRapidWizard, unassignedRanks, unplacedTeams, match.entries]);
+
   const currentIndex = matches.findIndex((m) => m.id === match.id);
   const nextMatchInList =
     currentIndex >= 0 && currentIndex < matches.length - 1
@@ -146,38 +156,37 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
   const maxMatchesReached = matches.length >= maxAllowed;
   const canAddMatch = !standingsResult.tournamentConcluded && !maxMatchesReached;
 
-  const pushUndoSnapshot = (nextHighlightedId: string | null = null) => {
-    const snap = snapshotMatchEntries(teams, match);
-    setUndoState((prev) => {
-      const baseStack = prev.matchId === match.id ? prev.stack : [];
-      return {
-        matchId: match.id,
-        stack: [...baseStack.slice(-19), snap],
-        lastPickedTeamId: nextHighlightedId,
-      };
-    });
-  };
-
-  const handleUndo = () => {
-    if (match.isCompleted || activeUndoStack.length === 0) return;
-    const prevSnapshot = activeUndoStack[activeUndoStack.length - 1];
-    applyBatchMatchResults(match.id, prevSnapshot);
-    setUndoState((prev) => ({
-      matchId: match.id,
-      stack: prev.matchId === match.id ? prev.stack.slice(0, -1) : [],
-      lastPickedTeamId: null,
+  const setCurrentRapidWizard = (nextWizard: RapidWizardState) => {
+    setRapidByMatchId((prev) => ({
+      ...prev,
+      [match.id]: nextWizard,
     }));
   };
 
   const handleResetRanks = () => {
     if (match.isCompleted || rankedCount === 0) return;
-    pushUndoSnapshot(null);
+    const snap: RapidWizardSnapshot = {
+      entries: snapshotMatchEntries(teams, match),
+      rank: activeRapidWizard.rank,
+      phase: activeRapidWizard.phase,
+      selectedTeamId: activeRapidWizard.selectedTeamId,
+      draftKills: activeRapidWizard.draftKills,
+    };
     const cleared = teams.map((t) => ({
       teamId: t.id,
       placement: null,
       kills: match.entries[t.id]?.kills ?? 0,
     }));
     applyBatchMatchResults(match.id, cleared);
+    setRapidDoneBannerMatchId(null);
+    setCurrentRapidWizard({
+      rank: 1,
+      phase: 'pick_team',
+      selectedTeamId: null,
+      draftKills: 0,
+      reverseStack: [...activeRapidWizard.reverseStack, snap],
+      redoStack: [],
+    });
   };
 
   const handleAutoFillLast = () => {
@@ -190,7 +199,6 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     }
     const lastTeam = unplacedTeams[0];
     const lastRank = unassignedRanks[0];
-    pushUndoSnapshot(lastTeam.id);
     updateMatchEntry(
       match.id,
       lastTeam.id,
@@ -199,64 +207,72 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     );
   };
 
-  const handleRapidAssignTeam = (teamId: string) => {
-    if (match.isCompleted || nextOpenRank === null) return;
-    pushUndoSnapshot(teamId);
-    const currentKills = match.entries[teamId]?.kills ?? 0;
-
-    // Auto-fill the last remaining squad when only 2 unplaced teams & 2 ranks remain
-    if (unplacedTeams.length === 2 && unassignedRanks.length === 2) {
-      const otherTeam = unplacedTeams.find((t) => t.id !== teamId);
-      const lastRank = unassignedRanks[1];
-      if (otherTeam && lastRank) {
-        const updates = teams.map((t) => {
-          if (t.id === teamId) {
-            return { teamId: t.id, placement: nextOpenRank, kills: currentKills };
-          }
-          if (t.id === otherTeam.id) {
-            return {
-              teamId: t.id,
-              placement: lastRank,
-              kills: match.entries[t.id]?.kills ?? 0,
-            };
-          }
-          const ex = match.entries[t.id];
-          return {
-            teamId: t.id,
-            placement: ex?.placement ?? null,
-            kills: ex?.kills ?? 0,
-          };
-        });
-        applyBatchMatchResults(match.id, updates);
-        setTimeout(() => {
-          killsInputRefs.current[`rapid-${teamId}`]?.focus({ preventScroll: true });
-          killsInputRefs.current[`rapid-${teamId}`]?.select();
-        }, 25);
-        return;
-      }
-    }
-
-    updateMatchEntry(match.id, teamId, nextOpenRank, currentKills);
-    setTimeout(() => {
-      killsInputRefs.current[`rapid-${teamId}`]?.focus({ preventScroll: true });
-      killsInputRefs.current[`rapid-${teamId}`]?.select();
-    }, 25);
+  const handleRapidPickTeam = (teamId: string) => {
+    if (match.isCompleted) return;
+    setRapidDoneBannerMatchId(null);
+    const { nextState, updates } = pickRapidTeam({
+      state: activeRapidWizard,
+      teams,
+      match,
+      teamId,
+    });
+    applyBatchMatchResults(match.id, updates);
+    setCurrentRapidWizard(nextState);
   };
 
-  const handleClearRapidRank = (teamId: string) => {
+  const handleRapidDraftKillsChange = (nextKills: number) => {
+    setCurrentRapidWizard({
+      ...activeRapidWizard,
+      draftKills: Math.max(0, Math.min(99, Math.floor(nextKills))),
+    });
+  };
+
+  const handleRapidConfirmKills = () => {
     if (match.isCompleted) return;
-    pushUndoSnapshot(null);
-    const entry = match.entries[teamId];
-    updateMatchEntry(match.id, teamId, null, entry?.kills ?? 0);
+    const { nextState, updates, completedAll } = confirmRapidKills({
+      state: activeRapidWizard,
+      teams,
+      match,
+    });
+    if (updates.length > 0) {
+      applyBatchMatchResults(match.id, updates);
+    }
+    setCurrentRapidWizard(nextState);
+    if (completedAll) {
+      setRapidDoneBannerMatchId(match.id);
+      setEntryMode('slot');
+    }
+  };
+
+  const handleRapidReverse = () => {
+    if (match.isCompleted) return;
+    const res = reverseRapidStep({
+      state: activeRapidWizard,
+      teams,
+      match,
+    });
+    if (!res) return;
+    applyBatchMatchResults(match.id, res.updates);
+    setCurrentRapidWizard(res.nextState);
+  };
+
+  const handleRapidRedo = () => {
+    if (match.isCompleted) return;
+    const res = redoRapidStep({
+      state: activeRapidWizard,
+      teams,
+      match,
+    });
+    if (!res) return;
+    applyBatchMatchResults(match.id, res.updates);
+    setCurrentRapidWizard(res.nextState);
   };
 
   const handleAssignOrSwapRank = (
     teamId: string,
-    nextRank: number | null,
-    recordUndo = false
+    nextRank: number | null
   ) => {
     if (match.isCompleted) return;
-    if (recordUndo) pushUndoSnapshot(teamId);
     const updates = buildSwapOrAssignRankBatch({
       teams,
       match,
@@ -597,7 +613,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   }`}
                 >
                   <Zap className="h-3.5 w-3.5" />
-                  <span>Rank #1–{teams.length}</span>
+                  <span>Rapid Mode</span>
                 </button>
               </div>
 
@@ -660,301 +676,54 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
               ) : (
                 <p className="text-xs text-slate-400">
                   {entryMode === 'rapid'
-                    ? 'Tap squads in finish order (#1 Booyah down to last), then type kills right in the row.'
+                    ? 'Step through Booyah down to last rank, then review or edit anytime in Team List.'
                     : 'Enter finish rank (or click the selector beside Rank to pick/swap) and team kills.'}
                 </p>
               )}
             </div>
           </div>
 
-          {/* MODE 2: RANK ORDER #1 -> #N */}
+          {/* MODE 2: GUIDED RAPID WIZARD */}
           {entryMode === 'rapid' ? (
-            <div className="space-y-4">
-              {!match.isCompleted &&
-              nextOpenRank !== null &&
-              unplacedTeams.length > 0 ? (
-                <div className="glass-panel rounded-2xl border-amber-500/35 p-4 space-y-3.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums shrink-0 ${
-                          nextOpenRank === 1
-                            ? 'bg-amber-500 text-zinc-950'
-                            : 'glass-accent text-amber-300'
-                        }`}
-                      >
-                        {nextOpenRank === 1 && <Crown className="h-3 w-3" />}
-                        {nextOpenRank === 1 ? '#1 BOOYAH' : `#${nextOpenRank}`}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-xs sm:text-sm font-bold text-white truncate">
-                          Tap squad that finished #{nextOpenRank}
-                        </div>
-                        <div className="text-[11px] text-slate-400 tabular-nums">
-                          +{getPlacementPoints(nextOpenRank, settings.pointSystem)} placement pts
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={handleUndo}
-                        disabled={activeUndoStack.length === 0}
-                        title="Undo last rank pick"
-                        className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-200 disabled:opacity-35 transition-colors cursor-pointer"
-                      >
-                        <Undo2 className="h-3.5 w-3.5" />
-                        <span>Undo</span>
-                      </button>
-
-                      {rankedCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleResetRanks}
-                          title="Clear all assigned ranks"
-                          className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          <span>Reset</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Structured Slot-Ordered Squad Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {unplacedTeams.map((t) => {
-                      const slotNum = slotNumberByTeamId.get(t.id) ?? 0;
-                      return (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => handleRapidAssignTeam(t.id)}
-                          className="glass-input group flex min-h-[46px] items-center gap-2 rounded-xl px-2.5 py-2 text-left hover:border-amber-400/70 hover:bg-amber-500/[0.08] transition-colors cursor-pointer"
-                        >
-                          <span className="w-5 shrink-0 text-[11px] font-bold text-slate-500 tabular-nums group-hover:text-amber-300">
-                            {String(slotNum).padStart(2, '0')}
-                          </span>
-                          <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.06] text-[10px] font-bold text-amber-300">
-                            {t.logoUrl ? (
-                              <img
-                                src={t.logoUrl}
-                                alt=""
-                                className="h-full w-full object-contain"
-                              />
-                            ) : (
-                              generateInitials(t.name)
-                            )}
-                          </div>
-                          <span className="min-w-0 truncate text-xs font-semibold text-white">
-                            {t.name}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                allPlacedCleanly &&
-                !match.isCompleted && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-200">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                      <span>
-                        All {teams.length} ranks assigned — adjust kills below or save match.
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {activeUndoStack.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleUndo}
-                          className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-200 cursor-pointer"
-                        >
-                          <Undo2 className="h-3 w-3" />
-                          <span>Undo</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={handleResetRanks}
-                        className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-300 hover:text-rose-300 cursor-pointer"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        <span>Reset</span>
-                      </button>
-                    </div>
-                  </div>
-                )
-              )}
-
-              {/* Unified Placed Results Table */}
-              <div className="glass-panel overflow-hidden rounded-2xl">
-                <div className="flex items-center justify-between border-b border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  <span>Placed Standings</span>
-                  <div className="flex items-center gap-7 pr-8">
-                    <span>Kills</span>
-                    <span className="w-11 text-right">Pts</span>
-                  </div>
-                </div>
-
-                {placedRows.length === 0 ? (
-                  <div className="px-4 py-10 text-center text-xs text-slate-400">
-                    No squads ranked yet. Tap the <strong className="text-amber-300">#1 Booyah</strong> squad above to begin.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-white/[0.06]">
-                    {placedRows.map(({ rank, team, entry }) => {
-                      const kills = entry.kills;
-                      const placementPts = getPlacementPoints(
-                        rank,
-                        settings.pointSystem
-                      );
-                      const killPts = getKillPoints(kills, settings.pointSystem);
-                      const totalPts = placementPts + killPts;
-                      const isDup = duplicatePlacements.has(rank);
-                      const isJustPicked = highlightedTeamId === team.id;
-
-                      return (
-                        <div
-                          key={`${rank}-${team.id}`}
-                          className={`flex items-center justify-between gap-2.5 px-3.5 sm:px-4 py-3 transition-colors ${
-                            isDup
-                              ? 'bg-rose-950/30'
-                              : isJustPicked
-                              ? 'bg-amber-500/[0.1]'
-                              : rank === 1
-                              ? 'bg-amber-500/[0.06]'
-                              : ''
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <button
-                              type="button"
-                              disabled={match.isCompleted}
-                              onClick={(e) => openRankPopover(e, team, rank)}
-                              title="Click to swap or change rank"
-                              className={`flex h-9 w-11 shrink-0 items-center justify-center rounded-xl text-xs font-extrabold tabular-nums transition-colors cursor-pointer disabled:cursor-default ${
-                                isDup
-                                  ? 'bg-rose-500/25 border border-rose-500/60 text-rose-200'
-                                  : rankBadgeTone(rank)
-                              }`}
-                            >
-                              #{rank}
-                            </button>
-
-                            {team.logoUrl ? (
-                              <img
-                                src={team.logoUrl}
-                                alt=""
-                                className="h-7 w-7 shrink-0 rounded-lg object-contain bg-white/[0.04] p-0.5"
-                              />
-                            ) : (
-                              <div className="glass-input flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-slate-300">
-                                {generateInitials(team.name)}
-                              </div>
-                            )}
-
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="truncate text-sm font-semibold text-white">
-                                  {team.name}
-                                </span>
-                                {rank === 1 && !isDup && (
-                                  <Crown className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                                )}
-                              </div>
-                              <div className="text-[11px] text-slate-400 tabular-nums">
-                                {placementPts} pos + {killPts} kills
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                            <div className="glass-input inline-flex items-center rounded-xl p-0.5">
-                              <button
-                                type="button"
-                                disabled={match.isCompleted || kills <= 0}
-                                onClick={() => handleAdjustKills(team.id, -1)}
-                                aria-label={`Decrease kills for ${team.name}`}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-white/[0.08] disabled:opacity-35 cursor-pointer"
-                              >
-                                <Minus className="h-3.5 w-3.5" />
-                              </button>
-                              <input
-                                ref={(el) => {
-                                  killsInputRefs.current[`rapid-${team.id}`] =
-                                    el;
-                                }}
-                                type="number"
-                                inputMode="numeric"
-                                min={0}
-                                disabled={match.isCompleted}
-                                value={kills}
-                                onFocus={(e) => e.target.select()}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    e.currentTarget.blur();
-                                  }
-                                }}
-                                onChange={(e) =>
-                                  handleKillsChange(team.id, e.target.value)
-                                }
-                                aria-label={`Kills for ${team.name}`}
-                                className="h-8 w-10 bg-transparent text-center text-sm font-bold text-white tabular-nums focus:outline-none"
-                              />
-                              <button
-                                type="button"
-                                disabled={match.isCompleted}
-                                onClick={() => handleAdjustKills(team.id, 1)}
-                                aria-label={`Increase kills for ${team.name}`}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-white/[0.08] disabled:opacity-35 cursor-pointer"
-                              >
-                                <Plus className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-
-                            <span
-                              className={`w-11 text-right text-sm font-bold tabular-nums ${
-                                rank === 1 ? 'text-amber-300' : 'text-white'
-                              }`}
-                            >
-                              {totalPts}p
-                            </span>
-
-                            <button
-                              type="button"
-                              disabled={match.isCompleted}
-                              onClick={() => handleClearRapidRank(team.id)}
-                              aria-label={`Remove rank for ${team.name}`}
-                              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-30 cursor-pointer"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {unassignedRanks.length > 0 && !match.isCompleted && (
-                      <div className="flex items-center justify-between px-4 py-2.5 bg-white/[0.015] text-xs text-slate-400">
-                        <span>
-                          Up next: <strong className="text-amber-300">#{unassignedRanks[0]}</strong>
-                        </span>
-                        <span className="tabular-nums">
-                          {unassignedRanks.length} placement{unassignedRanks.length === 1 ? '' : 's'} remaining
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+            <RapidWizard
+              teams={teams}
+              match={match}
+              pointSystem={settings.pointSystem}
+              wizard={activeRapidWizard}
+              unplacedTeams={unplacedTeams}
+              placedRows={placedRows}
+              rankedCount={rankedCount}
+              completionNotice={rapidDoneBannerMatchId === match.id}
+              onPickTeam={handleRapidPickTeam}
+              onDraftKillsChange={handleRapidDraftKillsChange}
+              onConfirmKills={handleRapidConfirmKills}
+              onReverse={handleRapidReverse}
+              onRedo={handleRapidRedo}
+              onResetRanks={handleResetRanks}
+              onSwitchToList={() => setEntryMode('slot')}
+            />
           ) : (
             /* MODE 1: UNIFIED TEAM LIST SCORECARD */
-            <div className="glass-panel overflow-hidden rounded-2xl">
+            <div className="space-y-3">
+              {rapidDoneBannerMatchId === match.id && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                    <span>
+                      Rapid entry complete — edit any placement or kill count below.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRapidDoneBannerMatchId(null)}
+                    className="text-[11px] font-bold text-slate-300 hover:text-white cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              <div className="glass-panel overflow-hidden rounded-2xl">
               <div className="hidden sm:flex items-center justify-between border-b border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 <span>Slot &amp; Squad</span>
                 <div className="flex items-center gap-3">
@@ -1187,6 +956,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   );
                 })}
               </div>
+              </div>
             </div>
           )}
 
@@ -1247,11 +1017,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
           teamByRank={teamByRank}
           pointSystem={settings.pointSystem}
           onSelectRank={(nextRank) =>
-            handleAssignOrSwapRank(
-              rankPopover.team.id,
-              nextRank,
-              entryMode === 'rapid'
-            )
+            handleAssignOrSwapRank(rankPopover.team.id, nextRank)
           }
           onClose={() => setRankPopover(null)}
         />

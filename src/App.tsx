@@ -45,6 +45,11 @@ const AppDownloadView = lazy(() =>
     default: m.AppDownloadView,
   }))
 );
+const WhatsNewView = lazy(() =>
+  import('./components/home/WhatsNewView').then((m) => ({
+    default: m.WhatsNewView,
+  }))
+);
 const ResetModal = lazy(() =>
   import('./components/calculator/ResetModal').then((m) => ({
     default: m.ResetModal,
@@ -122,6 +127,8 @@ export function App() {
     activeContent = <HistoryView />;
   } else if (currentTab === 'download') {
     activeContent = <AppDownloadView />;
+  } else if (currentTab === 'whats-new') {
+    activeContent = <WhatsNewView />;
   } else if (currentTab === 'results') {
     activeContent = <ResultView />;
   } else {

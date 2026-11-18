@@ -1,4 +1,4 @@
-package com.esports.espcalc.esp_calc_mobile
+package com.mroppy.espcalc
 
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -13,8 +13,8 @@ import java.security.MessageDigest
 
 class MainActivity : FlutterActivity() {
     companion object {
-        private const val SECURITY_CHANNEL = "com.esports.espcalc/security"
-        private const val EXPECTED_PACKAGE = "com.esports.espcalc.esp_calc_mobile"
+        private const val SECURITY_CHANNEL = "com.mroppy.espcalc/security"
+        private const val EXPECTED_PACKAGE = "com.mroppy.espcalc"
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

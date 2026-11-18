@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { GRAPHIC_THEMES, resolveThemePreset } from '../theme';
 
 describe('Graphic Theme Presets', () => {
-  it('contains all 7 active themes including Scarlet Strike, Apex Volt, and Whiteout Pro', () => {
+  it('contains all 10 active themes including Inferno Blaze, Obsidian Noir, and Royal Amethyst', () => {
     const ids = GRAPHIC_THEMES.map((t) => t.id);
     expect(ids).toEqual([
       'v2',
@@ -12,6 +12,9 @@ describe('Graphic Theme Presets', () => {
       'blue',
       'gold',
       'eclipse',
+      'inferno',
+      'obsidian',
+      'amethyst',
     ]);
     expect(ids).not.toContain('crimson');
     expect(ids).not.toContain('emerald');

@@ -61,7 +61,7 @@ export const AppDownloadToast: React.FC<AppDownloadToastProps> = ({
 
           <div className="min-w-0 flex-1 pr-6">
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-400">
-              ESP CALC Android · v1.0.0
+              EspCalc Android · v1.1
             </div>
             <h3 className="mt-0.5 text-sm font-bold text-white leading-snug">
               Download our app
@@ -92,11 +92,11 @@ export const AppDownloadToast: React.FC<AppDownloadToastProps> = ({
           </button>
 
           <a
-            href="/esp-calc.apk?v=20261118k"
-            download="ESP-CALC-v1.0.0.apk"
+            href="/esp-calc.apk?v=20261118v11"
+            download="EspCalc-v1.1.apk"
             className="glass-pill inline-flex items-center justify-center gap-1 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors cursor-pointer"
           >
-            <span>APK · 54.2 MB</span>
+            <span>APK · 54.4 MB</span>
             <ArrowUpRight className="h-3.5 w-3.5 text-slate-400" />
           </a>
         </div>

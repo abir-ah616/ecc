@@ -14,6 +14,7 @@ import { ThemeWhiteoutPro } from './themes/ThemeWhiteoutPro';
 import { ThemeArcticCyan } from './themes/ThemeArcticCyan';
 import { ThemeCyberRose } from './themes/ThemeCyberRose';
 import { ThemeImperialGold } from './themes/ThemeImperialGold';
+import { ThemeBroadcastSpectrum } from './themes/ThemeBroadcastSpectrum';
 
 interface ResultGraphicProps {
   settings: TournamentSettings;
@@ -91,6 +92,10 @@ export const ResultGraphic: React.FC<ResultGraphicProps> = React.memo(({
         return <ThemeCyberRose {...themeProps} />;
       case 'eclipse':
         return <ThemeImperialGold {...themeProps} />;
+      case 'inferno':
+      case 'obsidian':
+      case 'amethyst':
+        return <ThemeBroadcastSpectrum {...themeProps} variant={themeName} />;
       default:
         return <ThemeYellowFFMAI {...themeProps} />;
     }

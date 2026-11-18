@@ -16,7 +16,7 @@ class AppIntegrityResult {
 /// debuggable flags, and runtime instrumentation hooks over a native MethodChannel.
 class AppIntegrityService {
   static const MethodChannel _channel =
-      MethodChannel('com.esports.espcalc/security');
+      MethodChannel('com.mroppy.espcalc/security');
 
   static Future<AppIntegrityResult> verify() async {
     if (!kReleaseMode ||

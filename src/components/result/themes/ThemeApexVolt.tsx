@@ -663,7 +663,7 @@ export const ThemeApexVolt: React.FC<GraphicThemeProps> = ({
               className="block whitespace-nowrap font-headline text-xs font-black italic uppercase tracking-[0.18em] text-[#00FF88]"
               style={{ transform: 'skewX(12deg)' }}
             >
-              ESP CALC BROADCAST &bull; MADE BY MR. OPPY
+              ESPCALC BROADCAST &bull; MADE BY MR. OPPY
             </span>
           </div>
         </footer>

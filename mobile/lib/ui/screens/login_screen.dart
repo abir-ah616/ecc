@@ -620,7 +620,7 @@ class _ShowcaseHeroPanel extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'ESP CALC',
+                          'EspCalc',
                           style: TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 18,

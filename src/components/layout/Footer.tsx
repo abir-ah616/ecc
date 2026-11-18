@@ -5,7 +5,7 @@ export const Footer: React.FC = () => {
   return (
     <footer className="mt-10 border-t border-white/[0.08] pt-5 pb-4 text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2 select-none">
       <div className="flex items-center gap-2">
-        <span className="font-bold tracking-wide text-slate-200">ESP CALC</span>
+        <span className="font-bold tracking-wide text-slate-200">EspCalc</span>
         <span className="text-slate-700">/</span>
         <span className="tracking-wide text-slate-400">
           Broadcast Standings &amp; Tournament Studio

@@ -60,6 +60,24 @@ const List<BroadcastThemePalette> broadcastThemePalettes = [
     primary: Color(0xFFEAB308),
     secondary: Color(0xFF854D0E),
   ),
+  BroadcastThemePalette(
+    preset: ThemePreset.inferno,
+    label: 'Inferno Blaze',
+    primary: Color(0xFFFF5500),
+    secondary: Color(0xFFFFB703),
+  ),
+  BroadcastThemePalette(
+    preset: ThemePreset.obsidian,
+    label: 'Obsidian Noir',
+    primary: Color(0xFFE2E8F0),
+    secondary: Color(0xFF475569),
+  ),
+  BroadcastThemePalette(
+    preset: ThemePreset.amethyst,
+    label: 'Royal Amethyst',
+    primary: Color(0xFFA855F7),
+    secondary: Color(0xFFE879F9),
+  ),
 ];
 
 BroadcastThemePalette themePaletteFor(ThemePreset preset) {

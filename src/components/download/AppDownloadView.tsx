@@ -11,9 +11,9 @@ import {
 import { useTournamentStore } from '../../store/tournamentStore';
 import { EspCalcLogoMark } from '../ui/BrandLogo';
 
-const APK_URL = '/esp-calc.apk?v=20261118k';
-const APK_FILENAME = 'ESP-CALC-v1.0.0.apk';
-const APK_SIZE_LABEL = '54.2 MB';
+const APK_URL = '/esp-calc.apk?v=20261118v11';
+const APK_FILENAME = 'EspCalc-v1.1.apk';
+const APK_SIZE_LABEL = '54.4 MB';
 
 interface AppScreenshot {
   src: string;
@@ -23,7 +23,7 @@ interface AppScreenshot {
 const APP_SCREENSHOTS: AppScreenshot[] = [
   {
     src: '/assets/app-screen-1.webp',
-    alt: 'ESP CALC Broadcast Studio home screen and live tournament overview',
+    alt: 'EspCalc Broadcast Studio home screen and live tournament overview',
   },
   {
     src: '/assets/app-screen-2.webp',
@@ -84,7 +84,7 @@ export const AppDownloadView: React.FC = () => {
 
           <div className="min-w-0 flex-1 space-y-1">
             <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-              ESP CALC
+              EspCalc
             </h1>
             <p className="text-xs font-semibold text-emerald-400">
               MR. OPPY
@@ -117,7 +117,7 @@ export const AppDownloadView: React.FC = () => {
           <div className="h-6 w-px bg-white/[0.08]" />
 
           <div>
-            <div className="font-bold text-white text-sm">v1.0.0</div>
+            <div className="font-bold text-white text-sm">v1.1</div>
             <div className="text-slate-400 mt-0.5">Android 7.0+</div>
           </div>
         </div>
@@ -222,7 +222,11 @@ export const AppDownloadView: React.FC = () => {
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
           <div>
             <dt className="text-slate-500">Version</dt>
-            <dd className="mt-0.5 font-semibold text-white">1.0.0</dd>
+            <dd className="mt-0.5 font-semibold text-white">1.1</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Package ID</dt>
+            <dd className="mt-0.5 font-mono text-slate-200">com.mroppy.espcalc</dd>
           </div>
           <div>
             <dt className="text-slate-500">Requires OS</dt>
@@ -239,7 +243,7 @@ export const AppDownloadView: React.FC = () => {
         </dl>
 
         <div className="border-t border-white/[0.08] pt-3 text-[11px] text-slate-400">
-          How to install: Tap <span className="text-slate-200">Download APK</span>, open the downloaded file, allow installation from this source if prompted, and launch ESP CALC.
+          How to install: Tap <span className="text-slate-200">Download APK</span>, open the downloaded file, allow installation from this source if prompted, and launch EspCalc.
         </div>
       </div>
 

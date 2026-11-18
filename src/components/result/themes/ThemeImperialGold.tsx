@@ -779,7 +779,7 @@ export const ThemeImperialGold: React.FC<GraphicThemeProps> = ({
               }}
             >
               <span className="block font-headline text-xs font-black uppercase tracking-[0.22em]">
-                ESP CALC BROADCAST • MADE BY MR. OPPY
+                ESPCALC BROADCAST • MADE BY MR. OPPY
               </span>
             </div>
 

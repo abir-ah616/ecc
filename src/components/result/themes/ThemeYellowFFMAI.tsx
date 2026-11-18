@@ -577,7 +577,7 @@ export const ThemeYellowFFMAI: React.FC<GraphicThemeProps> = ({
               className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.22em] text-[#FBBF24]"
               style={{ transform: 'skewX(12deg)' }}
             >
-              ESP CALC BROADCAST • MADE BY MR. OPPY
+              ESPCALC BROADCAST • MADE BY MR. OPPY
             </span>
           </div>
         </footer>

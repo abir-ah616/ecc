@@ -1,6 +1,6 @@
 {
-    "name": "esp_calc_mobile",
-    "short_name": "esp_calc_mobile",
+    "name": "EspCalc",
+    "short_name": "EspCalc",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

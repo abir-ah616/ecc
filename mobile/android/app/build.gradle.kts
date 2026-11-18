@@ -37,7 +37,7 @@ fun extractKeystoreCertSha256(
 }
 
 android {
-    namespace = "com.esports.espcalc.esp_calc_mobile"
+    namespace = "com.mroppy.espcalc"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -51,7 +51,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.esports.espcalc.esp_calc_mobile"
+        applicationId = "com.mroppy.espcalc"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

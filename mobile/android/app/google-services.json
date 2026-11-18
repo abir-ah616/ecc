@@ -41,6 +41,43 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:497488916740:android:557b2e830676619edae051",
+        "android_client_info": {
+          "package_name": "com.mroppy.espcalc"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "497488916740-j5k8ere39l467dn62p7l46imi2364p2u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mroppy.espcalc",
+            "certificate_hash": "5195fd01c2b0fcb895ca758623b40d6841e90477"
+          }
+        },
+        {
+          "client_id": "497488916740-q0p8od2b9jb8os4oo5ttelfcqmdlhgls.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZxTdy9wtRhmT_4AjdSPGkQx081C96QVE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "497488916740-q0p8od2b9jb8os4oo5ttelfcqmdlhgls.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"

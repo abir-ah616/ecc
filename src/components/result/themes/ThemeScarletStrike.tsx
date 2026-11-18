@@ -793,7 +793,7 @@ export const ThemeScarletStrike: React.FC<GraphicThemeProps> = ({
               className="whitespace-nowrap font-headline text-[12px] font-black italic uppercase tracking-[0.14em]"
               style={{ transform: 'skewX(14deg)' }}
             >
-              <span className="text-white">ESP CALC BROADCAST &bull; MADE BY </span>
+              <span className="text-white">ESPCALC BROADCAST &bull; MADE BY </span>
               <span className="text-[#FF3B47]">MR. OPPY</span>
             </div>
           </div>

@@ -628,7 +628,7 @@ export const ThemeCyberRose: React.FC<GraphicThemeProps> = ({
               className="block whitespace-nowrap font-headline text-xs font-black uppercase tracking-[0.22em] text-[#FF2A6D]"
               style={{ transform: 'skewX(12deg)' }}
             >
-              ESP CALC BROADCAST • MADE BY MR. OPPY
+              ESPCALC BROADCAST • MADE BY MR. OPPY
             </span>
           </div>
         </footer>

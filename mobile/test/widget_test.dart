@@ -84,7 +84,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('ESP CALC'), findsOneWidget);
+    expect(find.text('EspCalc'), findsOneWidget);
     expect(find.text('BROADCAST STUDIO'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.byType(MaterialApp), findsOneWidget);
@@ -347,7 +347,7 @@ void main() {
   });
 
   testWidgets(
-      'Rank #1-N mode assigns ranks, auto-fills last squad, supports Undo, and swaps + quick-sets kills',
+      'Guided Rapid Mode (Booyah -> Total Kills? -> Reverse/Redo -> Edit List) and What\'s New tab work end-to-end',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     final store = TournamentStore();
@@ -363,64 +363,111 @@ void main() {
     );
     final auth = _FakeOrganizerAuthStore();
 
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(size: Size(400, 860)),
-        child: MaterialApp(
-          theme: AppTheme.dark(),
-          home: AnimatedBuilder(
-            animation: store,
-            builder: (_, __) => OrganizerShell(
-              authStore: auth,
-              tournamentStore: store,
-            ),
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: AnimatedBuilder(
+          animation: store,
+          builder: (_, __) => OrganizerShell(
+            authStore: auth,
+            tournamentStore: store,
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
+    // Verify What's New tab & v1.1 highlights
+    await tester.tap(find.byIcon(Icons.new_releases_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text("What's New"), findsWidgets);
+    expect(find.text('AI Auto Detect'), findsOneWidget);
+    expect(find.text('New Rapid Mode Point Enter'), findsOneWidget);
+    expect(find.text('More Themes'), findsOneWidget);
+    expect(find.text('Inferno Blaze'), findsOneWidget);
+
     await tester.tap(find.byIcon(Icons.scoreboard_rounded));
     await tester.pumpAndSettle();
 
     expect(find.text('Team List'), findsOneWidget);
-    expect(find.text('Rank #1-3'), findsOneWidget);
+    expect(find.text('Rapid Mode'), findsOneWidget);
 
-    await tester.tap(find.text('Rank #1-3'));
+    await tester.tap(find.text('Rapid Mode'));
     await tester.pumpAndSettle();
 
     expect(find.text('#1 BOOYAH'), findsOneWidget);
+    expect(find.text('Which team took Booyah?'), findsOneWidget);
+
+    // Select Squad Alpha -> Total Kills? pops up from bottom
     await tester.tap(find.text('Squad Alpha'));
     await tester.pumpAndSettle();
+    expect(find.text('Total Kills?'), findsOneWidget);
     expect(store.activeTournament!.matches.first.entries.values
         .firstWhere((e) => e.placement == 1)
         .teamId, store.activeTournament!.teams[0].id);
 
-    // Tapping #2 when 2 squads remain auto-fills #3 cleanly
-    await tester.tap(find.text('Squad Bravo'));
+    // Tap '1' and '2' on keypad -> 12 kills, then advance to 2nd place
+    await tester.tap(find.text('1'));
+    await tester.tap(find.text('2'));
     await tester.pumpAndSettle();
-    final entriesAfterAuto = store.activeTournament!.matches.first.entries;
-    expect(entriesAfterAuto[store.activeTournament!.teams[1].id]?.placement, 2);
-    expect(entriesAfterAuto[store.activeTournament!.teams[2].id]?.placement, 3);
-    expect(find.text('All 3 placements locked. Tap any kill number to quick-set kills.'), findsOneWidget);
-
-    // Undo restores before the #2+#3 auto-fill batch
-    await tester.tap(find.text('Undo'));
-    await tester.pumpAndSettle();
-    expect(
-      store.activeTournament!.matches.first.entries[store.activeTournament!.teams[2].id]?.placement,
-      isNull,
-    );
-
-    // Tap kills number to open Quick Kills Picker and select 12 in 1 tap
-    await tester.tap(find.text('0').first);
-    await tester.pumpAndSettle();
-    expect(find.text('Kills · #1 · Squad Alpha'), findsOneWidget);
-    await tester.tap(find.text('12'));
+    await tester.tap(find.text('Next · 2nd Place'));
     await tester.pumpAndSettle();
     expect(
       store.activeTournament!.matches.first.entries[store.activeTournament!.teams[0].id]?.kills,
       12,
     );
+    expect(find.text('Which team placed 2nd?'), findsOneWidget);
+
+    // Reverse goes back to Total Kills? for Squad Alpha (12 kills preserved)
+    await tester.tap(find.text('Reverse'));
+    await tester.pumpAndSettle();
+    expect(find.text('Total Kills?'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+
+    // Reverse again returns to Booyah selection and clears placement
+    await tester.tap(find.text('Reverse'));
+    await tester.pumpAndSettle();
+    expect(find.text('Which team took Booyah?'), findsOneWidget);
+    expect(
+      store.activeTournament!.matches.first.entries[store.activeTournament!.teams[0].id]?.placement,
+      isNull,
+    );
+
+    // Redo x2 restores #1 (12 kills) and advances to 2nd pick
+    await tester.tap(find.text('Redo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Redo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Which team placed 2nd?'), findsOneWidget);
+
+    // Pick 2nd (Bravo, 5 kills) -> automatically loads sole 3rd team (Charlie) into Total Kills?
+    await tester.tap(find.text('Squad Bravo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('5'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Next · 3rd Place'));
+    await tester.pumpAndSettle();
+    expect(find.text('3RD PLACE SQUAD'), findsOneWidget);
+    expect(find.text('Total Kills?'), findsOneWidget);
+
+    // Enter 3 kills for 3rd place and Finish -> returns to editable Team List
+    await tester.tap(find.text('3'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Finish & Edit List'));
+    await tester.pumpAndSettle();
+
+    final finalEntries = store.activeTournament!.matches.first.entries;
+    expect(finalEntries[store.activeTournament!.teams[0].id]?.placement, 1);
+    expect(finalEntries[store.activeTournament!.teams[0].id]?.kills, 12);
+    expect(finalEntries[store.activeTournament!.teams[1].id]?.placement, 2);
+    expect(finalEntries[store.activeTournament!.teams[1].id]?.kills, 5);
+    expect(finalEntries[store.activeTournament!.teams[2].id]?.placement, 3);
+    expect(finalEntries[store.activeTournament!.teams[2].id]?.kills, 3);
+    // Editable in normal Team List too
+    expect(find.text('SLOT · SQUAD'), findsOneWidget);
   });
 }

@@ -293,3 +293,34 @@ input[type=number] {
 .studio-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(245, 158, 11, 0.48);
 }
+
+/* Guided Rapid Mode animations (selected squad rises up, Total Kills? pops up from bottom) */
+@keyframes espSpotRise {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes espPopupBottom {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-spot-rise {
+  animation: espSpotRise 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-popup-bottom {
+  animation: espPopupBottom 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}

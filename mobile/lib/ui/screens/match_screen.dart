@@ -9,6 +9,7 @@ import '../../theme/app_theme.dart';
 import '../sheets/scan_screenshot_sheet.dart';
 import '../sheets/squad_players_sheet.dart';
 import '../widgets/app_components.dart';
+import '../widgets/rapid_entry_wizard.dart';
 
 class MatchScreen extends StatefulWidget {
   final TournamentStore store;
@@ -37,11 +38,10 @@ class MatchScreen extends StatefulWidget {
 class _MatchScreenState extends State<MatchScreen> {
   int _tab = 0; // 0 = Scorecard, 1 = Standings
   int _standingsScope = 0; // 0 = Overall, 1 = This Match
-  bool _rapidMode = false; // false = Team List, true = Rank #1-#N
+  bool _rapidMode = false; // false = Team List, true = Rapid Mode
   String? _selectedMatchId;
   final Map<String, List<List<({String teamId, int? placement, int kills})>>>
       _undoStacksByMatch = {};
-  final Map<String, String?> _lastPickedByMatch = {};
 
   void _pushUndoSnapshot(
     TournamentRecord tournament,
@@ -61,17 +61,6 @@ class _MatchScreenState extends State<MatchScreen> {
     if (stack.length > 20) {
       stack.removeAt(0);
     }
-    _lastPickedByMatch[match.id] = highlightedTeamId;
-  }
-
-  void _undoLastPlacement(MatchRecord match) {
-    final stack = _undoStacksByMatch[match.id];
-    if (match.isCompleted || stack == null || stack.isEmpty) return;
-    HapticFeedback.selectionClick();
-    final prev = stack.removeLast();
-    _lastPickedByMatch[match.id] = null;
-    widget.store.applyBatchMatchResults(matchId: match.id, entries: prev);
-    setState(() {});
   }
 
   Future<void> _openPlayersSheet(TournamentRecord tournament) async {
@@ -808,33 +797,42 @@ class _MatchScreenState extends State<MatchScreen> {
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.borderSubtle),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _ModeChip(
-                          label: 'Team List',
-                          icon: Icons.format_list_numbered_rounded,
-                          selected: !_rapidMode,
-                          onTap: () => setState(() => _rapidMode = false),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.borderSubtle),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _ModeChip(
+                                label: 'Team List',
+                                icon: Icons.format_list_numbered_rounded,
+                                selected: !_rapidMode,
+                                onTap: () => setState(() => _rapidMode = false),
+                              ),
+                              const SizedBox(width: 2),
+                              _ModeChip(
+                                label: 'Rapid Mode',
+                                icon: Icons.bolt_rounded,
+                                selected: _rapidMode,
+                                onTap: () => setState(() => _rapidMode = true),
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(width: 2),
-                        _ModeChip(
-                          label: 'Rank #1-$teamCount',
-                          icon: Icons.bolt_rounded,
-                          selected: _rapidMode,
-                          onTap: () => setState(() => _rapidMode = true),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   if (canAutoFillLast)
                     GestureDetector(
                       onTap: () {
@@ -1328,611 +1326,16 @@ class _MatchScreenState extends State<MatchScreen> {
     TournamentRecord tournament,
     MatchRecord activeMatch,
   ) {
-    final teamCount = tournament.teams.length;
-    final slotNumberById = <String, int>{
-      for (int i = 0; i < tournament.teams.length; i++)
-        tournament.teams[i].id: i + 1,
-    };
-    final byRank = <int, Team>{};
-    final unplaced = <Team>[];
-
-    for (final tm in tournament.teams) {
-      final p = activeMatch.entries[tm.id]?.placement;
-      if (p != null && p >= 1 && p <= teamCount && !byRank.containsKey(p)) {
-        byRank[p] = tm;
-      } else {
-        unplaced.add(tm);
-      }
-    }
-
-    int? nextOpenRank;
-    for (int r = 1; r <= teamCount; r++) {
-      if (!byRank.containsKey(r)) {
-        nextOpenRank = r;
-        break;
-      }
-    }
-
-    final placedEntries = byRank.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    final undoStack = _undoStacksByMatch[activeMatch.id] ?? const [];
-    final lastPickedId = _lastPickedByMatch[activeMatch.id];
-
-    void assignNextRank(Team chosen) {
-      if (activeMatch.isCompleted || nextOpenRank == null) return;
-      HapticFeedback.selectionClick();
-      _pushUndoSnapshot(tournament, activeMatch, highlightedTeamId: chosen.id);
-      final chosenKills = activeMatch.entries[chosen.id]?.kills ?? 0;
-
-      // Auto-fill the last remaining squad when only 2 unplaced squads remain
-      final remainingAfter =
-          unplaced.where((u) => u.id != chosen.id).toList();
-      final openRanksAfter = [
-        for (int r = 1; r <= teamCount; r++)
-          if (!byRank.containsKey(r) && r != nextOpenRank) r,
-      ];
-
-      if (remainingAfter.length == 1 && openRanksAfter.length == 1) {
-        final lastSquad = remainingAfter.first;
-        final lastKills = activeMatch.entries[lastSquad.id]?.kills ?? 0;
-        widget.store.applyBatchMatchResults(
-          matchId: activeMatch.id,
-          entries: [
-            (
-              teamId: chosen.id,
-              placement: nextOpenRank,
-              kills: chosenKills,
-            ),
-            (
-              teamId: lastSquad.id,
-              placement: openRanksAfter.first,
-              kills: lastKills,
-            ),
-          ],
-        );
-      } else {
-        widget.store.updateMatchEntry(
-          matchId: activeMatch.id,
-          teamId: chosen.id,
-          placement: nextOpenRank,
-          kills: chosenKills,
-        );
-      }
-    }
-
-    void resetAllRanks() {
-      if (activeMatch.isCompleted || byRank.isEmpty) return;
-      HapticFeedback.mediumImpact();
-      _pushUndoSnapshot(tournament, activeMatch, highlightedTeamId: null);
-      widget.store.applyBatchMatchResults(
-        matchId: activeMatch.id,
-        entries: [
-          for (final tm in tournament.teams)
-            (
-              teamId: tm.id,
-              placement: null,
-              kills: activeMatch.entries[tm.id]?.kills ?? 0,
-            ),
-        ],
-      );
-    }
-
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      children: [
-        if (!activeMatch.isCompleted &&
-            nextOpenRank != null &&
-            unplaced.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceElevated,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.accentBorder),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: nextOpenRank == 1
-                              ? AppColors.accent
-                              : AppColors.accentSurface,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: nextOpenRank == 1
-                                ? AppColors.accent
-                                : AppColors.accentBorder,
-                          ),
-                        ),
-                        child: Text(
-                          nextOpenRank == 1
-                              ? '#1 BOOYAH'
-                              : '#$nextOpenRank',
-                          style: kTabularNumbers.copyWith(
-                            color: nextOpenRank == 1
-                                ? AppColors.inkOnAccent
-                                : AppColors.accentBright,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Tap squad for #$nextOpenRank',
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              '+${getPlacementPoints(nextOpenRank, tournament.settings.pointSystem)} placement pts',
-                              style: kTabularNumbers.copyWith(
-                                color: AppColors.textMuted,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (undoStack.isNotEmpty)
-                        GestureDetector(
-                          onTap: () => _undoLastPlacement(activeMatch),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.inputFill,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.borderStrong),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.undo_rounded,
-                                  size: 14,
-                                  color: AppColors.textPrimary,
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Undo',
-                                  style: TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      if (byRank.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        GestureDetector(
-                          onTap: resetAllRanks,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.inputFill,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.borderSubtle),
-                            ),
-                            child: const Text(
-                              'Reset',
-                              style: TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 168),
-                    child: GridView.builder(
-                      padding: EdgeInsets.zero,
-                      shrinkWrap: true,
-                      physics: unplaced.length > 6
-                          ? const BouncingScrollPhysics()
-                          : const NeverScrollableScrollPhysics(),
-                      itemCount: unplaced.length,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount:
-                            MediaQuery.of(context).size.width >= 520 ? 3 : 2,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        mainAxisExtent: 40,
-                      ),
-                      itemBuilder: (_, idx) {
-                        final tm = unplaced[idx];
-                        final slotNum = slotNumberById[tm.id] ?? (idx + 1);
-                        return GestureDetector(
-                          onTap: () => assignNextRank(tm),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            decoration: BoxDecoration(
-                              color: AppColors.inputFill,
-                              borderRadius: BorderRadius.circular(11),
-                              border: Border.all(color: AppColors.borderStrong),
-                            ),
-                            child: Row(
-                              children: [
-                                Text(
-                                  '$slotNum'.padLeft(2, '0'),
-                                  style: kTabularNumbers.copyWith(
-                                    color: AppColors.textMuted,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                SquadBadge(
-                                  teamName: tm.name,
-                                  shortCode: tm.shortCode,
-                                  logoUrl: tm.logoUrl,
-                                  size: 22,
-                                ),
-                                const SizedBox(width: 7),
-                                Expanded(
-                                  child: Text(
-                                    tm.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else if (!activeMatch.isCompleted && byRank.length == teamCount)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-              decoration: BoxDecoration(
-                color: AppColors.emeraldSurface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0x5522C55E)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.check_circle_rounded,
-                    size: 18,
-                    color: AppColors.emerald,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'All $teamCount placements locked. Tap any kill number to quick-set kills.',
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  if (undoStack.isNotEmpty)
-                    GestureDetector(
-                      onTap: () => _undoLastPlacement(activeMatch),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child: Text(
-                          'Undo',
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                  GestureDetector(
-                    onTap: resetAllRanks,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      child: Text(
-                        'Reset',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-        // Unified Placed Standings Card (No wall of 11 empty boxes)
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.borderSubtle),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-                decoration: const BoxDecoration(
-                  color: AppColors.surfaceElevated,
-                  border: Border(
-                    bottom: BorderSide(color: AppColors.borderSubtle),
-                  ),
-                ),
-                child: const Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'PLACED STANDINGS',
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.7,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      'KILLS (TAP #)',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.7,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (placedEntries.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                  child: Text(
-                    'No placements assigned yet. Tap the #1 Booyah squad above.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                )
-              else
-                ...List.generate(placedEntries.length, (i) {
-                  final rank = placedEntries[i].key;
-                  final team = placedEntries[i].value;
-                  final kills = activeMatch.entries[team.id]?.kills ?? 0;
-                  final res = calculateTeamMatchResult(
-                    team.id,
-                    rank,
-                    kills,
-                    tournament.settings.pointSystem,
-                  );
-                  final isJustPicked = lastPickedId == team.id;
-
-                  return Column(
-                    children: [
-                      if (i > 0)
-                        const Divider(height: 1, color: AppColors.borderSubtle),
-                      Container(
-                        color: isJustPicked || rank == 1
-                            ? AppColors.accentSurface
-                            : null,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        child: Row(
-                          children: [
-                            GestureDetector(
-                              onTap: activeMatch.isCompleted
-                                  ? null
-                                  : () => _openRankPicker(
-                                        tournament: tournament,
-                                        match: activeMatch,
-                                        team: team,
-                                        currentPlacement: rank,
-                                        currentKills: kills,
-                                        recordUndo: true,
-                                      ),
-                              child: Container(
-                                width: 38,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 7),
-                                decoration: BoxDecoration(
-                                  color: rank == 1
-                                      ? AppColors.accent
-                                      : AppColors.inputFill,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: rank == 1
-                                        ? AppColors.accent
-                                        : AppColors.borderStrong,
-                                  ),
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  '#$rank',
-                                  style: kTabularNumbers.copyWith(
-                                    color: rank == 1
-                                        ? AppColors.inkOnAccent
-                                        : AppColors.textPrimary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 9),
-                            SquadBadge(
-                              teamName: team.name,
-                              shortCode: team.shortCode,
-                              logoUrl: team.logoUrl,
-                              size: 30,
-                              highlight: rank == 1,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    team.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${res.totalPoints}p (${res.placementPoints}+${res.killPoints})',
-                                    style: kTabularNumbers.copyWith(
-                                      color: AppColors.textMuted,
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (!activeMatch.isCompleted)
-                              GestureDetector(
-                                onTap: () {
-                                  HapticFeedback.selectionClick();
-                                  _pushUndoSnapshot(tournament, activeMatch);
-                                  widget.store.updateMatchEntry(
-                                    matchId: activeMatch.id,
-                                    teamId: team.id,
-                                    placement: null,
-                                    kills: kills,
-                                  );
-                                },
-                                child: const Padding(
-                                  padding: EdgeInsets.all(6),
-                                  child: Icon(
-                                    Icons.close_rounded,
-                                    size: 16,
-                                    color: AppColors.textMuted,
-                                  ),
-                                ),
-                              ),
-                            _QuickKillStepper(
-                              kills: kills,
-                              enabled: !activeMatch.isCompleted,
-                              onDecrement: () {
-                                HapticFeedback.selectionClick();
-                                widget.store.updateMatchEntry(
-                                  matchId: activeMatch.id,
-                                  teamId: team.id,
-                                  placement: rank,
-                                  kills: kills - 1,
-                                );
-                              },
-                              onIncrement: () {
-                                HapticFeedback.selectionClick();
-                                widget.store.updateMatchEntry(
-                                  matchId: activeMatch.id,
-                                  teamId: team.id,
-                                  placement: rank,
-                                  kills: kills + 1,
-                                );
-                              },
-                              onTapNumber: () => _openQuickKillsPicker(
-                                match: activeMatch,
-                                team: team,
-                                placement: rank,
-                                currentKills: kills,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                }),
-              if (nextOpenRank != null && unplaced.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      top: BorderSide(color: AppColors.borderSubtle),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Up next: #$nextOpenRank',
-                        style: const TextStyle(
-                          color: AppColors.accentBright,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        '${unplaced.length} remaining · Tap a rank badge to swap',
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
+    return RapidEntryWizard(
+      tournament: tournament,
+      activeMatch: activeMatch,
+      store: widget.store,
+      onFinishedToTeamList: () {
+        if (!mounted) return;
+        setState(() {
+          _rapidMode = false;
+        });
+      },
     );
   }
 

@@ -9,7 +9,7 @@
 -keep class com.google.android.gms.internal.mlkit_vision_text_common.** { *; }
 -keep class com.google.android.gms.vision.** { *; }
 -dontwarn com.google.mlkit.**
--keep class com.esports.espcalc.esp_calc_mobile.MainActivity {
+-keep class com.mroppy.espcalc.MainActivity {
     public void configureFlutterEngine(...);
 }
 -keepclassmembers class * {

@@ -145,3 +145,279 @@ export function snapshotMatchEntries(
     };
   });
 }
+
+export type RapidWizardPhase = 'pick_team' | 'enter_kills' | 'done';
+
+export interface RapidWizardSnapshot {
+  entries: BatchEntryUpdate[];
+  rank: number;
+  phase: RapidWizardPhase;
+  selectedTeamId: string | null;
+  draftKills: number;
+}
+
+export interface RapidWizardState {
+  rank: number;
+  phase: RapidWizardPhase;
+  selectedTeamId: string | null;
+  draftKills: number;
+  reverseStack: RapidWizardSnapshot[];
+  redoStack: RapidWizardSnapshot[];
+}
+
+export function ordinalRankLabel(rank: number): string {
+  const mod100 = rank % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${rank}th`;
+  switch (rank % 10) {
+    case 1:
+      return `${rank}st`;
+    case 2:
+      return `${rank}nd`;
+    case 3:
+      return `${rank}rd`;
+    default:
+      return `${rank}th`;
+  }
+}
+
+export function rapidPromptHeadline(rank: number): string {
+  if (rank === 1) return 'Which team took Booyah?';
+  return `Which team placed ${ordinalRankLabel(rank)}?`;
+}
+
+export function createInitialRapidState(
+  teams: Team[],
+  match: Match
+): RapidWizardState {
+  const summary = computeMatchScorecardSummary(teams, match);
+  if (
+    match.isCompleted ||
+    summary.unassignedRanks.length === 0 ||
+    summary.unplacedTeams.length === 0
+  ) {
+    return {
+      rank: teams.length,
+      phase: 'done',
+      selectedTeamId: null,
+      draftKills: 0,
+      reverseStack: [],
+      redoStack: [],
+    };
+  }
+  const nextRank = summary.unassignedRanks[0];
+  if (
+    summary.unassignedRanks.length === 1 &&
+    summary.unplacedTeams.length === 1
+  ) {
+    const onlyTeam = summary.unplacedTeams[0];
+    return {
+      rank: nextRank,
+      phase: 'enter_kills',
+      selectedTeamId: onlyTeam.id,
+      draftKills: match.entries[onlyTeam.id]?.kills ?? 0,
+      reverseStack: [],
+      redoStack: [],
+    };
+  }
+  return {
+    rank: nextRank,
+    phase: 'pick_team',
+    selectedTeamId: null,
+    draftKills: 0,
+    reverseStack: [],
+    redoStack: [],
+  };
+}
+
+export function pickRapidTeam(params: {
+  state: RapidWizardState;
+  teams: Team[];
+  match: Match;
+  teamId: string;
+}): { nextState: RapidWizardState; updates: BatchEntryUpdate[] } {
+  const { state, teams, match, teamId } = params;
+  const prevSnapshot: RapidWizardSnapshot = {
+    entries: snapshotMatchEntries(teams, match),
+    rank: state.rank,
+    phase: 'pick_team',
+    selectedTeamId: null,
+    draftKills: 0,
+  };
+  const updates = buildSwapOrAssignRankBatch({
+    teams,
+    match,
+    targetTeamId: teamId,
+    targetRank: state.rank,
+  });
+  const currentKills = match.entries[teamId]?.kills ?? 0;
+
+  return {
+    nextState: {
+      rank: state.rank,
+      phase: 'enter_kills',
+      selectedTeamId: teamId,
+      draftKills: currentKills,
+      reverseStack: [...state.reverseStack, prevSnapshot],
+      redoStack: [],
+    },
+    updates,
+  };
+}
+
+export function confirmRapidKills(params: {
+  state: RapidWizardState;
+  teams: Team[];
+  match: Match;
+}): {
+  nextState: RapidWizardState;
+  updates: BatchEntryUpdate[];
+  completedAll: boolean;
+} {
+  const { state, teams, match } = params;
+  const teamId = state.selectedTeamId;
+  if (!teamId) {
+    return { nextState: state, updates: [], completedAll: false };
+  }
+
+  const prevSnapshot: RapidWizardSnapshot = {
+    entries: snapshotMatchEntries(teams, match),
+    rank: state.rank,
+    phase: 'enter_kills',
+    selectedTeamId: teamId,
+    draftKills: state.draftKills,
+  };
+
+  const sanitizedKills = Math.max(0, Math.floor(state.draftKills));
+  const committedUpdate: BatchEntryUpdate = {
+    teamId,
+    placement: state.rank,
+    kills: sanitizedKills,
+  };
+
+  // Simulate post-commit entries to see what ranks/teams remain
+  const simulatedMatch: Match = {
+    ...match,
+    entries: {
+      ...match.entries,
+      [teamId]: committedUpdate,
+    },
+  };
+  const summary = computeMatchScorecardSummary(teams, simulatedMatch);
+
+  if (
+    summary.unassignedRanks.length === 0 ||
+    summary.unplacedTeams.length === 0
+  ) {
+    return {
+      nextState: {
+        rank: state.rank,
+        phase: 'done',
+        selectedTeamId: null,
+        draftKills: 0,
+        reverseStack: [...state.reverseStack, prevSnapshot],
+        redoStack: [],
+      },
+      updates: [committedUpdate],
+      completedAll: true,
+    };
+  }
+
+  const nextRank = summary.unassignedRanks[0];
+  // If only 1 unplaced team and 1 open rank remain, assign it automatically and ask its Total Kills?
+  if (
+    summary.unassignedRanks.length === 1 &&
+    summary.unplacedTeams.length === 1
+  ) {
+    const soleTeam = summary.unplacedTeams[0];
+    const soleUpdate: BatchEntryUpdate = {
+      teamId: soleTeam.id,
+      placement: nextRank,
+      kills: match.entries[soleTeam.id]?.kills ?? 0,
+    };
+    return {
+      nextState: {
+        rank: nextRank,
+        phase: 'enter_kills',
+        selectedTeamId: soleTeam.id,
+        draftKills: soleUpdate.kills,
+        reverseStack: [...state.reverseStack, prevSnapshot],
+        redoStack: [],
+      },
+      updates: [committedUpdate, soleUpdate],
+      completedAll: false,
+    };
+  }
+
+  return {
+    nextState: {
+      rank: nextRank,
+      phase: 'pick_team',
+      selectedTeamId: null,
+      draftKills: 0,
+      reverseStack: [...state.reverseStack, prevSnapshot],
+      redoStack: [],
+    },
+    updates: [committedUpdate],
+    completedAll: false,
+  };
+}
+
+export function reverseRapidStep(params: {
+  state: RapidWizardState;
+  teams: Team[];
+  match: Match;
+}): { nextState: RapidWizardState; updates: BatchEntryUpdate[] } | null {
+  const { state, teams, match } = params;
+  if (state.reverseStack.length === 0) return null;
+
+  const target = state.reverseStack[state.reverseStack.length - 1];
+  const redoSnap: RapidWizardSnapshot = {
+    entries: snapshotMatchEntries(teams, match),
+    rank: state.rank,
+    phase: state.phase,
+    selectedTeamId: state.selectedTeamId,
+    draftKills: state.draftKills,
+  };
+
+  return {
+    nextState: {
+      rank: target.rank,
+      phase: target.phase,
+      selectedTeamId: target.selectedTeamId,
+      draftKills: target.draftKills,
+      reverseStack: state.reverseStack.slice(0, -1),
+      redoStack: [...state.redoStack, redoSnap],
+    },
+    updates: target.entries,
+  };
+}
+
+export function redoRapidStep(params: {
+  state: RapidWizardState;
+  teams: Team[];
+  match: Match;
+}): { nextState: RapidWizardState; updates: BatchEntryUpdate[] } | null {
+  const { state, teams, match } = params;
+  if (state.redoStack.length === 0) return null;
+
+  const target = state.redoStack[state.redoStack.length - 1];
+  const reverseSnap: RapidWizardSnapshot = {
+    entries: snapshotMatchEntries(teams, match),
+    rank: state.rank,
+    phase: state.phase,
+    selectedTeamId: state.selectedTeamId,
+    draftKills: state.draftKills,
+  };
+
+  return {
+    nextState: {
+      rank: target.rank,
+      phase: target.phase,
+      selectedTeamId: target.selectedTeamId,
+      draftKills: target.draftKills,
+      reverseStack: [...state.reverseStack, reverseSnap],
+      redoStack: state.redoStack.slice(0, -1),
+    },
+    updates: target.entries,
+  };
+}

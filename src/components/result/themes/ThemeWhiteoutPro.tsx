@@ -720,7 +720,7 @@ export const ThemeWhiteoutPro: React.FC<GraphicThemeProps> = ({
               className="whitespace-nowrap font-headline text-[12.5px] font-black italic uppercase tracking-[0.12em] text-white"
               style={{ transform: 'skewX(14deg)' }}
             >
-              ESP CALC BROADCAST &bull; MADE BY MR. OPPY
+              ESPCALC BROADCAST &bull; MADE BY MR. OPPY
             </div>
           </div>
         </footer>

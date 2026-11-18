@@ -130,7 +130,7 @@ export const LoginView: React.FC = () => {
             <EspCalcLogoMark size={44} />
             <div>
               <div className="text-lg font-extrabold tracking-tight text-white leading-none">
-                ESP CALC
+                EspCalc
               </div>
               <div className="mt-1 text-[10px] font-semibold tracking-[0.28em] text-slate-300">
                 BROADCAST STUDIO

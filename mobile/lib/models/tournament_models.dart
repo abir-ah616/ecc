@@ -1,6 +1,17 @@
 enum TournamentMode { scrim, championRush }
 
-enum ThemePreset { v2, scarlet, volt, whiteout, blue, gold, eclipse }
+enum ThemePreset {
+  v2,
+  scarlet,
+  volt,
+  whiteout,
+  blue,
+  gold,
+  eclipse,
+  inferno,
+  obsidian,
+  amethyst,
+}
 
 enum StandingsViewMode { overall, singleMatch }
 

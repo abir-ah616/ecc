@@ -76,6 +76,33 @@ export const GRAPHIC_THEMES: GraphicThemeMeta[] = [
     thumbTo: '#EAB308',
     thumbBorder: 'rgba(234, 179, 8, 0.5)',
   },
+  {
+    id: 'inferno',
+    label: 'Inferno Blaze',
+    swatchColor: '#FF5500',
+    swatchSecondary: '#FFB703',
+    thumbFrom: '#9A3412',
+    thumbTo: '#FF5500',
+    thumbBorder: 'rgba(255, 85, 0, 0.55)',
+  },
+  {
+    id: 'obsidian',
+    label: 'Obsidian Noir',
+    swatchColor: '#E2E8F0',
+    swatchSecondary: '#475569',
+    thumbFrom: '#1E293B',
+    thumbTo: '#CBD5E1',
+    thumbBorder: 'rgba(226, 232, 240, 0.5)',
+  },
+  {
+    id: 'amethyst',
+    label: 'Royal Amethyst',
+    swatchColor: '#A855F7',
+    swatchSecondary: '#E879F9',
+    thumbFrom: '#581C87',
+    thumbTo: '#C084FC',
+    thumbBorder: 'rgba(168, 85, 247, 0.55)',
+  },
 ];
 
 export const THEME_META_MAP: Record<ThemePreset, GraphicThemeMeta> =
@@ -94,6 +121,9 @@ export function resolveThemePreset(raw?: string | null): ThemePreset {
     case 'blue':
     case 'gold':
     case 'eclipse':
+    case 'inferno':
+    case 'obsidian':
+    case 'amethyst':
       return raw;
     case 'crimson':
       return 'scarlet';

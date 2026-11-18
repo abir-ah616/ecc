@@ -7,7 +7,10 @@ export type ThemePreset =
   | 'whiteout'
   | 'blue'
   | 'gold'
-  | 'eclipse';
+  | 'eclipse'
+  | 'inferno'
+  | 'obsidian'
+  | 'amethyst';
 
 export type StandingsViewMode = 'OVERALL' | 'SINGLE_MATCH';
 
