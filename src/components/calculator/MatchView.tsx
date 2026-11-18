@@ -17,6 +17,9 @@ import {
   ListOrdered,
   X,
   Users,
+  Undo2,
+  ChevronDown,
+  RotateCcw,
 } from 'lucide-react';
 import {
   useTournamentStore,
@@ -24,14 +27,35 @@ import {
 } from '../../store/tournamentStore';
 import { useAuthStore } from '../../store/authStore';
 import { LiveStandingsPanel } from './LiveStandingsPanel';
+import { RankPickerPopover } from './RankPickerPopover';
 import { ScanScreenshotModal } from './ScanScreenshotModal';
 import { SquadPlayersModal } from './SquadPlayersModal';
 import { getPlacementPoints, getKillPoints } from '../../lib/scoring';
 import { formatStandingsTextSummary } from '../../lib/rosterHelpers';
-import type { Match } from '../../types/tournament';
+import {
+  buildSwapOrAssignRankBatch,
+  computeMatchScorecardSummary,
+  snapshotMatchEntries,
+  type BatchEntryUpdate,
+} from '../../lib/scorecardHelpers';
+import type { Match, Team } from '../../types/tournament';
 
 interface MatchViewProps {
   match: Match;
+}
+
+interface ActiveRankPopover {
+  team: Team;
+  currentRank: number | null;
+  anchorRect: DOMRect;
+}
+
+function rankBadgeTone(rank: number, hasTeam = true): string {
+  if (!hasTeam) return 'glass-input text-slate-400';
+  if (rank === 1) return 'bg-amber-500 text-zinc-950';
+  if (rank === 2) return 'bg-slate-200/90 text-zinc-950';
+  if (rank === 3) return 'bg-amber-700/80 text-amber-50';
+  return 'glass-input text-slate-200 hover:border-amber-400/50';
 }
 
 export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
@@ -58,9 +82,24 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isPlayersOpen, setIsPlayersOpen] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
+  const [undoState, setUndoState] = useState<{
+    matchId: string;
+    stack: BatchEntryUpdate[][];
+    lastPickedTeamId: string | null;
+  }>({
+    matchId: match.id,
+    stack: [],
+    lastPickedTeamId: null,
+  });
+  const [rankPopover, setRankPopover] = useState<ActiveRankPopover | null>(null);
 
   const rankInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const killsInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const activeUndoStack =
+    undoState.matchId === match.id ? undoState.stack : [];
+  const highlightedTeamId =
+    undoState.matchId === match.id ? undoState.lastPickedTeamId : null;
 
   const standingsResult = getStandings();
   const cumulativeByTeam = useMemo(() => {
@@ -70,6 +109,29 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     }
     return map;
   }, [standingsResult]);
+
+  const slotNumberByTeamId = useMemo(() => {
+    const map = new Map<string, number>();
+    teams.forEach((t, idx) => map.set(t.id, idx + 1));
+    return map;
+  }, [teams]);
+
+  const summary = useMemo(
+    () => computeMatchScorecardSummary(teams, match),
+    [teams, match]
+  );
+
+  const {
+    rankedCount,
+    totalKills,
+    duplicatePlacements,
+    unassignedRanks,
+    nextOpenRank,
+    teamByRank,
+    unplacedTeams,
+    placedRows,
+    hasErrors,
+  } = summary;
 
   const currentIndex = matches.findIndex((m) => m.id === match.id);
   const nextMatchInList =
@@ -84,68 +146,72 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
   const maxMatchesReached = matches.length >= maxAllowed;
   const canAddMatch = !standingsResult.tournamentConcluded && !maxMatchesReached;
 
-  // Validate duplicate placements and find unassigned ranks
-  const { duplicatePlacements, unassignedRanks, hasErrors, teamByRank } =
-    useMemo(() => {
-      const placementCounts = new Map<number, number>();
-      const assigned = new Set<number>();
-      const byRank = new Map<number, string>();
-
-      for (const team of teams) {
-        const entry = match.entries[team.id];
-        if (entry && entry.placement !== null && entry.placement > 0) {
-          assigned.add(entry.placement);
-          if (!byRank.has(entry.placement)) {
-            byRank.set(entry.placement, team.id);
-          }
-          placementCounts.set(
-            entry.placement,
-            (placementCounts.get(entry.placement) || 0) + 1
-          );
-        }
-      }
-
-      const duplicates = new Set<number>();
-      for (const [place, count] of placementCounts.entries()) {
-        if (count > 1) duplicates.add(place);
-      }
-
-      const missing: number[] = [];
-      for (let rank = 1; rank <= teams.length; rank += 1) {
-        if (!assigned.has(rank)) missing.push(rank);
-      }
-
+  const pushUndoSnapshot = (nextHighlightedId: string | null = null) => {
+    const snap = snapshotMatchEntries(teams, match);
+    setUndoState((prev) => {
+      const baseStack = prev.matchId === match.id ? prev.stack : [];
       return {
-        duplicatePlacements: duplicates,
-        unassignedRanks: missing,
-        hasErrors: duplicates.size > 0,
-        teamByRank: byRank,
+        matchId: match.id,
+        stack: [...baseStack.slice(-19), snap],
+        lastPickedTeamId: nextHighlightedId,
       };
-    }, [teams, match.entries]);
+    });
+  };
 
-  const unplacedTeams = useMemo(
-    () =>
-      teams.filter((t) => {
-        const p = match.entries[t.id]?.placement;
-        return p === null || p === undefined || p <= 0;
-      }),
-    [teams, match.entries]
-  );
+  const handleUndo = () => {
+    if (match.isCompleted || activeUndoStack.length === 0) return;
+    const prevSnapshot = activeUndoStack[activeUndoStack.length - 1];
+    applyBatchMatchResults(match.id, prevSnapshot);
+    setUndoState((prev) => ({
+      matchId: match.id,
+      stack: prev.matchId === match.id ? prev.stack.slice(0, -1) : [],
+      lastPickedTeamId: null,
+    }));
+  };
 
-  const activeRapidRank = unassignedRanks[0] ?? null;
+  const handleResetRanks = () => {
+    if (match.isCompleted || rankedCount === 0) return;
+    pushUndoSnapshot(null);
+    const cleared = teams.map((t) => ({
+      teamId: t.id,
+      placement: null,
+      kills: match.entries[t.id]?.kills ?? 0,
+    }));
+    applyBatchMatchResults(match.id, cleared);
+  };
+
+  const handleAutoFillLast = () => {
+    if (
+      match.isCompleted ||
+      unassignedRanks.length !== 1 ||
+      unplacedTeams.length !== 1
+    ) {
+      return;
+    }
+    const lastTeam = unplacedTeams[0];
+    const lastRank = unassignedRanks[0];
+    pushUndoSnapshot(lastTeam.id);
+    updateMatchEntry(
+      match.id,
+      lastTeam.id,
+      lastRank,
+      match.entries[lastTeam.id]?.kills ?? 0
+    );
+  };
 
   const handleRapidAssignTeam = (teamId: string) => {
-    if (activeRapidRank === null) return;
+    if (match.isCompleted || nextOpenRank === null) return;
+    pushUndoSnapshot(teamId);
     const currentKills = match.entries[teamId]?.kills ?? 0;
 
-    // If assigning the second-to-last team leaves only 1 unplaced team and 1 rank, auto-fill the last team too
+    // Auto-fill the last remaining squad when only 2 unplaced teams & 2 ranks remain
     if (unplacedTeams.length === 2 && unassignedRanks.length === 2) {
       const otherTeam = unplacedTeams.find((t) => t.id !== teamId);
       const lastRank = unassignedRanks[1];
       if (otherTeam && lastRank) {
         const updates = teams.map((t) => {
           if (t.id === teamId) {
-            return { teamId: t.id, placement: activeRapidRank, kills: currentKills };
+            return { teamId: t.id, placement: nextOpenRank, kills: currentKills };
           }
           if (t.id === otherTeam.id) {
             return {
@@ -163,23 +229,41 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
         });
         applyBatchMatchResults(match.id, updates);
         setTimeout(() => {
-          killsInputRefs.current[`rapid-${teamId}`]?.focus();
+          killsInputRefs.current[`rapid-${teamId}`]?.focus({ preventScroll: true });
           killsInputRefs.current[`rapid-${teamId}`]?.select();
-        }, 20);
+        }, 25);
         return;
       }
     }
 
-    updateMatchEntry(match.id, teamId, activeRapidRank, currentKills);
+    updateMatchEntry(match.id, teamId, nextOpenRank, currentKills);
     setTimeout(() => {
-      killsInputRefs.current[`rapid-${teamId}`]?.focus();
+      killsInputRefs.current[`rapid-${teamId}`]?.focus({ preventScroll: true });
       killsInputRefs.current[`rapid-${teamId}`]?.select();
-    }, 20);
+    }, 25);
   };
 
   const handleClearRapidRank = (teamId: string) => {
+    if (match.isCompleted) return;
+    pushUndoSnapshot(null);
     const entry = match.entries[teamId];
     updateMatchEntry(match.id, teamId, null, entry?.kills ?? 0);
+  };
+
+  const handleAssignOrSwapRank = (
+    teamId: string,
+    nextRank: number | null,
+    recordUndo = false
+  ) => {
+    if (match.isCompleted) return;
+    if (recordUndo) pushUndoSnapshot(teamId);
+    const updates = buildSwapOrAssignRankBatch({
+      teams,
+      match,
+      targetTeamId: teamId,
+      targetRank: nextRank,
+    });
+    applyBatchMatchResults(match.id, updates);
   };
 
   const handlePlacementChange = (teamId: string, val: string) => {
@@ -213,6 +297,19 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     };
     const next = Math.max(0, (entry.kills || 0) + delta);
     updateMatchEntry(match.id, teamId, entry.placement, next);
+  };
+
+  const openRankPopover = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    team: Team,
+    currentRank: number | null
+  ) => {
+    if (match.isCompleted) return;
+    setRankPopover({
+      team,
+      currentRank,
+      anchorRect: event.currentTarget.getBoundingClientRect(),
+    });
   };
 
   const handleCopyStandingsText = async () => {
@@ -271,6 +368,10 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
     : canAddMatch
     ? `Save & Start Match ${matches.length + 1}`
     : 'Save & Open Poster';
+
+  const progressPct =
+    teams.length > 0 ? Math.min(100, (rankedCount / teams.length) * 100) : 0;
+  const allPlacedCleanly = rankedCount === teams.length && !hasErrors;
 
   return (
     <div className="space-y-5 select-none">
@@ -351,8 +452,8 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
             mobilePane === 'entry' ? 'block' : 'hidden lg:block'
           }`}
         >
-          {/* Match Status, Mode Switcher & Quick Scan / Copy Toolbar */}
-          <div className="glass-panel rounded-2xl p-4 sm:p-5 space-y-3.5">
+          {/* Match Control Header & Progress Bar */}
+          <div className="glass-panel rounded-2xl p-4 sm:p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
                 <h2 className="text-base sm:text-lg font-bold text-white">
@@ -371,40 +472,12 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
-                {/* Slot vs Rapid #1-#12 Mode Switcher */}
-                <div className="glass-input inline-flex rounded-lg p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setEntryMode('slot')}
-                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                      entryMode === 'slot'
-                        ? 'bg-white/[0.12] text-white'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <ListOrdered className="h-3.5 w-3.5" />
-                    <span>Slots</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEntryMode('rapid')}
-                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                      entryMode === 'rapid'
-                        ? 'bg-amber-500 text-zinc-950 font-bold'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <Zap className="h-3.5 w-3.5" />
-                    <span>Rapid #1-{teams.length}</span>
-                  </button>
-                </div>
-
                 {canUseAiAuto && (
                   <>
                     <button
                       type="button"
                       onClick={() => setIsScanOpen(true)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
                         settings.autoResultFromScreenshot
                           ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
                           : 'glass-pill text-slate-200'
@@ -427,7 +500,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                       type="button"
                       onClick={() => setIsPlayersOpen(true)}
                       title="Add or edit squad team member IGNs for AI screenshot auto-matching"
-                      className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors"
+                      className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors cursor-pointer"
                     >
                       <Users className="h-3.5 w-3.5 text-amber-400" />
                       <span>Players</span>
@@ -439,7 +512,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   type="button"
                   onClick={handleCopyStandingsText}
                   title="Copy plain-text standings for WhatsApp / Discord"
-                  className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors"
+                  className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 transition-colors cursor-pointer"
                 >
                   {copiedSummary ? (
                     <>
@@ -458,7 +531,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                   <button
                     type="button"
                     onClick={() => reopenMatch(match.id)}
-                    className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors"
+                    className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors cursor-pointer"
                   >
                     <LockOpen className="h-3 w-3" />
                     <span>Mark Draft</span>
@@ -474,14 +547,14 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                           deleteMatch(match.id);
                           setConfirmDelete(false);
                         }}
-                        className="rounded bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-rose-500"
+                        className="rounded bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-rose-500 cursor-pointer"
                       >
                         Delete Match
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmDelete(false)}
-                        className="rounded px-2 py-1 text-[11px] text-slate-300 hover:text-white"
+                        className="rounded px-2 py-1 text-[11px] text-slate-300 hover:text-white cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -491,7 +564,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                       type="button"
                       onClick={() => setConfirmDelete(true)}
                       title={`Delete Match ${match.matchNumber}`}
-                      className="glass-pill flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-400 transition-colors"
+                      className="glass-pill flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-400 transition-colors cursor-pointer"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -499,404 +572,621 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
               </div>
             </div>
 
-            {hasErrors ? (
-              <div className="flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
-                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
-                <span>
-                  Duplicate rank:{' '}
-                  <strong className="text-white">
-                    {Array.from(duplicatePlacements)
-                      .sort((a, b) => a - b)
-                      .map((p) => `#${p}`)
-                      .join(', ')}
-                  </strong>
-                  . Every finished squad must have a unique placement.
-                </span>
+            {/* Entry Method Segmented Bar + Match Completion Meter */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+              <div className="glass-input grid grid-cols-2 sm:inline-flex rounded-xl p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setEntryMode('slot')}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    entryMode === 'slot'
+                      ? 'bg-amber-500 text-zinc-950 font-bold'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <ListOrdered className="h-3.5 w-3.5" />
+                  <span>Team List</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryMode('rapid')}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    entryMode === 'rapid'
+                      ? 'bg-amber-500 text-zinc-950 font-bold'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  <span>Rank #1–{teams.length}</span>
+                </button>
               </div>
-            ) : unassignedRanks.length > 0 &&
-              unassignedRanks.length < teams.length ? (
-              <div className="glass-tile rounded-xl px-3 py-2 text-[11px] text-slate-400">
-                Unassigned ranks:{' '}
-                <span className="font-medium text-slate-200 tabular-nums">
-                  {unassignedRanks.map((r) => `#${r}`).join(', ')}
-                </span>
+
+              <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5">
+                <div className="flex items-center gap-2 text-xs tabular-nums">
+                  <span
+                    className={`font-bold ${
+                      allPlacedCleanly ? 'text-emerald-400' : 'text-white'
+                    }`}
+                  >
+                    {rankedCount}/{teams.length} Ranked
+                  </span>
+                  <span className="text-slate-600">/</span>
+                  <span className="text-slate-300 font-medium">
+                    {totalKills} Kills
+                  </span>
+                </div>
+
+                {!match.isCompleted &&
+                  unassignedRanks.length === 1 &&
+                  unplacedTeams.length === 1 &&
+                  !hasErrors && (
+                    <button
+                      type="button"
+                      onClick={handleAutoFillLast}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/12 px-2.5 py-1 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer"
+                    >
+                      <Check className="h-3 w-3" />
+                      <span>Auto-fill #{unassignedRanks[0]}</span>
+                    </button>
+                  )}
               </div>
-            ) : unassignedRanks.length === 0 ? (
-              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/8 px-3 py-2 text-[11px] text-emerald-300">
-                All {teams.length} team placements assigned cleanly.
+            </div>
+
+            {/* Clean Progress Track */}
+            <div className="space-y-2">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#0B0E14]">
+                <div
+                  className={`h-full transition-all duration-200 ${
+                    allPlacedCleanly ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                  style={{ width: `${progressPct}%` }}
+                />
               </div>
-            ) : (
-              <p className="text-xs text-slate-400">
-                {entryMode === 'rapid'
-                  ? 'Tap squads in finish order (#1 Booyah -> #12) and enter kills.'
-                  : `Enter finish placement (1-${teams.length}) and eliminations (press Enter to jump next).`}
-              </p>
-            )}
+
+              {hasErrors ? (
+                <div className="flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                  <span>
+                    Duplicate rank:{' '}
+                    <strong className="text-white">
+                      {Array.from(duplicatePlacements)
+                        .sort((a, b) => a - b)
+                        .map((p) => `#${p}`)
+                        .join(', ')}
+                    </strong>
+                    . Use the rank picker dropdown on either row to swap cleanly.
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  {entryMode === 'rapid'
+                    ? 'Tap squads in finish order (#1 Booyah down to last), then type kills right in the row.'
+                    : 'Enter finish rank (or click the selector beside Rank to pick/swap) and team kills.'}
+                </p>
+              )}
+            </div>
           </div>
 
-          {/* RAPID #1 -> #N FINISH-ORDER SCORING MODE */}
+          {/* MODE 2: RANK ORDER #1 -> #N */}
           {entryMode === 'rapid' ? (
             <div className="space-y-4">
-              {activeRapidRank !== null && unplacedTeams.length > 0 && (
-                <div className="glass-panel rounded-2xl border-amber-500/35 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-extrabold text-zinc-950 tabular-nums">
-                        {activeRapidRank === 1
-                          ? '#1 BOOYAH'
-                          : `#${activeRapidRank}`}
-                      </span>
-                      <span className="text-xs font-semibold text-white">
-                        Tap squad that finished #{activeRapidRank}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 tabular-nums">
-                      {unplacedTeams.length} remaining
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {unplacedTeams.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => handleRapidAssignTeam(t.id)}
-                        className="glass-tile hover:border-amber-400/60 hover:bg-amber-500/10 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-white transition-colors cursor-pointer"
-                      >
-                        {t.logoUrl ? (
-                          <img
-                            src={t.logoUrl}
-                            alt=""
-                            className="h-5 w-5 rounded object-contain"
-                          />
-                        ) : (
-                          <span className="text-[10px] font-bold text-amber-400">
-                            {generateInitials(t.name)}
-                          </span>
-                        )}
-                        <span>{t.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Ordered #1..#N Assigned Rows */}
-              <div className="space-y-2">
-                {Array.from({ length: teams.length }, (_, i) => i + 1).map(
-                  (rank) => {
-                    const assignedTeamId = teamByRank.get(rank);
-                    const assignedTeam = assignedTeamId
-                      ? teams.find((t) => t.id === assignedTeamId)
-                      : undefined;
-                    const entry = assignedTeam
-                      ? match.entries[assignedTeam.id]
-                      : undefined;
-                    const kills = entry?.kills ?? 0;
-                    const totalPts = assignedTeam
-                      ? getPlacementPoints(rank, settings.pointSystem) +
-                        getKillPoints(kills, settings.pointSystem)
-                      : 0;
-
-                    return (
-                      <div
-                        key={rank}
-                        className={`flex items-center justify-between gap-3 rounded-xl p-3 ${
-                          assignedTeam
-                            ? rank === 1
-                              ? 'glass-panel border-amber-500/45 bg-amber-500/[0.08]'
-                              : 'glass-panel'
-                            : 'glass-tile opacity-65'
+              {!match.isCompleted &&
+              nextOpenRank !== null &&
+              unplacedTeams.length > 0 ? (
+                <div className="glass-panel rounded-2xl border-amber-500/35 p-4 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums shrink-0 ${
+                          nextOpenRank === 1
+                            ? 'bg-amber-500 text-zinc-950'
+                            : 'glass-accent text-amber-300'
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span
-                            className={`flex h-8 w-10 shrink-0 items-center justify-center rounded-lg text-xs font-extrabold tabular-nums ${
-                              rank === 1
-                                ? 'bg-amber-500 text-zinc-950'
-                                : 'glass-input text-slate-200'
-                            }`}
-                          >
-                            #{rank}
-                          </span>
-
-                          {assignedTeam ? (
-                            <div className="flex items-center gap-2 min-w-0">
-                              {assignedTeam.logoUrl && (
-                                <img
-                                  src={assignedTeam.logoUrl}
-                                  alt=""
-                                  className="h-6 w-6 rounded object-contain shrink-0"
-                                />
-                              )}
-                              <span className="truncate text-sm font-semibold text-white">
-                                {assignedTeam.name}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-500">
-                              Waiting for selection...
-                            </span>
-                          )}
+                        {nextOpenRank === 1 && <Crown className="h-3 w-3" />}
+                        {nextOpenRank === 1 ? '#1 BOOYAH' : `#${nextOpenRank}`}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-bold text-white truncate">
+                          Tap squad that finished #{nextOpenRank}
                         </div>
+                        <div className="text-[11px] text-slate-400 tabular-nums">
+                          +{getPlacementPoints(nextOpenRank, settings.pointSystem)} placement pts
+                        </div>
+                      </div>
+                    </div>
 
-                        {assignedTeam && (
-                          <div className="flex items-center gap-2.5 shrink-0">
-                            <div className="glass-input inline-flex items-center rounded-lg p-0.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleUndo}
+                        disabled={activeUndoStack.length === 0}
+                        title="Undo last rank pick"
+                        className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-200 disabled:opacity-35 transition-colors cursor-pointer"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        <span>Undo</span>
+                      </button>
+
+                      {rankedCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleResetRanks}
+                          title="Clear all assigned ranks"
+                          className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          <span>Reset</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Structured Slot-Ordered Squad Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {unplacedTeams.map((t) => {
+                      const slotNum = slotNumberByTeamId.get(t.id) ?? 0;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => handleRapidAssignTeam(t.id)}
+                          className="glass-input group flex min-h-[46px] items-center gap-2 rounded-xl px-2.5 py-2 text-left hover:border-amber-400/70 hover:bg-amber-500/[0.08] transition-colors cursor-pointer"
+                        >
+                          <span className="w-5 shrink-0 text-[11px] font-bold text-slate-500 tabular-nums group-hover:text-amber-300">
+                            {String(slotNum).padStart(2, '0')}
+                          </span>
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/[0.06] text-[10px] font-bold text-amber-300">
+                            {t.logoUrl ? (
+                              <img
+                                src={t.logoUrl}
+                                alt=""
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              generateInitials(t.name)
+                            )}
+                          </div>
+                          <span className="min-w-0 truncate text-xs font-semibold text-white">
+                            {t.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                allPlacedCleanly &&
+                !match.isCompleted && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-200">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <span>
+                        All {teams.length} ranks assigned — adjust kills below or save match.
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {activeUndoStack.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleUndo}
+                          className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-200 cursor-pointer"
+                        >
+                          <Undo2 className="h-3 w-3" />
+                          <span>Undo</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleResetRanks}
+                        className="glass-pill inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-300 hover:text-rose-300 cursor-pointer"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>Reset</span>
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
+
+              {/* Unified Placed Results Table */}
+              <div className="glass-panel overflow-hidden rounded-2xl">
+                <div className="flex items-center justify-between border-b border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <span>Placed Standings</span>
+                  <div className="flex items-center gap-7 pr-8">
+                    <span>Kills</span>
+                    <span className="w-11 text-right">Pts</span>
+                  </div>
+                </div>
+
+                {placedRows.length === 0 ? (
+                  <div className="px-4 py-10 text-center text-xs text-slate-400">
+                    No squads ranked yet. Tap the <strong className="text-amber-300">#1 Booyah</strong> squad above to begin.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-white/[0.06]">
+                    {placedRows.map(({ rank, team, entry }) => {
+                      const kills = entry.kills;
+                      const placementPts = getPlacementPoints(
+                        rank,
+                        settings.pointSystem
+                      );
+                      const killPts = getKillPoints(kills, settings.pointSystem);
+                      const totalPts = placementPts + killPts;
+                      const isDup = duplicatePlacements.has(rank);
+                      const isJustPicked = highlightedTeamId === team.id;
+
+                      return (
+                        <div
+                          key={`${rank}-${team.id}`}
+                          className={`flex items-center justify-between gap-2.5 px-3.5 sm:px-4 py-3 transition-colors ${
+                            isDup
+                              ? 'bg-rose-950/30'
+                              : isJustPicked
+                              ? 'bg-amber-500/[0.1]'
+                              : rank === 1
+                              ? 'bg-amber-500/[0.06]'
+                              : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <button
+                              type="button"
+                              disabled={match.isCompleted}
+                              onClick={(e) => openRankPopover(e, team, rank)}
+                              title="Click to swap or change rank"
+                              className={`flex h-9 w-11 shrink-0 items-center justify-center rounded-xl text-xs font-extrabold tabular-nums transition-colors cursor-pointer disabled:cursor-default ${
+                                isDup
+                                  ? 'bg-rose-500/25 border border-rose-500/60 text-rose-200'
+                                  : rankBadgeTone(rank)
+                              }`}
+                            >
+                              #{rank}
+                            </button>
+
+                            {team.logoUrl ? (
+                              <img
+                                src={team.logoUrl}
+                                alt=""
+                                className="h-7 w-7 shrink-0 rounded-lg object-contain bg-white/[0.04] p-0.5"
+                              />
+                            ) : (
+                              <div className="glass-input flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-slate-300">
+                                {generateInitials(team.name)}
+                              </div>
+                            )}
+
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate text-sm font-semibold text-white">
+                                  {team.name}
+                                </span>
+                                {rank === 1 && !isDup && (
+                                  <Crown className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 tabular-nums">
+                                {placementPts} pos + {killPts} kills
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                            <div className="glass-input inline-flex items-center rounded-xl p-0.5">
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleAdjustKills(assignedTeam.id, -1)
-                                }
-                                className="flex h-8 w-8 items-center justify-center rounded text-slate-300 hover:bg-white/10"
+                                disabled={match.isCompleted || kills <= 0}
+                                onClick={() => handleAdjustKills(team.id, -1)}
+                                aria-label={`Decrease kills for ${team.name}`}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-white/[0.08] disabled:opacity-35 cursor-pointer"
                               >
                                 <Minus className="h-3.5 w-3.5" />
                               </button>
                               <input
                                 ref={(el) => {
-                                  killsInputRefs.current[
-                                    `rapid-${assignedTeam.id}`
-                                  ] = el;
+                                  killsInputRefs.current[`rapid-${team.id}`] =
+                                    el;
                                 }}
                                 type="number"
                                 inputMode="numeric"
                                 min={0}
+                                disabled={match.isCompleted}
                                 value={kills}
                                 onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.currentTarget.blur();
+                                  }
+                                }}
                                 onChange={(e) =>
-                                  handleKillsChange(
-                                    assignedTeam.id,
-                                    e.target.value
-                                  )
+                                  handleKillsChange(team.id, e.target.value)
                                 }
+                                aria-label={`Kills for ${team.name}`}
                                 className="h-8 w-10 bg-transparent text-center text-sm font-bold text-white tabular-nums focus:outline-none"
                               />
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleAdjustKills(assignedTeam.id, 1)
-                                }
-                                className="flex h-8 w-8 items-center justify-center rounded text-slate-300 hover:bg-white/10"
+                                disabled={match.isCompleted}
+                                onClick={() => handleAdjustKills(team.id, 1)}
+                                aria-label={`Increase kills for ${team.name}`}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-white/[0.08] disabled:opacity-35 cursor-pointer"
                               >
                                 <Plus className="h-3.5 w-3.5" />
                               </button>
                             </div>
 
-                            <span className="w-12 text-right text-sm font-bold text-amber-300 tabular-nums">
+                            <span
+                              className={`w-11 text-right text-sm font-bold tabular-nums ${
+                                rank === 1 ? 'text-amber-300' : 'text-white'
+                              }`}
+                            >
                               {totalPts}p
                             </span>
 
                             <button
                               type="button"
-                              onClick={() =>
-                                handleClearRapidRank(assignedTeam.id)
-                              }
-                              aria-label={`Clear rank for ${assignedTeam.name}`}
-                              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-500/15 hover:text-rose-300"
+                              disabled={match.isCompleted}
+                              onClick={() => handleClearRapidRank(team.id)}
+                              aria-label={`Remove rank for ${team.name}`}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-30 cursor-pointer"
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
                           </div>
-                        )}
+                        </div>
+                      );
+                    })}
+
+                    {unassignedRanks.length > 0 && !match.isCompleted && (
+                      <div className="flex items-center justify-between px-4 py-2.5 bg-white/[0.015] text-xs text-slate-400">
+                        <span>
+                          Up next: <strong className="text-amber-300">#{unassignedRanks[0]}</strong>
+                        </span>
+                        <span className="tabular-nums">
+                          {unassignedRanks.length} placement{unassignedRanks.length === 1 ? '' : 's'} remaining
+                        </span>
                       </div>
-                    );
-                  }
+                    )}
+                  </div>
                 )}
               </div>
             </div>
           ) : (
-            /* CLASSIC SLOT ORDER WITH KEYBOARD NUMPAD ENTER FLOW */
-            <div className="space-y-2.5">
-              {teams.map((team, idx) => {
-                const entry = match.entries[team.id] || {
-                  teamId: team.id,
-                  placement: null,
-                  kills: 0,
-                };
-                const isDuplicate =
-                  entry.placement !== null &&
-                  duplicatePlacements.has(entry.placement);
-                const placementPts = getPlacementPoints(
-                  entry.placement,
-                  settings.pointSystem
-                );
-                const killPts = getKillPoints(entry.kills, settings.pointSystem);
-                const totalMatchPts = placementPts + killPts;
-                const isBooyah = entry.placement === 1 && !isDuplicate;
-                const overallPts = cumulativeByTeam.get(team.id) ?? 0;
-                const nextTeam = teams[idx + 1];
+            /* MODE 1: UNIFIED TEAM LIST SCORECARD */
+            <div className="glass-panel overflow-hidden rounded-2xl">
+              <div className="hidden sm:flex items-center justify-between border-b border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <span>Slot &amp; Squad</span>
+                <div className="flex items-center gap-3">
+                  <span className="w-24 text-center">Rank</span>
+                  <span className="w-[106px] text-center">Kills</span>
+                  <span className="w-14 text-right">Match</span>
+                </div>
+              </div>
 
-                return (
-                  <div
-                    key={team.id}
-                    className={`rounded-2xl p-3.5 sm:px-4 sm:py-3 transition-colors ${
-                      isDuplicate
-                        ? 'glass-panel border-rose-500/60 bg-rose-950/25'
-                        : isBooyah
-                        ? 'glass-panel border-amber-500/45 bg-amber-500/[0.08]'
-                        : 'glass-panel'
-                    }`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="flex items-center justify-between gap-2.5 min-w-0 flex-1">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="glass-input flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl text-xs font-bold text-slate-300">
-                            {team.logoUrl ? (
-                              <img
-                                src={team.logoUrl}
-                                alt=""
-                                className="h-full w-full object-contain p-0.5"
-                              />
-                            ) : (
-                              generateInitials(team.name)
-                            )}
-                          </div>
+              <div className="divide-y divide-white/[0.06]">
+                {teams.map((team, idx) => {
+                  const entry = match.entries[team.id] || {
+                    teamId: team.id,
+                    placement: null,
+                    kills: 0,
+                  };
+                  const isDuplicate =
+                    entry.placement !== null &&
+                    duplicatePlacements.has(entry.placement);
+                  const placementPts = getPlacementPoints(
+                    entry.placement,
+                    settings.pointSystem
+                  );
+                  const killPts = getKillPoints(entry.kills, settings.pointSystem);
+                  const totalMatchPts = placementPts + killPts;
+                  const isBooyah = entry.placement === 1 && !isDuplicate;
+                  const overallPts = cumulativeByTeam.get(team.id) ?? 0;
+                  const nextTeam = teams[idx + 1];
 
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="truncate text-sm font-semibold text-white">
-                                {team.name}
-                              </span>
-                              {isBooyah && (
-                                <span className="inline-flex items-center gap-0.5 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-zinc-950 shrink-0">
-                                  <Crown className="h-2.5 w-2.5" />
-                                  #1
-                                </span>
+                  return (
+                    <div
+                      key={team.id}
+                      className={`px-3.5 sm:px-4 py-3 transition-colors ${
+                        isDuplicate
+                          ? 'bg-rose-950/30'
+                          : isBooyah
+                          ? 'bg-amber-500/[0.07]'
+                          : 'hover:bg-white/[0.015]'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+                        <div className="flex items-center justify-between gap-2.5 min-w-0 flex-1">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-5 shrink-0 text-[11px] font-bold text-slate-500 tabular-nums">
+                              {String(idx + 1).padStart(2, '0')}
+                            </span>
+
+                            <div className="glass-input flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl text-xs font-bold text-slate-300">
+                              {team.logoUrl ? (
+                                <img
+                                  src={team.logoUrl}
+                                  alt=""
+                                  className="h-full w-full object-contain p-0.5"
+                                />
+                              ) : (
+                                generateInitials(team.name)
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400 tabular-nums">
-                              Slot {idx + 1} · Overall: {overallPts} pts
+
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate text-sm font-semibold text-white">
+                                  {team.name}
+                                </span>
+                                {isBooyah && (
+                                  <span className="inline-flex items-center gap-0.5 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-zinc-950 shrink-0">
+                                    <Crown className="h-2.5 w-2.5" />
+                                    #1
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 tabular-nums">
+                                Overall: {overallPts} pts
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="sm:hidden text-right shrink-0">
+                            <div
+                              className={`text-sm font-bold tabular-nums leading-none ${
+                                totalMatchPts > 0
+                                  ? isBooyah
+                                    ? 'text-amber-300'
+                                    : 'text-white'
+                                  : 'text-slate-500'
+                              }`}
+                            >
+                              {totalMatchPts}p
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5 tabular-nums">
+                              {placementPts}+{killPts}
                             </div>
                           </div>
                         </div>
 
-                        <div className="sm:hidden text-right shrink-0">
-                          <div
-                            className={`text-base font-bold tabular-nums leading-none ${
-                              totalMatchPts > 0
-                                ? isBooyah
-                                  ? 'text-amber-400'
-                                  : 'text-white'
-                                : 'text-slate-500'
-                            }`}
-                          >
-                            {totalMatchPts}
-                          </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5">
-                            match pts
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 border-t border-white/[0.08] sm:border-t-0 sm:pt-0 shrink-0">
-                        <div className="flex items-center gap-2">
-                          <label
-                            htmlFor={`rank-${match.id}-${team.id}`}
-                            className="text-[11px] font-medium text-slate-400"
-                          >
-                            Rank
-                          </label>
-                          <input
-                            ref={(el) => {
-                              rankInputRefs.current[team.id] = el;
-                            }}
-                            id={`rank-${match.id}-${team.id}`}
-                            type="number"
-                            inputMode="numeric"
-                            min={1}
-                            max={teams.length}
-                            value={entry.placement ?? ''}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                killsInputRefs.current[team.id]?.focus();
-                                killsInputRefs.current[team.id]?.select();
-                              }
-                            }}
-                            onChange={(e) =>
-                              handlePlacementChange(team.id, e.target.value)
-                            }
-                            placeholder="-"
-                            className={`glass-input h-10 w-14 rounded-xl text-center text-sm font-bold tabular-nums focus:outline-none transition-colors ${
-                              isDuplicate
-                                ? 'border-rose-500/70 bg-rose-950/30 text-rose-200'
-                                : isBooyah
-                                ? 'border-amber-500/70 bg-amber-500/[0.1] text-amber-300'
-                                : 'text-white focus:border-amber-400'
-                            }`}
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-medium text-slate-400">
-                            Kills
-                          </span>
-                          <div className="glass-input inline-flex items-center rounded-xl p-0.5">
-                            <button
-                              type="button"
-                              onClick={() => handleAdjustKills(team.id, -1)}
-                              aria-label={`Decrease kills for ${team.name}`}
-                              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:bg-white/[0.08] hover:text-white transition-colors"
+                        <div className="flex items-center justify-between sm:justify-end gap-2.5 pt-2 border-t border-white/[0.06] sm:border-t-0 sm:pt-0 shrink-0">
+                          {/* Hybrid Rank Input + Quick Pick / Swap Popover */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="sm:hidden text-[11px] font-medium text-slate-400">
+                              Rank
+                            </span>
+                            <div
+                              className={`inline-flex h-9 w-24 items-center overflow-hidden rounded-xl border transition-colors ${
+                                isDuplicate
+                                  ? 'border-rose-500/70 bg-rose-950/35'
+                                  : isBooyah
+                                  ? 'border-amber-500/70 bg-amber-500/[0.12]'
+                                  : 'glass-input focus-within:border-amber-400'
+                              }`}
                             >
-                              <Minus className="h-3.5 w-3.5" />
-                            </button>
-                            <input
-                              ref={(el) => {
-                                killsInputRefs.current[team.id] = el;
-                              }}
-                              type="number"
-                              inputMode="numeric"
-                              min={0}
-                              value={entry.kills}
-                              onFocus={(e) => e.target.select()}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  if (nextTeam) {
-                                    rankInputRefs.current[nextTeam.id]?.focus();
-                                    rankInputRefs.current[nextTeam.id]?.select();
+                              <input
+                                ref={(el) => {
+                                  rankInputRefs.current[team.id] = el;
+                                }}
+                                id={`rank-${match.id}-${team.id}`}
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={teams.length}
+                                disabled={match.isCompleted}
+                                value={entry.placement ?? ''}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    killsInputRefs.current[team.id]?.focus();
+                                    killsInputRefs.current[team.id]?.select();
                                   }
+                                }}
+                                onChange={(e) =>
+                                  handlePlacementChange(team.id, e.target.value)
                                 }
-                              }}
-                              onChange={(e) =>
-                                handleKillsChange(team.id, e.target.value)
-                              }
-                              aria-label={`Kills for ${team.name}`}
-                              className="h-9 w-10 bg-transparent text-center text-sm font-bold text-white tabular-nums focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleAdjustKills(team.id, 1)}
-                              aria-label={`Increase kills for ${team.name}`}
-                              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:bg-white/[0.08] hover:text-white transition-colors"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
+                                placeholder="—"
+                                aria-label={`Rank for ${team.name}`}
+                                className={`h-full min-w-0 flex-1 bg-transparent pl-2 text-center text-sm font-bold tabular-nums focus:outline-none ${
+                                  isDuplicate
+                                    ? 'text-rose-200'
+                                    : isBooyah
+                                    ? 'text-amber-300'
+                                    : 'text-white'
+                                }`}
+                              />
+                              <button
+                                type="button"
+                                disabled={match.isCompleted}
+                                onClick={(e) =>
+                                  openRankPopover(e, team, entry.placement)
+                                }
+                                title="Pick or swap placement rank"
+                                aria-label={`Choose placement rank for ${team.name}`}
+                                className="flex h-full w-8 shrink-0 items-center justify-center border-l border-white/[0.08] text-slate-400 hover:bg-white/[0.06] hover:text-white disabled:opacity-35 cursor-pointer"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="hidden sm:block w-16 text-right">
-                          <div
-                            className={`text-base font-bold tabular-nums leading-tight ${
-                              totalMatchPts > 0
-                                ? isBooyah
-                                  ? 'text-amber-400'
-                                  : 'text-white'
-                                : 'text-slate-500'
-                            }`}
-                          >
-                            {totalMatchPts}
+                          {/* Kills Stepper */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="sm:hidden text-[11px] font-medium text-slate-400">
+                              Kills
+                            </span>
+                            <div className="glass-input inline-flex items-center rounded-xl p-0.5">
+                              <button
+                                type="button"
+                                disabled={match.isCompleted || entry.kills <= 0}
+                                onClick={() => handleAdjustKills(team.id, -1)}
+                                aria-label={`Decrease kills for ${team.name}`}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-white/[0.08] hover:text-white disabled:opacity-35 transition-colors cursor-pointer"
+                              >
+                                <Minus className="h-3.5 w-3.5" />
+                              </button>
+                              <input
+                                ref={(el) => {
+                                  killsInputRefs.current[team.id] = el;
+                                }}
+                                type="number"
+                                inputMode="numeric"
+                                min={0}
+                                disabled={match.isCompleted}
+                                value={entry.kills}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    if (nextTeam) {
+                                      rankInputRefs.current[nextTeam.id]?.focus();
+                                      rankInputRefs.current[nextTeam.id]?.select();
+                                    }
+                                  }
+                                }}
+                                onChange={(e) =>
+                                  handleKillsChange(team.id, e.target.value)
+                                }
+                                aria-label={`Kills for ${team.name}`}
+                                className="h-8 w-9 bg-transparent text-center text-sm font-bold text-white tabular-nums focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                disabled={match.isCompleted}
+                                onClick={() => handleAdjustKills(team.id, 1)}
+                                aria-label={`Increase kills for ${team.name}`}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-white/[0.08] hover:text-white disabled:opacity-35 transition-colors cursor-pointer"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
-                          <div className="text-[10px] text-slate-500 tabular-nums">
-                            {placementPts}+{killPts}
+
+                          {/* Match Points */}
+                          <div className="hidden sm:block w-14 text-right">
+                            <div
+                              className={`text-sm font-bold tabular-nums leading-tight ${
+                                totalMatchPts > 0
+                                  ? isBooyah
+                                    ? 'text-amber-300'
+                                    : 'text-white'
+                                  : 'text-slate-500'
+                              }`}
+                            >
+                              {totalMatchPts}p
+                            </div>
+                            <div className="text-[10px] text-slate-500 tabular-nums">
+                              {placementPts}+{killPts}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -907,7 +1197,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                 type="button"
                 onClick={() => completeMatch(match.id)}
                 disabled={hasErrors}
-                className="glass-pill rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-200 disabled:opacity-40 transition-colors"
+                className="glass-pill rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-200 disabled:opacity-40 transition-colors cursor-pointer"
               >
                 {match.isCompleted ? 'Re-save Match' : 'Save Only'}
               </button>
@@ -916,7 +1206,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
                 type="button"
                 onClick={handleSaveAndOpenPoster}
                 disabled={hasErrors}
-                className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-amber-300 hover:text-amber-200 disabled:opacity-40 transition-colors"
+                className="glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-amber-300 hover:text-amber-200 disabled:opacity-40 transition-colors cursor-pointer"
               >
                 <ImageIcon className="h-3.5 w-3.5" />
                 <span>Save &amp; Poster</span>
@@ -927,7 +1217,7 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
               type="button"
               onClick={handleSaveAndContinue}
               disabled={hasErrors}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40 transition-colors"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-40 transition-colors cursor-pointer"
             >
               <span>{primaryCtaLabel}</span>
               <ArrowRight className="h-4 w-4" />
@@ -946,6 +1236,26 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
           </div>
         </div>
       </div>
+
+      {rankPopover && (
+        <RankPickerPopover
+          anchorRect={rankPopover.anchorRect}
+          team={rankPopover.team}
+          teams={teams}
+          currentRank={rankPopover.currentRank}
+          nextOpenRank={nextOpenRank}
+          teamByRank={teamByRank}
+          pointSystem={settings.pointSystem}
+          onSelectRank={(nextRank) =>
+            handleAssignOrSwapRank(
+              rankPopover.team.id,
+              nextRank,
+              entryMode === 'rapid'
+            )
+          }
+          onClose={() => setRankPopover(null)}
+        />
+      )}
 
       {canUseAiAuto && (
         <ScanScreenshotModal

@@ -345,4 +345,82 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets(
+      'Rank #1-N mode assigns ranks, auto-fills last squad, supports Undo, and swaps + quick-sets kills',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final store = TournamentStore();
+    await store.hydrate();
+    store.createTournament(
+      name: 'Fast Lobby',
+      mode: TournamentMode.scrim,
+      squadInputs: const [
+        (name: 'Squad Alpha', logoUrl: null),
+        (name: 'Squad Bravo', logoUrl: null),
+        (name: 'Squad Charlie', logoUrl: null),
+      ],
+    );
+    final auth = _FakeOrganizerAuthStore();
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: Size(400, 860)),
+        child: MaterialApp(
+          theme: AppTheme.dark(),
+          home: AnimatedBuilder(
+            animation: store,
+            builder: (_, __) => OrganizerShell(
+              authStore: auth,
+              tournamentStore: store,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.scoreboard_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Team List'), findsOneWidget);
+    expect(find.text('Rank #1-3'), findsOneWidget);
+
+    await tester.tap(find.text('Rank #1-3'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('#1 BOOYAH'), findsOneWidget);
+    await tester.tap(find.text('Squad Alpha'));
+    await tester.pumpAndSettle();
+    expect(store.activeTournament!.matches.first.entries.values
+        .firstWhere((e) => e.placement == 1)
+        .teamId, store.activeTournament!.teams[0].id);
+
+    // Tapping #2 when 2 squads remain auto-fills #3 cleanly
+    await tester.tap(find.text('Squad Bravo'));
+    await tester.pumpAndSettle();
+    final entriesAfterAuto = store.activeTournament!.matches.first.entries;
+    expect(entriesAfterAuto[store.activeTournament!.teams[1].id]?.placement, 2);
+    expect(entriesAfterAuto[store.activeTournament!.teams[2].id]?.placement, 3);
+    expect(find.text('All 3 placements locked. Tap any kill number to quick-set kills.'), findsOneWidget);
+
+    // Undo restores before the #2+#3 auto-fill batch
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(
+      store.activeTournament!.matches.first.entries[store.activeTournament!.teams[2].id]?.placement,
+      isNull,
+    );
+
+    // Tap kills number to open Quick Kills Picker and select 12 in 1 tap
+    await tester.tap(find.text('0').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Kills · #1 · Squad Alpha'), findsOneWidget);
+    await tester.tap(find.text('12'));
+    await tester.pumpAndSettle();
+    expect(
+      store.activeTournament!.matches.first.entries[store.activeTournament!.teams[0].id]?.kills,
+      12,
+    );
+  });
 }
