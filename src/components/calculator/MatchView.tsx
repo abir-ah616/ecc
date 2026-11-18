@@ -954,6 +954,10 @@ export const MatchView: React.FC<MatchViewProps> = ({ match }) => {
           onReverse={handleRapidReverse}
           onRedo={handleRapidRedo}
           onResetRanks={handleResetRanks}
+          onViewStandings={() => {
+            setIsRapidOpen(false);
+            setMobilePane('standings');
+          }}
           onClose={() => setIsRapidOpen(false)}
         />
       )}

@@ -173,8 +173,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     }`;
 
   const renderSidebarContent = () => (
-    <div className="flex h-full flex-col justify-between bg-gradient-to-b from-[#0D1018] via-[#0A0C12] to-[#08090D]">
-      <div className="studio-scrollbar space-y-5 overflow-y-auto px-3 py-4">
+    <div className="flex h-full min-h-0 flex-col justify-between bg-gradient-to-b from-[#0D1018] via-[#0A0C12] to-[#08090D]">
+      <div className="studio-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto px-3 py-4">
         {/* Brand Logo Matching Broadcast Studio Home */}
         <button
           type="button"
@@ -419,7 +419,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       </div>
 
       {/* Bottom Data & User Utilities */}
-      <div className="border-t border-white/[0.07] p-3 space-y-1.5">
+      <div className="shrink-0 border-t border-white/[0.07] p-3 space-y-1.5">
         <button
           type="button"
           onClick={() => {
@@ -537,8 +537,8 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
       )}
 
-      {/* Main Content Shell */}
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+      {/* Main Content Shell (no z-index stacking context trap so fixed modals escape above sidebar & bottom nav) */}
+      <div className="relative flex min-w-0 flex-1 flex-col">
         {/* Calm Contextual Frosted Top Bar (No Create CTA, No Theme Selector, No Glows) */}
         <header className="glass-chrome sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-white/[0.08] px-4 sm:px-6 select-none">
           <div className="flex items-center gap-3 min-w-0">

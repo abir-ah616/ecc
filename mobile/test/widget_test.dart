@@ -469,4 +469,72 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('SLOT · SQUAD'), findsOneWidget);
   });
+
+  testWidgets(
+      'Full-screen Rapid overlay renders cleanly in short landscape viewport without overflow',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final store = TournamentStore();
+    await store.hydrate();
+    store.createTournament(
+      name: 'Landscape Cup',
+      mode: TournamentMode.scrim,
+      squadInputs: [
+        for (int i = 1; i <= 12; i++) (name: 'Squad $i', logoUrl: null),
+      ],
+    );
+    final auth = _FakeOrganizerAuthStore();
+
+    tester.view.physicalSize = const Size(840, 360);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: AnimatedBuilder(
+          animation: store,
+          builder: (_, __) => OrganizerShell(
+            authStore: auth,
+            tournamentStore: store,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.scoreboard_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Rapid'));
+    await tester.pumpAndSettle();
+
+    Finder inRapid(Finder inner) => find.descendant(
+          of: find.byKey(const Key('rapid-fullscreen-overlay')),
+          matching: inner,
+        );
+
+    expect(inRapid(find.text('#1 Team')), findsOneWidget);
+    expect(inRapid(find.text('Which team took Booyah?')), findsOneWidget);
+
+    await tester.tap(inRapid(find.text('Squad 1')));
+    await tester.pumpAndSettle();
+
+    expect(inRapid(find.text('Total Kills?')), findsOneWidget);
+    expect(inRapid(find.text('Next · 2nd')), findsOneWidget);
+
+    await tester.tap(inRapid(find.text('8')));
+    await tester.pumpAndSettle();
+    await tester.tap(inRapid(find.text('Next · 2nd')));
+    await tester.pumpAndSettle();
+
+    expect(
+      store.activeTournament!.matches.first.entries[store.activeTournament!.teams[0].id]?.placement,
+      1,
+    );
+    expect(
+      store.activeTournament!.matches.first.entries[store.activeTournament!.teams[0].id]?.kills,
+      8,
+    );
+  });
 }

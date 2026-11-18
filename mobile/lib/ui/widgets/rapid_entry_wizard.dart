@@ -514,272 +514,161 @@ class _FullScreenRapidDialogState extends State<_FullScreenRapidDialog> {
         ? 'Which team took Booyah?'
         : 'Which team placed ${_ordinal(_wiz.rank)}?';
 
-    return Column(
+    return LayoutBuilder(
       key: ValueKey('pick_${_wiz.rank}'),
-      children: [
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.accent,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            '#${_wiz.rank} Team',
-            style: const TextStyle(
-              color: Color(0xFF090B0F),
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.4,
+      builder: (context, constraints) {
+        final compactHeight = constraints.maxHeight < 420;
+        final crossAxisCount = constraints.maxWidth >= 820
+            ? 4
+            : constraints.maxWidth >= 540
+                ? 3
+                : 2;
+
+        return Column(
+          children: [
+            SizedBox(height: compactHeight ? 2 : 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '#${_wiz.rank} Team',
+                style: const TextStyle(
+                  color: Color(0xFF090B0F),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.4,
+                ),
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          headline,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.4,
-          ),
-        ),
-        const SizedBox(height: 20),
-        Expanded(
-          child: GridView.builder(
-            physics: const BouncingScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              mainAxisExtent: 76,
+            SizedBox(height: compactHeight ? 6 : 12),
+            Text(
+              headline,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: compactHeight ? 20 : 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.4,
+              ),
             ),
-            itemCount: unplaced.length,
-            itemBuilder: (_, idx) {
-              final team = unplaced[idx];
-              return Material(
-                color: const Color(0xFF131722),
-                borderRadius: BorderRadius.circular(18),
-                child: InkWell(
-                  onTap: () => _pickTeam(team),
-                  borderRadius: BorderRadius.circular(18),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
+            SizedBox(height: compactHeight ? 12 : 20),
+            Expanded(
+              child: GridView.builder(
+                physics: const BouncingScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: compactHeight ? 10 : 12,
+                  mainAxisSpacing: compactHeight ? 8 : 12,
+                  mainAxisExtent: compactHeight ? 58 : 76,
+                ),
+                itemCount: unplaced.length,
+                itemBuilder: (_, idx) {
+                  final team = unplaced[idx];
+                  return Material(
+                    color: const Color(0xFF131722),
+                    borderRadius: BorderRadius.circular(18),
+                    child: InkWell(
+                      onTap: () => _pickTeam(team),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: const Color(0xFF283044),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        SquadBadge(
-                          teamName: team.name,
-                          shortCode: team.shortCode,
-                          logoUrl: team.logoUrl,
-                          size: 38,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compactHeight ? 10 : 12,
+                          vertical: compactHeight ? 6 : 10,
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            team.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              height: 1.2,
-                            ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: const Color(0xFF283044),
+                            width: 1.2,
                           ),
                         ),
-                      ],
+                        child: Row(
+                          children: [
+                            SquadBadge(
+                              teamName: team.name,
+                              shortCode: team.shortCode,
+                              logoUrl: team.logoUrl,
+                              size: compactHeight ? 32 : 38,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                team.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: compactHeight ? 13 : 14,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildKillsStep(Team team, bool isFinalStep) {
-    final nextRank =
-        _wiz.rank < widget.tournament.teams.length ? _wiz.rank + 1 : null;
-
-    return SingleChildScrollView(
-      key: ValueKey('kills_${_wiz.rank}_${team.id}'),
-      physics: const BouncingScrollPhysics(),
-      child: Column(
+  Widget _buildSelectedSquadCard(Team team, {bool compact = false}) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: compact ? 10 : 14,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161A26),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.accentBorder, width: 1.3),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(height: 8),
-
-          // Selected Squad Elevated Card
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFF161A26),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.accentBorder, width: 1.3),
+              color: AppColors.accent,
+              borderRadius: BorderRadius.circular(9),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: Text(
-                    '#${_wiz.rank}',
-                    style: const TextStyle(
-                      color: Color(0xFF090B0F),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SquadBadge(
-                  teamName: team.name,
-                  shortCode: team.shortCode,
-                  logoUrl: team.logoUrl,
-                  size: 40,
-                  highlight: true,
-                ),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Text(
-                    team.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
+            child: Text(
+              '#${_wiz.rank}',
+              style: const TextStyle(
+                color: Color(0xFF090B0F),
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-
-          const SizedBox(height: 18),
-
-          // Clean Total Kills? Card
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFF111520),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFF283044)),
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  'Total Kills?',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  width: 112,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF090B11),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.accentBorder, width: 1.4),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '${_wiz.draftKills}',
-                    style: const TextStyle(
-                      color: AppColors.accentBright,
-                      fontSize: 34,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                GridView(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                    mainAxisExtent: 48,
-                  ),
-                  children: [
-                    for (int d = 1; d <= 9; d++)
-                      _KeyTile(label: '$d', onTap: () => _appendDigit(d)),
-                    _KeyTile(
-                      label: 'CLR',
-                      muted: true,
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        setState(() => _wiz.draftKills = 0);
-                      },
-                    ),
-                    _KeyTile(label: '0', onTap: () => _appendDigit(0)),
-                    _KeyTile(
-                      icon: Icons.backspace_outlined,
-                      muted: true,
-                      onTap: _backspaceDigit,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: _confirmKills,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                      foregroundColor: const Color(0xFF090B0F),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    icon: Icon(
-                      isFinalStep
-                          ? Icons.check_circle_rounded
-                          : Icons.arrow_forward_rounded,
-                      size: 20,
-                    ),
-                    label: Text(
-                      isFinalStep
-                          ? 'Done · View Standings'
-                          : nextRank != null
-                              ? 'Next · ${_ordinal(nextRank)}'
-                              : 'Next',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          const SizedBox(width: 12),
+          SquadBadge(
+            teamName: team.name,
+            shortCode: team.shortCode,
+            logoUrl: team.logoUrl,
+            size: compact ? 34 : 40,
+            highlight: true,
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              team.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: compact ? 16 : 18,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -787,66 +676,284 @@ class _FullScreenRapidDialogState extends State<_FullScreenRapidDialog> {
     );
   }
 
+  Widget _buildKillsKeypad({double keyHeight = 48}) {
+    return GridView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        mainAxisExtent: keyHeight,
+      ),
+      children: [
+        for (int d = 1; d <= 9; d++)
+          _KeyTile(label: '$d', onTap: () => _appendDigit(d)),
+        _KeyTile(
+          label: 'CLR',
+          muted: true,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => _wiz.draftKills = 0);
+          },
+        ),
+        _KeyTile(label: '0', onTap: () => _appendDigit(0)),
+        _KeyTile(
+          icon: Icons.backspace_outlined,
+          muted: true,
+          onTap: _backspaceDigit,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKillsConfirmButton(bool isFinalStep, int? nextRank,
+      {double height = 52}) {
+    return SizedBox(
+      width: double.infinity,
+      height: height,
+      child: FilledButton.icon(
+        onPressed: _confirmKills,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.accent,
+          foregroundColor: const Color(0xFF090B0F),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        icon: Icon(
+          isFinalStep
+              ? Icons.check_circle_rounded
+              : Icons.arrow_forward_rounded,
+          size: 20,
+        ),
+        label: Text(
+          isFinalStep
+              ? 'Done · View Standings'
+              : nextRank != null
+                  ? 'Next · ${_ordinal(nextRank)}'
+                  : 'Next',
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKillsStep(Team team, bool isFinalStep) {
+    final nextRank =
+        _wiz.rank < widget.tournament.teams.length ? _wiz.rank + 1 : null;
+
+    return LayoutBuilder(
+      key: ValueKey('kills_${_wiz.rank}_${team.id}'),
+      builder: (context, constraints) {
+        final isLandscapeSideBySide =
+            constraints.maxHeight < 460 && constraints.maxWidth >= 520;
+
+        if (isLandscapeSideBySide) {
+          return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildSelectedSquadCard(team, compact: true),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Total Kills?',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            width: 100,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF090B11),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppColors.accentBorder,
+                                width: 1.4,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '${_wiz.draftKills}',
+                              style: const TextStyle(
+                                color: AppColors.accentBright,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildKillsConfirmButton(
+                            isFinalStep,
+                            nextRank,
+                            height: 46,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF111520),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: const Color(0xFF283044)),
+                        ),
+                        child: _buildKillsKeypad(keyHeight: 42),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              _buildSelectedSquadCard(team),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF111520),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: const Color(0xFF283044)),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Total Kills?',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      width: 112,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF090B11),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppColors.accentBorder,
+                          width: 1.4,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${_wiz.draftKills}',
+                        style: const TextStyle(
+                          color: AppColors.accentBright,
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildKillsKeypad(keyHeight: 48),
+                    const SizedBox(height: 16),
+                    _buildKillsConfirmButton(isFinalStep, nextRank),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildAlreadyDoneStep(int teamCount) {
     return Center(
       key: const ValueKey('done'),
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111520),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFF283044)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'All $teamCount Teams Entered',
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF111520),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFF283044)),
             ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: FilledButton(
-                onPressed: widget.onDoneToStandings,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accent,
-                  foregroundColor: const Color(0xFF090B0F),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'All $teamCount Teams Entered',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                child: const Text(
-                  'View Standings',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: OutlinedButton(
-                onPressed: _resetAll,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.textPrimary,
-                  side: const BorderSide(color: AppColors.borderStrong),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: FilledButton(
+                    onPressed: widget.onDoneToStandings,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: const Color(0xFF090B0F),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    child: const Text(
+                      'View Standings',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                    ),
                   ),
                 ),
-                child: const Text(
-                  'Re-enter Ranks',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: OutlinedButton(
+                    onPressed: _resetAll,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textPrimary,
+                      side: const BorderSide(color: AppColors.borderStrong),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    child: const Text(
+                      'Re-enter Ranks',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
