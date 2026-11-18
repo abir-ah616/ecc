@@ -95,12 +95,12 @@ const List<TournamentLayoutPreset> kTournamentTemplates = [
   ),
   TournamentLayoutPreset(
     title: 'Quick Champion Rush',
-    subtitle: '5 max matches · 50 pts activate · 12 teams',
+    subtitle: '6 max matches · 50 pts activate · 12 teams',
     badge: 'RUSH 50',
     mode: TournamentMode.championRush,
     roundOrDay: 'FINALS · RUSH 50',
     squadCount: 12,
-    matchesPlanned: 5,
+    matchesPlanned: 6,
     rushTargetPoints: 50,
   ),
   TournamentLayoutPreset(
